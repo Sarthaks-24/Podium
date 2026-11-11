@@ -1,9 +1,11 @@
 // AI edit of a problem (v2.0.2 stage E): the "Edit with AI" panel in the
-// problem editor. Every /api/ call is answered by the mocks of problems.spec.ts
-// with extra routes for the key status and the three ai-edit routes. The
-// sweep saves screenshots at 375, 768, 1024 and 1440 px in light and dark to
-// $PODIUM_SHOTS (default cache/v2.0.2/shots/sE/), checks no horizontal
-// overflow, and runs axe on the panel with a draft showing.
+// problem editor, and in v2.1.0 stage A the kept note, the refusal with its
+// two disclosures, the mode refusal and Close. Every /api/ call is answered by
+// the mocks of problems.spec.ts with extra routes for the key status and the
+// three ai-edit routes. The sweep saves screenshots at 375, 768, 1024 and 1440
+// px in light and dark to $PODIUM_SHOTS (default cache/v2.0.2/shots/sE/),
+// checks no horizontal overflow, and runs axe on the panel with a draft or a
+// refusal showing.
 import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
@@ -37,6 +39,7 @@ const KEY = {
 const DRAFT = {
   draft_id: 'd1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1',
   summary: 'Added a line about negative sums to the statement.',
+  kept: [] as string[],
   provider: 'anthropic',
   model: 'claude-opus-5-5',
   files: [
@@ -63,9 +66,29 @@ interface Answer {
 const RUNNING: Answer = { status: 409, body: { code: 'contest_running', message: 'A contest that holds this problem is running. Accept after it ends.' } };
 
 function refusal(route: Parameters<typeof bank.json>[0], a: Answer) {
-  const b = a.body as { code: string; message: string };
-  return bank.apiError(route, a.status, b.code, b.message);
+  const { code, message, ...extra } = a.body as { code: string; message: string };
+  return bank.apiError(route, a.status, code, message, extra);
 }
+
+const REFUSED_TEXT = "The AI's edit would break this problem, so nothing was saved. Press Ask for a draft to try again, describe a smaller change, or rewrite the whole problem.";
+const MODE_TEXT = 'Edit with AI cannot change whether students write a whole program or one function. Use Rewrite with AI and choose there.';
+
+const REFUSED: Answer = {
+  status: 422,
+  body: {
+    code: 'invalid_answer',
+    message: REFUSED_TEXT,
+    problems: ['problem.yaml tests.yaml: Planned tests need a generator. Add one, or remove the plan.'],
+    sent_back: {
+      answers: [
+        { summary: 'Second try.', files: [{ path: 'problem.yaml', content: 'format: 1\ntitle: Largest gap\n' }], cut: false },
+        { summary: 'First try.', files: [{ path: 'problem.yaml', content: 'format: 1\ntitle: Largest gap, first\n' }], cut: true },
+      ],
+    },
+  },
+};
+
+const MODE_REFUSED: Answer = { status: 422, body: { code: 'mode_change', message: MODE_TEXT } };
 
 async function setup(page: Page, ask: Answer = { status: 200, body: DRAFT }, accept: Answer = { status: 200, body: { problem_id: 1, validation_queued: true, not_ready: [] } }) {
   await bank.mockApi(page);
@@ -161,6 +184,114 @@ test('what the pack cannot carry is shown as the server wrote it', async ({ page
   await expect(page.getByRole('heading', { name: 'Draft' })).toHaveCount(0);
 });
 
+test('the draft names what the AI left out and the server kept', async ({ page }) => {
+  await setup(page, { status: 200, body: { ...DRAFT, kept: ['the test generator', 'the generator settings of each subtask'] } });
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Rename it.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+  await expect(page.getByText('The AI left these out, so your current ones were kept: the test generator, the generator settings of each subtask.')).toBeVisible();
+});
+
+test('a draft with nothing kept has no kept note', async ({ page }) => {
+  await setup(page);
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Rename it.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+  await expect(page.getByRole('button', { name: 'Accept the edit' })).toBeVisible();
+  await expect(page.getByText('The AI left these out')).toHaveCount(0);
+});
+
+test('a refusal leads with one sentence, keeps focus on Ask and holds two closed disclosures', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await setup(page, REFUSED);
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Rename it.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+
+  const banner = page.getByRole('alert').filter({ hasText: REFUSED_TEXT });
+  await expect(banner).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ask for a draft' })).toBeFocused();
+  const details = banner.locator('details').first();
+  const sent = banner.locator('details').nth(1);
+  await expect(details).not.toHaveAttribute('open', '');
+  await expect(sent).not.toHaveAttribute('open', '');
+  await expect(banner.getByText('Planned tests need a generator')).toBeHidden();
+
+  // From the keyboard: Details, What the AI sent back, then the Copy buttons.
+  await tabTo(page, details.locator('summary'));
+  await page.keyboard.press('Enter');
+  await expect(banner.getByText('Planned tests need a generator')).toBeVisible();
+  await tabTo(page, sent.locator('summary'));
+  await page.keyboard.press('Enter');
+  await expect(sent.getByText('Send this to whoever runs Podium if it keeps happening.')).toBeVisible();
+  await expect(sent.getByText('Second answer')).toBeVisible();
+  await expect(sent.getByText('First answer')).toBeVisible();
+  await expect(sent.getByText('Cut at 200 KB. The rest was not kept.')).toBeVisible();
+  await expect(sent.getByRole('region', { name: 'problem.yaml, as the AI sent it' })).toHaveCount(2);
+
+  const copy = sent.locator('.sent-file button').first();
+  await tabTo(page, copy);
+  await page.keyboard.press('Enter');
+  await expect(copy).toContainText('Copied');
+  await expect(toasts(page)).toContainText('Copied problem.yaml');
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clip.replaceAll('\r\n', '\n')).toBe('format: 1\ntitle: Largest gap\n');
+  await expect(copy).not.toContainText('Copied', { timeout: 4000 });
+});
+
+test('a copy that the browser refuses says so', async ({ page }) => {
+  await setup(page, REFUSED);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('no')) }, configurable: true });
+  });
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Rename it.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+  const sent = page.locator('details').filter({ hasText: 'What the AI sent back' });
+  await sent.locator('summary').click();
+  await sent.getByRole('button', { name: /^Copy problem\.yaml$/ }).first().click();
+  await expect(page.getByText('Could not copy. Select the text and copy it by hand.')).toBeVisible();
+});
+
+test('a change of mode is refused with its own sentence and nothing to expand', async ({ page }) => {
+  await setup(page, MODE_REFUSED);
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Make it a function problem.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: MODE_TEXT })).toBeVisible();
+  await expect(page.getByRole('alert').locator('details')).toHaveCount(0);
+});
+
+test('Close hides the panel and returns focus to the menu; Reject says so', async ({ page }) => {
+  await setup(page);
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Make it harder.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+  await page.getByRole('button', { name: 'Reject the edit' }).click();
+  await expect(toasts(page)).toContainText('Draft rejected');
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByRole('heading', { name: 'Edit with AI' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'More' })).toBeFocused();
+});
+
+test('while the AI works the button and a status line say so and take focus', async ({ page }) => {
+  await setup(page);
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/admin/problems/1/ai-edit', async (route) => {
+    if (route.request().method() === 'POST') await gate;
+    await route.fallback();
+  });
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Make it harder.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+  const status = page.getByText('This takes a minute or two, and the AI may try twice. Stay on this page.');
+  await expect(status).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Asking the AI' })).toBeDisabled();
+  release();
+  await expect(page.getByRole('heading', { name: 'Draft' })).toBeFocused();
+});
+
 test('an empty instruction is refused on the page without a request', async ({ page }) => {
   const calls = await setup(page);
   await openPanel(page);
@@ -179,6 +310,39 @@ const SCREENS = [
       await page.getByLabel('What should change').fill('Say that sums can be negative.');
       await page.getByRole('button', { name: 'Ask for a draft' }).click();
       await expect(page.getByRole('button', { name: 'Accept the edit' })).toBeVisible();
+    },
+  },
+  {
+    name: 'ai-edit-kept',
+    run: async (page: Page) => {
+      await setup(page, { status: 200, body: { ...DRAFT, kept: ['the test generator', 'the generator settings of each subtask'] } });
+      await openPanel(page);
+      await page.getByLabel('What should change').fill('Rename it.');
+      await page.getByRole('button', { name: 'Ask for a draft' }).click();
+      await expect(page.getByText('The AI left these out')).toBeVisible();
+    },
+  },
+  {
+    name: 'ai-edit-refused-open',
+    run: async (page: Page) => {
+      await setup(page, REFUSED);
+      await openPanel(page);
+      await page.getByLabel('What should change').fill('Rename it.');
+      await page.getByRole('button', { name: 'Ask for a draft' }).click();
+      const banner = page.getByRole('alert').filter({ hasText: REFUSED_TEXT });
+      await banner.locator('summary').first().click();
+      await banner.locator('summary').last().click();
+      await expect(banner.getByText('Second answer')).toBeVisible();
+    },
+  },
+  {
+    name: 'ai-edit-mode',
+    run: async (page: Page) => {
+      await setup(page, MODE_REFUSED);
+      await openPanel(page);
+      await page.getByLabel('What should change').fill('Make it a function problem.');
+      await page.getByRole('button', { name: 'Ask for a draft' }).click();
+      await expect(page.getByRole('alert').filter({ hasText: MODE_TEXT })).toBeVisible();
     },
   },
   {

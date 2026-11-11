@@ -27,12 +27,14 @@ export class ApiError extends Error {
   readonly suggestedSlug: string;
   /** What a conflict is with, as the server sent it (a pack import's colliding problem), or null. */
   readonly existing: unknown;
+  /** What a refused AI edit says the model sent back, as the server wrote it, or null. */
+  readonly sentBack: unknown;
 
   constructor(
     status: number,
     code: string,
     message: string,
-    details: { fields?: Record<string, string>; problems?: string[]; retryAfter?: number | null; suggestedSlug?: string; existing?: unknown } = {},
+    details: { fields?: Record<string, string>; problems?: string[]; retryAfter?: number | null; suggestedSlug?: string; existing?: unknown; sentBack?: unknown } = {},
   ) {
     super(message);
     this.name = 'ApiError';
@@ -43,6 +45,7 @@ export class ApiError extends Error {
     this.retryAfter = details.retryAfter ?? null;
     this.suggestedSlug = details.suggestedSlug ?? '';
     this.existing = details.existing ?? null;
+    this.sentBack = details.sentBack ?? null;
   }
 }
 
@@ -82,7 +85,7 @@ function errorFromBody(status: number, body: unknown): ApiError {
   if (typeof body === 'object' && body !== null && 'error' in body) {
     const err = (body as { error: unknown }).error;
     if (typeof err === 'object' && err !== null) {
-      const { code, message, fields, problems, retry_after_s: retry, suggested_slug: suggested, existing } = err as Record<string, unknown>;
+      const { code, message, fields, problems, retry_after_s: retry, suggested_slug: suggested, existing, sent_back: sentBack } = err as Record<string, unknown>;
       if (typeof code === 'string' && typeof message === 'string' && message !== '') {
         return new ApiError(status, code, message, {
           fields: stringMap(fields),
@@ -90,6 +93,7 @@ function errorFromBody(status: number, body: unknown): ApiError {
           retryAfter: typeof retry === 'number' && Number.isFinite(retry) && retry >= 0 ? retry : null,
           suggestedSlug: typeof suggested === 'string' ? suggested : '',
           existing,
+          sentBack,
         });
       }
     }

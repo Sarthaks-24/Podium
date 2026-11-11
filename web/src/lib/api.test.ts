@@ -212,3 +212,18 @@ describe('a slug conflict', () => {
     expect(err.fields.slug).toBe('Taken.');
   });
 });
+
+describe('a refused AI edit', () => {
+  it('carries what the AI sent back, untouched', async () => {
+    const sent = { answers: [{ summary: 's', files: [], cut: false }] };
+    fakeFetch(respond(422, { error: { code: 'invalid_answer', message: 'Nothing was saved.', problems: ['a'], sent_back: sent } }));
+    const err = await caught(sendJSON('POST', '/api/admin/problems/1/ai-edit', { instruction: 'x' }));
+    expect(err.sentBack).toEqual(sent);
+    expect(err.problems).toEqual(['a']);
+  });
+
+  it('has nothing when the server sent nothing', async () => {
+    fakeFetch(respond(409, { error: { code: 'conflict', message: 'Changed.' } }));
+    expect((await caught(sendJSON('POST', '/api/admin/problems/1/ai-edit', {}))).sentBack).toBeNull();
+  });
+});

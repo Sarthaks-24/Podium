@@ -21,6 +21,8 @@ export interface EditDraft {
   draft_id: string;
   summary: string;
   files: EditFile[];
+  /** Names of the settings the AI left out and the server put back; empty when none. */
+  kept: string[];
   provider: string;
   model: string;
 }
@@ -57,4 +59,50 @@ export function changeLine(files: readonly EditFile[]): string {
   if (names.length === 0) return 'The draft changes nothing.';
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
   return `${list} would change.`;
+}
+
+/** The kept note under the draft summary, or "" when nothing was kept. */
+export function keptLine(kept: readonly string[]): string {
+  return kept.length === 0 ? '' : `The AI left these out, so your current ones were kept: ${kept.join(', ')}.`;
+}
+
+/** One file of an answer the AI sent back. */
+export interface SentFile {
+  path: string;
+  content: string;
+}
+
+/** One answer the AI sent back, newest first in a list; cut says the 200 KB cap shortened it. */
+export interface SentAnswer {
+  summary: string;
+  files: SentFile[];
+  cut: boolean;
+}
+
+/** Reads the sent_back object of a refusal; anything that is not the expected shape is dropped. */
+export function parseSentBack(raw: unknown): SentAnswer[] {
+  const list = typeof raw === 'object' && raw !== null ? (raw as { answers?: unknown }).answers : undefined;
+  if (!Array.isArray(list)) return [];
+  const out: SentAnswer[] = [];
+  for (const a of list) {
+    if (typeof a !== 'object' || a === null) continue;
+    const { summary, files, cut } = a as { summary?: unknown; files?: unknown; cut?: unknown };
+    out.push({
+      summary: typeof summary === 'string' ? summary : '',
+      files: Array.isArray(files)
+        ? files.flatMap((f: unknown) => {
+            const { path, content } = (f ?? {}) as { path?: unknown; content?: unknown };
+            return typeof path === 'string' && typeof content === 'string' ? [{ path, content }] : [];
+          })
+        : [],
+      cut: cut === true,
+    });
+  }
+  return out;
+}
+
+/** The label above one of the answers when the retry ran (newest first), or "" when there is one. */
+export function answerLabel(index: number, total: number): string {
+  if (total < 2) return '';
+  return index === 0 ? 'Second answer' : 'First answer';
 }

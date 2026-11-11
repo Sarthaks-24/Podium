@@ -516,6 +516,12 @@
     document.getElementById('aiedit-heading')?.focus();
   }
 
+  async function closeAiEdit() {
+    aiEditOpen = false;
+    await tick();
+    document.querySelector<HTMLElement>('[aria-controls="problem-menu"]')?.focus();
+  }
+
   async function aiEditAccepted() {
     aiEditOpen = false;
     await load();
@@ -572,7 +578,7 @@
     <EditorNotes {problem} {aiDraft} bind:reason {fields} />
 
     {#if aiEditOpen}
-      <AiEditPanel problemId={problem.id} {dirty} origin={problem.origin} onaccepted={aiEditAccepted} />
+      <AiEditPanel problemId={problem.id} {dirty} origin={problem.origin} onaccepted={aiEditAccepted} onclose={closeAiEdit} />
     {/if}
 
     <EditorBar
