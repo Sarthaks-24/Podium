@@ -51,6 +51,11 @@ describe('sanitizeHtml', () => {
     const out = sanitizeHtml('<span class="math" data-tex="x^2"></span>');
     expect(out).toBe('<span class="math" data-tex="x^2"></span>');
   });
+
+  it('keeps data-tex and drops every other data attribute', () => {
+    const out = sanitizeHtml('<span class="math" data-tex="x^2" data-evil="1" data-x-y="2">a</span><p data-role="admin">b</p>');
+    expect(out).toBe('<span class="math" data-tex="x^2">a</span><p>b</p>');
+  });
 });
 
 describe('statementHtml', () => {

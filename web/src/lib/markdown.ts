@@ -126,7 +126,8 @@ export function sanitizeHtml(html: string): string {
   return purifier().sanitize(html, {
     FORBID_ATTR: ['style', 'target', 'srcset', 'formaction'],
     FORBID_TAGS,
-    ALLOW_DATA_ATTR: true,
+    ALLOW_DATA_ATTR: false,
+    ADD_ATTR: ['data-tex'],
   });
 }
 
