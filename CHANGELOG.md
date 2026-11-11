@@ -14,6 +14,15 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage C: judge and security
 
+- The judge writes one `job timing` line per submission and Run: language, compile time and cache hits, time waiting for the compile lock, box set-up and clean-up, test wall time, the slowest test against its limit, and report time. Nothing about judging changes. The fields are in `docs/OPERATIONS.md`.
+- An upgrade now installs the sandbox slice drop-in (`isolate.slice.d/podium.conf`) with the judge unit, keeps both for rollback, and a rollback restores both. Before, only a fresh install put the drop-in in place. No CPU weight is set yet: that waits for a measurement on a production-type VM.
+- `install.sh` checks the signing key of each apt repository (NodeSource, isolate, Caddy) against a fingerprint written in the script and stops when it differs. Known limit: the isolate fingerprint was taken from the key the project published on 2026-11-11; check it against the project's own site if you want to be sure.
+- Statements: only the maths placeholders keep a `data-` attribute; any other is removed when a statement is shown.
+- The contest problem picker lists an AI draft as a disabled option that says why it cannot be added: read it and save it in the editor first.
+- SQLite constraint failures are recognised by the driver's error code, not by message text. This also fixes a fault in which two identical questions sent at the same moment made the second fail with an error instead of returning the first.
+- Removed an unused error value and the `export` word from 29 web identifiers used only in their own file.
+- Known limit: the memory cap a problem may ask for (1024 MB) equals the judge's default budget and a larger request is clamped by the runner; nothing changed. A change to the budget belongs to the judge sizing work (stage J).
+
 ### v2.1.0 stage V: frontend fixes
 
 ### v2.1.0 stage F: function problems from the wizard
