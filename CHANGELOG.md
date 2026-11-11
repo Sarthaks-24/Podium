@@ -21,6 +21,12 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage B: keep me signed in
 
+- New: the owner can keep people signed in, role by role (students, organisers, admins, the owner). Dashboard, Sign-in tab, "Staying signed in". Each role is "Nobody" (the default: signed out when the browser closes or after 12 hours, exactly as before), "Each person chooses" or "Everyone". "Sign out after" is 1 to 365 days without use, or only when they sign out (a browser keeps a cookie about 13 months at most).
+- When students are on "Each person chooses" the sign-in page has a "Keep me signed in" checkbox, off by default, with "Leave this off on a lab or shared computer." Organisers, admins and the owner on "Each person chooses" get the same choice in the account menu after signing in. A tick that the person's role does not honour is told once: "Podium does not keep your account signed in, so the tick was not used."
+- Switching a role to "Nobody" signs out the kept sessions of that role at once, after a confirm that says how many people and whether you are one of them. Sign-out, disabling an account and ending someone's sessions end a kept session under every setting. A role change ends the person's kept sessions.
+- Every session the server ends now also forgets that session's AI provider keys. Before, only sign-out did.
+- The privacy page's session row follows the setting. Migration `0016_v210_sessions.sql` adds two columns to `sessions`; existing sessions are ordinary. The previous binary refuses a database that records it: roll back by restoring the pre-upgrade backup.
+- Known limits: the setting is read per role at sign-in, so the checkbox on the sign-in page shows only when students may choose; an organiser on "Each person chooses" turns it on in the account menu. "Everyone" and "Only when they sign out" are for a person's own computer; a lab computer needs "Nobody". `podium-server forget-user` (a separate process) cannot make a running server drop a key it holds; the key's own 2 hour limit does. Restarting the server in a different mode ends every session as before.
 ### v2.1.0 stage C: judge and security
 
 - The judge writes one `job timing` line per submission and Run: language, compile time and cache hits, time waiting for the compile lock, box set-up and clean-up, test wall time, the slowest test against its limit, and report time. Nothing about judging changes. The fields are in `docs/OPERATIONS.md`.

@@ -239,7 +239,8 @@ Gmail addresses match however their dots are placed. A refused address is kept (
 
 ### Sessions and shared lab PCs
 
-- The session cookie has no expiry, so the browser forgets it when it closes. The server ends every session 12 hours after sign-in, however much it is used (a constant, `auth.SessionTTL`; there is no variable for it), and at sign-out.
+- The session cookie has no expiry, so the browser forgets it when it closes. The server ends every session 12 hours after sign-in, however much it is used (a constant, `auth.SessionTTL`; there is no variable for it), and at sign-out. That is the default for every role.
+- Keep people signed in (v2.1.0). An owner can change this per role on the Dashboard, Sign-in tab, "Staying signed in" (no variable and no restart; the setting is one row of `settings`, key `keep_signed_in`, read on every request from a cache that a save clears). A kept session's cookie has a `Max-Age` and the session ends after 1 to 365 idle days (or 400 days with "Only when they sign out"), its expiry moving forward on use at most once an hour. Switching a role to "Nobody" ends that role's kept sessions at once. Every save is a `keep_signed_in_changed` row in the Audit tab. Keep lab computers on "Nobody"; "Everyone" for admins or the owner lets whoever sits down next act as them until sign-out. The hourly sweep deletes kept sessions that were idle too long. Every session the server ends also drops its AI provider keys from memory.
 - Google sign-in asks Google for a sign-in from the last 5 minutes (`prompt=select_account`, `max_age=300`) and refuses an ID token whose `auth_time` is older than 5 minutes, so the previous student's Google session on a lab PC is not one click away.
 - In labs, give each slot a browser guest profile, or a kiosk profile that is wiped on exit, and ask students to sign out of Podium and of Google before they leave.
 - To sign someone out everywhere (a lost laptop, a PC left signed in), use the Dashboard, Sign-in tab, End sessions. Disable account also stops them signing in until an admin or an owner enables it. Both act at once on requests; open live updates stop within 25 s. `POST /api/admin/accounts/reset-google` is no longer the only kill switch.
@@ -614,7 +615,7 @@ How long the server keeps each kind of data. The periods are constants in `serve
 
 | Id | Data | Kept | How it ends |
 |---|---|---|---|
-| `sessions` | Sign-in sessions | 12 hours after sign-in | hourly sweep |
+| `sessions` | Sign-in sessions | 12 hours after sign-in | hourly sweep (while any role is kept signed in, the privacy page adds the idle period of a kept session) |
 | `integrity_events` | Paste and focus events during contests, their counts and similar-code checks | 180 days after the contest | retention pass every 12 hours |
 | `run_payloads` | Custom input and program output of a Run | 30 days | retention pass every 12 hours; the run's verdict row stays |
 | `backups` | Backups | 14 days | `podium-backup` (`PODIUM_BACKUP_KEEP_DAYS`) and the bucket's lifecycle rule |
@@ -750,6 +751,12 @@ Configuration files are never overwritten: add a new variable with `sudoedit` be
 `0015_v202_prompts.sql` creates `ai_prompt_versions`, an insert-only table (triggers refuse update and delete) of the owner's saved prompt rules and the Preferences box, one row per save, restore or reset. It rewrites no row. Backups include it. See "Prompt source precedence".
 
 - **Rollback.** The previous server refuses a database that records 0015, so rolling back means restoring the backup taken just before the upgrade.
+
+### Migration 0016 (v2.1.0): kept sessions
+
+`0016_v210_sessions.sql` adds `sessions.remember` (0 or 1, default 0) and `sessions.last_seen_at`. It rewrites no row: every session that exists at the upgrade is ordinary, so nobody is signed out or kept in by it. Every role starts on "Nobody", so no session changes until an owner chooses. Backups include it.
+
+- **Rollback.** The previous server refuses a database that records 0016, so rolling back means restoring the backup taken just before the upgrade.
 
 ## Upgrading to v2.0.2
 
