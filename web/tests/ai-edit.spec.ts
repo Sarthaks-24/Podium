@@ -253,6 +253,17 @@ test('a copy that the browser refuses says so', async ({ page }) => {
   await expect(page.getByText('Could not copy. Select the text and copy it by hand.')).toBeVisible();
 });
 
+test('an answer that was not JSON is shown as the text the AI sent', async ({ page }) => {
+  const body = REFUSED.body as { code: string; message: string; problems: string[] };
+  await setup(page, { status: 422, body: { ...body, sent_back: { answers: [{ summary: '', files: [], raw: 'I could not do that, sorry.', cut: false }] } } });
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Rename it.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+  const sent = page.locator('details').filter({ hasText: 'What the AI sent back' });
+  await sent.locator('summary').click();
+  await expect(sent.getByRole('region', { name: 'The answer, as the AI sent it' })).toContainText('I could not do that, sorry.');
+});
+
 test('a change of mode is refused with its own sentence and nothing to expand', async ({ page }) => {
   await setup(page, MODE_REFUSED);
   await openPanel(page);

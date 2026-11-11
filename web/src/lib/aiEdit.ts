@@ -76,6 +76,8 @@ export interface SentFile {
 export interface SentAnswer {
   summary: string;
   files: SentFile[];
+  /** The text of an answer that was not in the schema, or "". */
+  raw: string;
   cut: boolean;
 }
 
@@ -86,7 +88,7 @@ export function parseSentBack(raw: unknown): SentAnswer[] {
   const out: SentAnswer[] = [];
   for (const a of list) {
     if (typeof a !== 'object' || a === null) continue;
-    const { summary, files, cut } = a as { summary?: unknown; files?: unknown; cut?: unknown };
+    const { summary, files, raw, cut } = a as { summary?: unknown; files?: unknown; raw?: unknown; cut?: unknown };
     out.push({
       summary: typeof summary === 'string' ? summary : '',
       files: Array.isArray(files)
@@ -95,6 +97,7 @@ export function parseSentBack(raw: unknown): SentAnswer[] {
             return typeof path === 'string' && typeof content === 'string' ? [{ path, content }] : [];
           })
         : [],
+      raw: typeof raw === 'string' ? raw : '',
       cut: cut === true,
     });
   }

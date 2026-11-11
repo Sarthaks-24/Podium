@@ -45,13 +45,15 @@ describe('what was kept and what the AI sent back', () => {
       parseSentBack({
         answers: [
           { summary: 'Second.', files: [{ path: 'problem.yaml', content: 'a: 1\n' }, { path: 3 }], cut: true },
+          { raw: 'not json at all' },
           { files: [] },
           'junk',
         ],
       }),
     ).toEqual([
-      { summary: 'Second.', files: [{ path: 'problem.yaml', content: 'a: 1\n' }], cut: true },
-      { summary: '', files: [], cut: false },
+      { summary: 'Second.', files: [{ path: 'problem.yaml', content: 'a: 1\n' }], raw: '', cut: true },
+      { summary: '', files: [], raw: 'not json at all', cut: false },
+      { summary: '', files: [], raw: '', cut: false },
     ]);
   });
 

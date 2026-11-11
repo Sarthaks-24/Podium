@@ -110,8 +110,6 @@
       asking = false;
       await tick();
       document.getElementById('aiedit-ask')?.focus();
-    } finally {
-      asking = false;
     }
   }
 
@@ -248,6 +246,12 @@
           {#each failure.answers as a, ai (ai)}
             {#if answerLabel(ai, failure.answers.length) !== ''}<p class="answer-label">{answerLabel(ai, failure.answers.length)}</p>{/if}
             {#if a.summary !== ''}<p>{a.summary}</p>{/if}
+            {#if a.raw !== ''}
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+              <div class="compare" role="region" aria-label="The answer, as the AI sent it" tabindex="0">
+                <pre translate="no"><code>{a.raw}</code></pre>
+              </div>
+            {/if}
             {#each a.files as f, fi (fi)}
               <div class="sent-file">
                 <span class="path">{f.path}</span>
@@ -272,7 +276,7 @@
     <div class="result">
       <h3 id="aiedit-result" tabindex="-1">Draft</h3>
       {#if draft.summary !== ''}<p>{draft.summary}</p>{/if}
-      {#if keptLine(draft.kept ?? []) !== ''}<p class="muted">{keptLine(draft.kept ?? [])}</p>{/if}
+      {#if keptLine(draft.kept) !== ''}<p class="muted">{keptLine(draft.kept)}</p>{/if}
       <p class="muted">{changeLine(draft.files)} Lines marked - are in the current problem only, + only in the draft.</p>
       {#each diffs as d (d.file.path)}
         <details open>
