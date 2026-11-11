@@ -37,7 +37,7 @@ func TestMergeEditKeepsFilesTheModelDidNotReturnAndSavesNothing(t *testing.T) {
 	s, p := editTestBank(t, "a-plus-b")
 	ctx := context.Background()
 	snap, _ := s.EditSnapshot(ctx, p.ID)
-	merged, err := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nExtra line.\n")})
+	merged, _, err := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nExtra line.\n")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,9 +72,8 @@ func TestMergeEditRefusals(t *testing.T) {
 		{"bad yaml", map[string][]byte{"problem.yaml": []byte("title: [")}, "problem.yaml"},
 		{"empty reply", map[string][]byte{}, "did not change"},
 	} {
-		_, err := s.MergeEdit(ctx, snap, c.reply)
-		var pe *PackError
-		if !errors.As(err, &pe) || !strings.Contains(strings.Join(pe.Problems, " "), c.want) {
+		_, _, err := s.MergeEdit(ctx, snap, c.reply)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v, want %q", c.name, err, c.want)
 		}
 	}
@@ -91,7 +90,7 @@ func TestAcceptEditMakesOneRevisionMarksADraftAndNeedsValidate(t *testing.T) {
 		t.Fatal("setup: the problem is not validated")
 	}
 	snap, _ := s.EditSnapshot(ctx, p.ID)
-	merged, err := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nExtra line.\n")})
+	merged, _, err := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nExtra line.\n")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +137,7 @@ func TestAcceptEditRefusals(t *testing.T) {
 	s, p := editTestBank(t, "a-plus-b")
 	ctx := context.Background()
 	snap, _ := s.EditSnapshot(ctx, p.ID)
-	merged, _ := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nMore.\n")})
+	merged, _, _ := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nMore.\n")})
 
 	// The problem changed after the draft.
 	if _, err := s.AcceptEdit(ctx, p.ID, "an-older-hash", merged, 0, "x"); !errors.Is(err, ErrEditStale) {
@@ -192,7 +191,7 @@ func TestEditCustomCheckerAndFunctionProblemsRoundTrip(t *testing.T) {
 		if slug == "array-sum" && !strings.Contains(string(snap.Files["problem.yaml"]), "mode: function") {
 			t.Error("the function problem lost its mode")
 		}
-		merged, err := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nMore.\n")})
+		merged, _, err := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nMore.\n")})
 		if err != nil {
 			t.Fatalf("%s merge: %v", slug, err)
 		}
@@ -212,7 +211,7 @@ func TestAcceptEditTwiceMakesOneRevision(t *testing.T) {
 	s, p := editTestBank(t, "a-plus-b")
 	ctx := context.Background()
 	snap, _ := s.EditSnapshot(ctx, p.ID)
-	merged, _ := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nOnce.\n")})
+	merged, _, _ := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nOnce.\n")})
 	errs := make(chan error, 2)
 	for i := 0; i < 2; i++ {
 		go func() {
@@ -238,7 +237,7 @@ func TestEditStaleWhenTestsChange(t *testing.T) {
 	s, p := editTestBank(t, "a-plus-b")
 	ctx := context.Background()
 	snap, _ := s.EditSnapshot(ctx, p.ID)
-	merged, _ := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nMore.\n")})
+	merged, _, _ := s.MergeEdit(ctx, snap, map[string][]byte{"statement.md": []byte(string(snap.Files["statement.md"]) + "\nMore.\n")})
 	if _, err := s.DB.Exec("UPDATE testcases SET input_sha = output_sha, output_sha = input_sha WHERE problem_id = ? AND idx = 1", p.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -278,11 +277,11 @@ func TestMergeEditReplyWithoutGeneratorOnAPlannedProblem(t *testing.T) {
 	if _, ok := snap.Files["tests.yaml"]; !ok || !strings.Contains(string(snap.Files["problem.yaml"]), "generator: generator.py") {
 		t.Fatalf("setup: the snapshot has no generator or plan: %v", snap.Files)
 	}
-	reply := dropKey(string(snap.Files["problem.yaml"]), "generator")
+	reply := strings.Replace(dropKey(string(snap.Files["problem.yaml"]), "generator"), "title: Largest gap", "title: Largest gap, renamed", 1)
 	if strings.Contains(reply, "generator: ") {
 		t.Fatal("setup: the key is still in the reply")
 	}
-	merged, err := s.MergeEdit(ctx, snap, map[string][]byte{"problem.yaml": []byte(reply)})
+	merged, _, err := s.MergeEdit(ctx, snap, map[string][]byte{"problem.yaml": []byte(reply)})
 	if err != nil {
 		t.Fatalf("a reply that only left out the generator was refused: %v", err)
 	}
@@ -290,4 +289,3 @@ func TestMergeEditReplyWithoutGeneratorOnAPlannedProblem(t *testing.T) {
 		t.Errorf("the generator was not kept:\n%s", merged["problem.yaml"])
 	}
 }
-

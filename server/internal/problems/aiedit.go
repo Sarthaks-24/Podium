@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 )
@@ -35,6 +34,8 @@ type EditSnapshot struct {
 	Hash string
 	// Slug is the slug a reply must keep.
 	Slug string
+	// Mode is ModeFunction or ModeWhole: a reply may not change it.
+	Mode string
 	// Files are the pack's files by name, without test data.
 	Files map[string][]byte
 }
@@ -72,7 +73,11 @@ func snapshotOf(p *Problem) (*EditSnapshot, error) {
 			delete(files, name)
 		}
 	}
-	return &EditSnapshot{ID: p.ID, Hash: stateHash(p, files), Slug: p.Slug, Files: files}, nil
+	mode := ModeWhole
+	if p.IsFunction() {
+		mode = ModeFunction
+	}
+	return &EditSnapshot{ID: p.ID, Hash: stateHash(p, files), Slug: p.Slug, Mode: mode, Files: files}, nil
 }
 
 // stateHash fingerprints the text files and the tests (by their SHAs), so a
@@ -138,46 +143,61 @@ func (s *Service) testFiles(p *Problem) (map[string][]byte, error) {
 	return out, nil
 }
 
+// copyModeChange is the refusal of a reply that changes the mode.
+const copyModeChange = "Edit with AI cannot change whether students write a whole program or one function. Use Rewrite with AI and choose there."
+
 // MergeEdit lays the model's reply over the snapshot and checks the result
 // with the pack parser and the editor's field rules. Files the reply does not
-// carry keep their current content. The merged text files (without test data)
-// come back; anything the pack cannot carry, a changed slug or an unusable
-// file is a *PackError listing every reason. Nothing is saved.
-func (s *Service) MergeEdit(ctx context.Context, snap *EditSnapshot, reply map[string][]byte) (map[string][]byte, error) {
-	var reasons []string
-	changed := false
+// carry keep their current content, and a problem.yaml that leaves out keys
+// the current one has gets them back (restoreOmitted); the labels of what was
+// put back come second. The merged text files (without test data) come back.
+// A reply the pack cannot take for a reason asking again will not fix (test
+// data, a changed slug, too many files, no change, a changed mode) is an
+// *EditPolicyError; one the pack parser refuses is a *PackError listing every
+// reason. Nothing is saved.
+func (s *Service) MergeEdit(ctx context.Context, snap *EditSnapshot, reply map[string][]byte) (map[string][]byte, []string, error) {
 	if len(reply) > MaxEditFiles {
-		return nil, &PackError{[]string{fmt.Sprintf("The model returned more than %d files.", MaxEditFiles)}}
+		return nil, nil, &EditPolicyError{Problems: []string{fmt.Sprintf("The model returned more than %d files.", MaxEditFiles)}}
 	}
+	var reasons []string
 	merged := make(map[string][]byte, len(snap.Files)+len(reply))
 	for name, body := range snap.Files {
 		merged[name] = body
 	}
-	names := make([]string, 0, len(reply))
-	for name := range reply {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range slices.Sorted(maps.Keys(reply)) {
 		if ok, why := editFileName(name); !ok {
 			reasons = append(reasons, why)
 			continue
 		}
-		if old, had := snap.Files[name]; !had || !bytes.Equal(old, reply[name]) {
-			changed = true
-		}
 		merged[name] = reply[name]
 	}
 	if len(reasons) > 0 {
-		return nil, &PackError{reasons}
+		return nil, nil, &EditPolicyError{Problems: reasons}
+	}
+	var kept []string
+	if body, ok := reply["problem.yaml"]; ok {
+		body, kept = restoreOmitted(snap.Files["problem.yaml"], body, reply)
+		if sameYAML(body, snap.Files["problem.yaml"]) {
+			body = snap.Files["problem.yaml"]
+		}
+		merged["problem.yaml"] = body
+		if mode, ok := editMode(body); ok && mode != snap.Mode {
+			return nil, nil, &EditPolicyError{Problems: []string{copyModeChange}, ModeChange: true}
+		}
+	}
+	changed := false
+	for name, body := range merged {
+		if old, had := snap.Files[name]; !had || !bytes.Equal(old, body) {
+			changed = true
+		}
 	}
 	if !changed {
-		return nil, &PackError{[]string{"The model did not change anything."}}
+		return nil, nil, &EditPolicyError{Problems: []string{"The model did not change anything."}}
 	}
 	if _, err := s.parseMerged(ctx, snap, merged); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return merged, nil
+	return merged, kept, nil
 }
 
 // parseMerged reads the merged text files with the current tests through the
@@ -209,7 +229,7 @@ func (s *Service) parseMerged(ctx context.Context, snap *EditSnapshot, text map[
 		return nil, err
 	}
 	if pk.Problem.Slug != snap.Slug {
-		return nil, &PackError{[]string{"The slug is " + snap.Slug + " and AI edit cannot change it."}}
+		return nil, &EditPolicyError{Problems: []string{"The slug is " + snap.Slug + " and AI edit cannot change it."}}
 	}
 	return pk, nil
 }
