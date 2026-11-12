@@ -22,6 +22,7 @@ import {
   type InputGeneration,
   type KeyStatus,
 } from './ai';
+import * as ai from './ai';
 import { ApiError } from './api';
 import type { ProofState } from './proof';
 
@@ -433,5 +434,26 @@ describe('draftChainSteps when a language round did not count', () => {
       expect(r).toMatchObject({ done: true, outcome: 'proof_stopped' });
       expect(r.steps.map((s) => s.state)).toEqual(['done', 'done', 'done', 'failed', 'waiting']);
     }
+  });
+});
+
+describe('the other providers in the key form', () => {
+  const OTHER = { has_key: false, other: true, has_list: true };
+
+  it('allows a slash in a typed model id for an other provider only', () => {
+    expect(checkKeyForm({ provider: 'openrouter', model: 'vendor/model:free', key: 'k' }, OTHER)).toEqual({});
+    expect(checkKeyForm({ provider: 'openrouter', model: 'vendor/mo del', key: 'k' }, OTHER).model).toMatch(/letters, digits/);
+    expect(checkKeyForm({ provider: 'openai', model: 'vendor/model', key: 'k' }, { has_key: false }).model).toMatch(/letters, digits/);
+  });
+
+  it('requires the model id for a host with no model list', () => {
+    const noList = { has_key: false, other: true, has_list: false };
+    expect(checkKeyForm({ provider: 'openrouter', model: '', key: 'k' }, noList)).toEqual({ model: 'Enter the model id.' });
+    expect(checkKeyForm({ provider: 'openrouter', model: 'a/b', key: 'k' }, noList)).toEqual({});
+    expect(checkKeyForm({ provider: 'groq', model: '', key: 'k' }, OTHER)).toEqual({});
+  });
+
+  it('says where the problem text goes', () => {
+    expect(ai.privacyLine?.('Groq')).toBe('Your problem text is sent to Groq. Free plans may keep what you send.');
   });
 });

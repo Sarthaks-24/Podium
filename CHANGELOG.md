@@ -68,6 +68,14 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage K: other AI providers
 
+- The key form offers two more providers, OpenRouter and Groq, under "Other providers". They come from a fixed list in the server: nobody can type an address, so the server cannot be pointed at another host.
+- Under the key field of these two the form says: "Your problem text is sent to <provider>. Free plans may keep what you send."
+- Drafts, function drafts, "Fix with AI" and "Edit with AI" all work with them. The server writes the schema into the model's instructions as text, asks the host for JSON, unwraps an answer that comes in a code fence, and asks once more when an answer is unusable or cut off.
+- Model ids such as `vendor/model:free` are accepted for these two hosts. OpenRouter and Groq list their models for the picker; a typed id is always allowed.
+- Plain sentences for each failure: "<provider> is busy or your free limit is used up. Wait a minute and ask again, or choose another model." (429), a request that is too large for the plan (413), a refused key, no credit, and "The answer was too large to use. Ask for a smaller problem."
+- The key stays in memory only, as for the three built-in providers. No new setting, no new migration.
+- Known limits: stage K was tested against stand-ins only, not against the real hosts; the owner's check with one free key (one draft, one edit) is pending. Groq's key check relies on its model listing refusing a missing key, which its documentation does not state. A typed model id is not checked when the key is saved on these two hosts; a wrong id shows when you draft.
+
 ### v2.1.0 stage J: judge speed and sizing
 
 ### v2.1.0 stage P: server measurement

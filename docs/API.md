@@ -487,7 +487,7 @@ When the pack's slug is already a problem's and no `on_conflict` is given, the i
 
 ## AI wizard (organiser)
 
-The wizard drafts a problem from a brief or from pasted text, with Anthropic, OpenAI or Google Gemini. The routes are mounted when the server has the wizard's state (always in a normal build). Every answer carries `server_now`. A provider key is pasted per session and held in the server's memory only, for 2 hours, tied to the session and the provider: never stored, logged, sent to the judge or shown back. A session may hold one key per provider. Signing out, signing in again in the same browser, or a restart forgets them. Bodies of the key route are never logged.
+The wizard drafts a problem from a brief or from pasted text, with Anthropic, OpenAI, Google Gemini, OpenRouter or Groq. The routes are mounted when the server has the wizard's state (always in a normal build). Every answer carries `server_now`. A provider key is pasted per session and held in the server's memory only, for 2 hours, tied to the session and the provider: never stored, logged, sent to the judge or shown back. A session may hold one key per provider. Signing out, signing in again in the same browser, or a restart forgets them. Bodies of the key route are never logged.
 
 | Route | Request | Success |
 |---|---|---|
@@ -499,7 +499,7 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 | `POST /api/admin/ai/wizard` | `WizardRequest`, at most 256 KB | 202 `{"wizard_id":"3f9c...","server_now":...}` |
 | `GET /api/admin/ai/wizard/{id}` | | 200 `Wizard` |
 
-`Providers`: `{providers: [{id, name, has_key, model, active_until}], active_provider, server_now}`. The order is fixed: `anthropic`, `openai`, `gemini`; a build made with the `fakeai` tag adds `fake` in testing mode, which needs no key and answers with canned problems. `model` is the model id saved with the key, `""` when none was chosen. `active_provider` is the one whose key or model was saved last, `null` without a key.
+`Providers`: `{providers: [{id, name, has_key, model, active_until, other, has_list}], active_provider, server_now}`. The order is fixed: `anthropic`, `openai`, `gemini`, `openrouter`, `groq`; `other` is true for the last two (they sit under "Other providers" in the key form) and `has_list` says the host lists its models (false means the model id must be typed); a build made with the `fakeai` tag adds `fake` in testing mode, which needs no key and answers with canned problems. `model` is the model id saved with the key, `""` when none was chosen. `active_provider` is the one whose key or model was saved last, `null` without a key.
 
 `Models`: `{provider, models: [{id, name}], listed_at, server_now}`: the provider's own list, filtered to models that can write a problem (Anthropic: structured outputs, adaptive thinking and effort `high`; OpenAI: `gpt-` and `o`-digit ids that are not audio, image, embedding or similar; Gemini: `generateContent` models that are not embedding, image, audio, live or Gemma). The list is a hint: the key form takes any model id the provider's own lookup finds.
 
@@ -509,7 +509,7 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 
 `GET /api/admin/problems/pack-prompt` (organiser and up) returns 200 `{"prompt":"..."}`: the text an organiser gives to any AI so it returns a pack for Import pack. It is built from an embedded template filled with the importer's own limits and file names, and teaches pack format 1 for a whole problem and format 4 for a function problem, with an example pack of each. Its first line is a stamp, "Podium <release> pack prompt, pack formats 1 and 4", with no release for a plain dev build. No request body or parameters. Saved pack rules and preferences are applied (see AI prompts).
 
-`KeyStatus`: `{active, provider, model, active_until, providers: [{id, name, has_key, model, active_until, models}], server_now}`; without a key, `active` is false and `provider` is `anthropic`.
+`KeyStatus`: `{active, provider, model, active_until, providers: [{id, name, has_key, model, active_until, models, other, has_list}], server_now}`; without a key, `active` is false and `provider` is `anthropic`.
 
 `WizardRequest`: `{"mode":"brief","brief":{"topic","difficulty","constraints","subtasks"}}` or `{"mode":"paste","text":"..."}`. `difficulty` is `easy`, `medium` or `hard`; `topic` is required; each brief field is at most 2,000 characters and `text` at most 20,000. An optional `provider` picks which of the session's keys to use.
 
@@ -1228,6 +1228,28 @@ The pasted solution is used for this check and is not saved with the problem (it
 Refusals, in the order they are checked: 400 `bad_request` (language), 404 `not_found`, 409 `deleted`, 409 `not_function`, 409 `already_offered` "Java 21 is already offered. Use Check Java 21 to test it.", 409 `checking`, 409 `not_ready`, then 409 `no_key` "Add a key first." or `no_model`, 429 `busy` "One AI request at a time. Wait for the current one to finish.", 502 (the provider failed or declined; the message is the wizard's), 422 `invalid_answer` "The AI's Java 21 code could not be used, so nothing was changed. Press Fix again, or write the code yourself." (with `problems` listing why, after one retry), and 409 `changed` "The problem changed while the AI was working. Press Fix again." when the problem was edited during the call.
 
 ### Stage K: other AI providers
+
+Provider ids accepted by `PUT /api/admin/ai/key`, `GET /api/admin/ai/models`, `DELETE /api/admin/ai/key`, the wizard, `ai-fix` and `ai-edit`: `anthropic`, `openai`, `gemini`, `openrouter`, `groq` (and `fake` in testing mode). Any other value, including an address, is 400 `bad_request` "Choose one of the providers in the list."; a request body with a field the route does not know (such as `base_url`) is refused. The host of `openrouter` and `groq` is fixed in the server; nothing in a request can set it. Roles and every other refusal are as for the built-in providers.
+
+For `openrouter` and `groq` a model id may also contain `/` (for example `vendor/model:free`). The key is checked by `GET /key` on OpenRouter (a public listing would not prove a key) and by the model listing on Groq. With no model, the answer lists the host's models; a host with no list answers 400 `bad_key` "Enter the model id.".
+
+Errors of a draft, a fix or an edit with these hosts (the `code` of a wizard's `error`, or of the 502 body; "<provider>" is OpenRouter or Groq):
+
+| Code | When | Message |
+|---|---|---|
+| `key_refused` | 401 | "<provider> refused the key. Check it and paste it again." |
+| `no_quota` | 402 | "<provider> says this key's account has no credit left. Check the plan on <provider>, or use another key." |
+| `no_access` | 403 | "<provider> says this key cannot use <model>. Choose another model or key." |
+| `model_not_found` | 404 | "<provider> does not offer the model <model> to this key. Choose another model." |
+| `bad_request` | 413 | "<provider> says the text is too large for this model or plan. Use a shorter text or choose another model." |
+| `rate_limited` | 429, not retried | "<provider> is busy or your free limit is used up. Wait a minute and ask again, or choose another model." |
+| `unavailable` | 408, 5xx (tried again twice) | "The provider is unavailable. Try again in a few minutes." |
+| `bad_request` | other 4xx | "<provider> could not accept the request. Try a shorter text or another model." |
+| `too_large` | an answer over 16 MB | "The answer was too large to use. Ask for a smaller problem." |
+| `cut_off` | `finish_reason` `length` (asks once for a shorter answer) | "The answer was cut off before it was complete." |
+| `refused` | a refusal or `content_filter` | "The model declined this request. Rephrase it and try again." |
+
+The provider's error body is read for the status only; it is never shown or logged.
 
 ### Stage W: rewrite with AI
 

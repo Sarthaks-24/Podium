@@ -29,6 +29,8 @@ export const WIZARD_ID = '0f3a9c2e7b1d4e8fa6c5b2d1e0f9a8b7';
 export const FAKE_KEY = 'sk-' + 'ant-api03-PLAYWRIGHT-ONLY-not-a-real-key-42';
 export const OPENAI_KEY = 'sk-' + 'proj-PLAYWRIGHT-ONLY-not-a-real-key-7';
 export const GEMINI_KEY = 'AIza' + 'PLAYWRIGHT-ONLY-not-a-real-key-9';
+export const OPENROUTER_KEY = 'sk-or-' + 'v1-PLAYWRIGHT-ONLY-not-a-real-key-3';
+export const GROQ_KEY = 'gsk' + '_PLAYWRIGHT-ONLY-not-a-real-key-5';
 
 export type Json = Record<string, unknown>;
 
@@ -36,8 +38,8 @@ export type Json = Record<string, unknown>;
 // models each lists for a key (already filtered by the server), and no
 // default model. A model id outside the list is still accepted when the
 // provider's own lookup knows it (LOOKUP).
-export const PROVIDER_NAMES: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini' };
-export const KEYS: Record<string, string> = { anthropic: FAKE_KEY, openai: OPENAI_KEY, gemini: GEMINI_KEY };
+export const PROVIDER_NAMES: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini', openrouter: 'OpenRouter', groq: 'Groq' };
+export const KEYS: Record<string, string> = { anthropic: FAKE_KEY, openai: OPENAI_KEY, gemini: GEMINI_KEY, openrouter: OPENROUTER_KEY, groq: GROQ_KEY };
 export const LISTS: Record<string, { id: string; name: string }[]> = {
   anthropic: [
     { id: 'claude-opus-5-5', name: 'Claude Opus 5.5' },
@@ -51,21 +53,30 @@ export const LISTS: Record<string, { id: string; name: string }[]> = {
     { id: 'gemini-x-pro', name: 'Gemini X Pro' },
     { id: 'gemini-x-flash', name: 'Gemini X Flash' },
   ],
+  openrouter: [
+    { id: 'vendor/chat-new:free', name: 'Chat New (free)' },
+    { id: 'vendor/chat-old', name: 'Chat Old' },
+  ],
+  groq: [{ id: 'llama-x', name: 'llama-x' }],
   fake: [{ id: 'canned', name: 'Canned problems' }],
 };
 /** Models the providers' lookups know although their lists leave them out. */
-export const LOOKUP = new Set(['gpt-x-preview', 'gemini-x-experimental']);
+export const LOOKUP = new Set(['gpt-x-preview', 'gemini-x-experimental', 'vendor/typed-model:free']);
 /** A model a refreshed list adds, so the refresh button has something to show. */
 export const NEW_MODEL = { openai: { id: 'gpt-x-2', name: 'gpt-x-2' } } as Record<string, { id: string; name: string }>;
 const MODEL_REFUSED: Record<string, (m: string) => string> = {
   anthropic: (m) => `Anthropic does not offer the model ${m} to this key. Choose another model.`,
   openai: (m) => `OpenAI does not offer the model ${m} to this key. Choose another model.`,
   gemini: (m) => `Gemini does not offer the model ${m} to this key. Choose another model.`,
+  openrouter: (m) => `OpenRouter does not offer the model ${m} to this key. Choose another model.`,
+  groq: (m) => `Groq does not offer the model ${m} to this key. Choose another model.`,
 };
 const KEY_REFUSED: Record<string, string> = {
   anthropic: 'Anthropic refused the key. Check it and paste it again.',
   openai: 'OpenAI refused the key. Check it and paste it again.',
   gemini: 'Google refused the key. Check it in Google AI Studio and paste it again.',
+  openrouter: 'OpenRouter refused the key. Check it and paste it again.',
+  groq: 'Groq refused the key. Check it and paste it again.',
 };
 
 /** What the session holds for one provider. */
@@ -172,6 +183,8 @@ export interface MockOptions {
   key?: 'none' | 'active' | 'no-model';
   /** Testing mode: the fake provider is offered. */
   testing?: boolean;
+  /** The server also offers OpenRouter and Groq (stage K); 'no-list' makes Groq a host without a model list. */
+  other?: boolean | 'no-list';
   /** How /api/events answers: a long-lived stream of queued events, or 503 (polling). */
   events?: 'stream' | 'down';
   /** How a wizard ends. */
@@ -233,6 +246,10 @@ export function proofScript(kind: NonNullable<MockOptions['proof']>): Json[] {
 /** Installs the API mock for one page and returns its mutable state. */
 export async function mockApi(page: Page, opts: MockOptions = {}) {
   const held: Record<string, Held> = { anthropic: none(), openai: none(), gemini: none() };
+  if (opts.other) {
+    held.openrouter = none();
+    held.groq = none();
+  }
   if (opts.testing) held.fake = { ...none(), models: LISTS.fake };
   if (opts.key === 'active') held.anthropic = { has_key: true, model: 'claude-opus-5-5', active_until: UNTIL, models: LISTS.anthropic };
   if (opts.key === 'no-model') held.openai = { has_key: true, model: '', active_until: UNTIL, models: LISTS.openai };
@@ -257,7 +274,8 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
     generation: null as Json | null,
     requestedUrls: [] as string[],
   };
-  const ids = opts.testing ? ['anthropic', 'openai', 'gemini', 'fake'] : ['anthropic', 'openai', 'gemini'];
+  const ids = [...['anthropic', 'openai', 'gemini'], ...(opts.other ? ['openrouter', 'groq'] : []), ...(opts.testing ? ['fake'] : [])];
+  const noList = (id: string) => opts.other === 'no-list' && id === 'groq';
   const name = (id: string) => (id === 'fake' ? 'Test provider (canned problems)' : PROVIDER_NAMES[id]);
   /** KeyStatus as C11 shapes it. */
   const keyStatus = () => {
@@ -267,7 +285,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
       provider: state.active ?? 'anthropic',
       model: a?.model ?? '',
       active_until: a?.active_until ?? null,
-      providers: ids.map((id) => ({ id, name: name(id), ...state.held[id] })),
+      providers: ids.map((id) => ({ id, name: name(id), ...state.held[id], ...(opts.other ? { other: id === 'openrouter' || id === 'groq', has_list: !noList(id) } : {}) })),
       server_now: T0,
     };
   };
@@ -331,10 +349,10 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
           const h = state.held[p];
           if (key === '' && !h.has_key) return apiError(route, 400, 'bad_request', 'Paste your API key.');
           if (key !== '' && key !== KEYS[p]) return apiError(route, 400, 'bad_key', KEY_REFUSED[p]);
-          if (model !== '' && !LISTS[p].some((m) => m.id === model) && !LOOKUP.has(model)) {
+          if (model !== '' && !LISTS[p].some((m) => m.id === model) && !LOOKUP.has(model) && !noList(p)) {
             return apiError(route, 400, 'bad_key', MODEL_REFUSED[p](model));
           }
-          state.held[p] = { has_key: true, model, active_until: key !== '' ? UNTIL : h.active_until, models: h.models.length > 0 ? h.models : LISTS[p] };
+          state.held[p] = { has_key: true, model, active_until: key !== '' ? UNTIL : h.active_until, models: noList(p) ? [] : h.models.length > 0 ? h.models : LISTS[p] };
           state.active = p;
           return json(route, 200, keyStatus());
         }

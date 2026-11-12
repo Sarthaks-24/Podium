@@ -437,13 +437,17 @@ The server logs `integrity check started` and `integrity decision` at info with 
 
 ## AI wizard keys
 
-The AI wizard ("New problem with AI", `docs/AUTHORING.md`) uses the organiser's own key for Anthropic, OpenAI or Google Gemini (D111). There is no variable for any of them and nothing to configure on the VM (decision D50).
+The AI wizard ("New problem with AI", `docs/AUTHORING.md`) uses the organiser's own key for Anthropic, OpenAI, Google Gemini, OpenRouter or Groq (D111, v2.1.0 stage K). There is no variable for any of them and nothing to configure on the VM (decision D50).
 
 | Provider | Where to get a key | The server calls |
 |---|---|---|
 | Anthropic | Claude Console (console.anthropic.com), API keys; a workspace with a spending limit is a good idea | `api.anthropic.com` |
 | OpenAI | OpenAI platform (platform.openai.com), API keys; a project with a budget | `api.openai.com` |
 | Google Gemini | Google AI Studio (aistudio.google.com), Get API key | `generativelanguage.googleapis.com` |
+| OpenRouter | openrouter.ai, Keys; free models end in `:free` | `openrouter.ai` |
+| Groq | console.groq.com, API Keys | `api.groq.com` |
+
+OpenRouter and Groq speak the Chat Completions shape. Their addresses are fixed in the server code, so they cannot be changed from the key form or from a setting, and no request can make the server call another host. **What the provider sees:** the problem text (a brief, pasted text, or the files of a problem being edited) is sent to the provider you choose. Free plans may keep what is sent. The key form says so under the key field for these two providers. The key itself stays in server memory for 2 hours, never in the database, a log, `cache/` or a backup, as for the three built-in providers.
 
 Adding a key:
 

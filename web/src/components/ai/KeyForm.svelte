@@ -18,7 +18,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { focusFirstInvalid } from '../../lib/focus';
-  import { aiPaths, checkKeyForm, initialForm, isListed, keyExpired, needsKey, saveKey, type KeyForm, type KeyStatus, type ModelList, type ProviderOption } from '../../lib/ai';
+  import { aiPaths, checkKeyForm, initialForm, isListed, keyExpired, needsKey, privacyLine, saveKey, type KeyForm, type KeyStatus, type ModelList, type ProviderOption } from '../../lib/ai';
   import { errorText, getJSON, sendJSON } from '../../lib/api';
   import { showToast } from '../../lib/toast.svelte';
 
@@ -59,6 +59,7 @@
   const models = $derived(provider?.models ?? []);
   const showTyped = $derived(keyNeeded && (typing || models.length === 0));
   const saveLabel = $derived(!keyNeeded ? 'Use fake provider' : holdsKey && form.key.trim() === '' ? 'Save model' : 'Save key');
+  const noList = $derived(provider?.has_list === false);
   const title = $derived(heading ?? (holdsKey ? `Change the ${provider?.name ?? ''} key or model` : 'Add a key'));
 
   /** Puts the form on a provider: its saved model, typed when the list does not have it. */
@@ -69,7 +70,7 @@
     fields = {};
     formError = '';
     listError = '';
-    if (p && p.has_key && !keyExpired(p, now) && p.models.length === 0 && needsKey(pid)) void listModels(false);
+    if (p && p.has_key && !keyExpired(p, now) && p.models.length === 0 && needsKey(pid) && p.has_list !== false) void listModels(false);
   }
 
   /** Back to the provider in use, after the page changed the keys. */
@@ -109,7 +110,7 @@
 
   async function save(event: SubmitEvent) {
     event.preventDefault();
-    fields = checkKeyForm(form, holdsKey ? { has_key: true } : undefined);
+    fields = checkKeyForm(form, { has_key: holdsKey, other: provider?.other, has_list: provider?.has_list });
     formError = '';
     if (Object.keys(fields).length > 0) {
       await focusFirstInvalid(document.getElementById(fid('key-form')));
@@ -160,7 +161,16 @@
       aria-invalid={fields.provider ? 'true' : undefined}
       aria-describedby={fields.provider ? fid('provider-error') : undefined}
     >
-      {#each status.providers as p (p.id)}<option value={p.id}>{p.name}{p.has_key && !keyExpired(p, now) ? ', key active' : ''}</option>{/each}
+      {#if status.providers.some((p) => p.other)}
+        <optgroup label="Providers">
+          {#each status.providers.filter((p) => !p.other) as p (p.id)}<option value={p.id}>{p.name}{p.has_key && !keyExpired(p, now) ? ', key active' : ''}</option>{/each}
+        </optgroup>
+        <optgroup label="Other providers">
+          {#each status.providers.filter((p) => p.other) as p (p.id)}<option value={p.id}>{p.name}{p.has_key && !keyExpired(p, now) ? ', key active' : ''}</option>{/each}
+        </optgroup>
+      {:else}
+        {#each status.providers as p (p.id)}<option value={p.id}>{p.name}{p.has_key && !keyExpired(p, now) ? ', key active' : ''}</option>{/each}
+      {/if}
     </select>
     {#if fields.provider}<p id={fid('provider-error')} class="field-error">{fields.provider}</p>{/if}
   </div>
@@ -203,7 +213,7 @@
           aria-describedby={fid('model-id-help') + (fields.model ? ` ${fid('model-id-error')}` : '')}
         />
         <p id={fid('model-id-help')} class="field-help">
-          {#if models.length > 0}Exactly as {provider?.name} writes it.{:else if listing}Listing {provider?.name}'s models.{:else}Optional. Leave it empty and save the key: {provider?.name}'s models are then listed here to choose from.{/if}
+          {#if noList}Exactly as {provider?.name} writes it. Required.{:else if models.length > 0}Exactly as {provider?.name} writes it.{:else if listing}Listing {provider?.name}'s models.{:else}Optional. Leave it empty and save the key: {provider?.name}'s models are then listed here to choose from.{/if}
         </p>
         {#if models.length === 0 && listError}<p class="field-error">{listError}</p>{/if}
         {#if fields.model}<p id={fid('model-id-error')} class="field-error">{fields.model}</p>{/if}
@@ -225,11 +235,12 @@
         bind:this={keyInput}
         bind:value={form.key}
         aria-invalid={fields.key ? 'true' : undefined}
-        aria-describedby={fid('api-key-help') + (fields.key ? ` ${fid('api-key-error')}` : '')}
+        aria-describedby={fid('api-key-help') + (provider?.other ? ` ${fid('privacy')}` : '') + (fields.key ? ` ${fid('api-key-error')}` : '')}
       />
       <p id={fid('api-key-help')} class="field-help">
         {#if holdsKey}A key for {provider?.name} is active. Leave this empty to change only the model.{:else}From your provider's console, under API keys. Saving checks it without spending tokens; the field is cleared afterwards.{/if}
       </p>
+      {#if provider?.other}<p id={fid('privacy')} class="field-help">{privacyLine(provider.name)}</p>{/if}
       {#if fields.key}<p id={fid('api-key-error')} class="field-error">{fields.key}</p>{/if}
     </div>
   {:else}

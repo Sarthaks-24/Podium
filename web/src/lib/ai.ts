@@ -38,6 +38,10 @@ export interface ProviderOption {
   active_until: number | null;
   /** The session's copy of the provider's filtered model list, [] until listed. */
   models: ModelOption[];
+  /** A host from the server's fixed list of other providers (OpenRouter, Groq); absent from an older server. */
+  other?: boolean;
+  /** False when the host has no model list, so the model id must be typed. Absent means a list exists. */
+  has_list?: boolean;
 }
 
 /** GET, and the answer to PUT, /api/admin/ai/key. Never holds the key. */
@@ -78,6 +82,8 @@ export const MAX_TEXT = 20_000;
 /** The longest model id the server takes, and the characters it allows. */
 const MAX_MODEL_ID = 128;
 const MODEL_ID = /^[A-Za-z0-9._:-]*$/;
+/** The other providers write ids such as "vendor/model:free". */
+const MODEL_ID_OTHER = /^[A-Za-z0-9._:/-]*$/;
 
 /** True when the provider is the testing-mode fake, which needs no key. */
 export function needsKey(provider: string): boolean {
@@ -154,6 +160,11 @@ export function redactKey(text: string, key: string): string {
   return text.split(k).join('[redacted]');
 }
 
+/** The line under the key field of an other provider: what happens to the problem text. */
+export function privacyLine(name: string): string {
+  return `Your problem text is sent to ${name}. Free plans may keep what you send.`;
+}
+
 /** The result of saving a key: the new status or a sentence, and always an empty key. */
 export type SaveKeyResult =
   | { ok: true; status: KeyStatus; form: KeyForm }
@@ -191,12 +202,13 @@ export async function saveKey(
  * model may be empty (the server then lists the provider's models), and the
  * key may be empty when the session already holds one for the provider.
  */
-export function checkKeyForm(form: KeyForm, provider?: Pick<ProviderOption, 'has_key'>): Record<string, string> {
+export function checkKeyForm(form: KeyForm, provider?: Pick<ProviderOption, 'has_key' | 'other' | 'has_list'>): Record<string, string> {
   const fields: Record<string, string> = {};
   if (form.provider === '') fields.provider = 'Choose a provider.';
   const model = cleanModelId(form.model);
   if (model.length > MAX_MODEL_ID) fields.model = `A model id is at most ${MAX_MODEL_ID} characters.`;
-  else if (!MODEL_ID.test(model)) fields.model = 'A model id has only letters, digits and . _ - : in it. Copy it from the provider.';
+  else if (!(provider?.other ? MODEL_ID_OTHER : MODEL_ID).test(model)) fields.model = 'A model id has only letters, digits and . _ - : in it. Copy it from the provider.';
+  else if (model === '' && provider?.has_list === false) fields.model = 'Enter the model id.';
   if (needsKey(form.provider) && form.key.trim() === '' && !provider?.has_key) fields.key = 'Paste your API key.';
   return fields;
 }
