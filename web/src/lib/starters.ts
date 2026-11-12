@@ -87,7 +87,10 @@ export interface StarterForms {
   default: string;
 }
 
-const MARKER_LIKE = /^\s*\/\/\s*choice\s*:/i;
+// The same definition of space as Go's RE2 \s, so both readers see the same lines.
+const MARKER_LIKE = /^[\t\f\r ]*\/\/[\t\f\r ]*choice[\t\f\r ]*:/i;
+// Go's strings.TrimSpace: the Unicode White_Space set (no byte order mark).
+const BLANK = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/;
 const PAIRS: [string, string][] = [
   ['int[]', 'ArrayList<Integer>'],
   ['long[]', 'ArrayList<Long>'],
@@ -120,8 +123,11 @@ export function splitStarter(source: string): StarterForms {
   if (found.length === 0) return plain;
   const [a, b] = found.map((f) => f.name);
   const paired = found.length === 2 && PAIRS.some(([x, y]) => (a === x && b === y) || (a === y && b === x));
-  if (!paired || found.some((f) => f.code.trim() === '')) return plain;
-  const forms = found.map((f) => ({ name: f.name, code: shared + f.code }));
+  if (!paired || found.some((f) => BLANK.test(f.code))) return plain;
+  // Go's SplitStarter keeps file order; the editor orders for display, array form first.
+  const forms = found
+    .map((f) => ({ name: f.name, code: shared + f.code }))
+    .sort((x, y) => Number(y.name.endsWith('[]')) - Number(x.name.endsWith('[]')));
   return { forms, default: forms[0].code };
 }
 
@@ -134,5 +140,5 @@ export function starterForms(language: Language, own: Partial<Record<string, str
 /** The forms of a problem's Java starting code when it offers a list choice, the array form first; empty when it does not. */
 export function listChoice(own: Partial<Record<string, string>> = {}): StarterForm[] {
   const { forms } = starterForms('java21', own);
-  return forms.length > 1 ? [...forms].sort((a, b) => Number(b.name.endsWith('[]')) - Number(a.name.endsWith('[]'))) : [];
+  return forms.length > 1 ? forms : [];
 }

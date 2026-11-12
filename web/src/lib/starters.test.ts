@@ -43,7 +43,10 @@ describe('the shared choices fixture', () => {
         expect(got).toEqual({ forms: [{ name: '', code: c.source }], default: c.source });
         return;
       }
-      const forms = c.forms!.map((f) => ({ name: f.name, code: (c.forms!.length > 1 ? c.shared! : '') + f.code }));
+      // The editor lists the array form first whatever the file's order (Go keeps file order).
+      const forms = c
+        .forms!.map((f) => ({ name: f.name, code: (c.forms!.length > 1 ? c.shared! : '') + f.code }))
+        .sort((a, b) => Number(b.name.endsWith('[]')) - Number(a.name.endsWith('[]')));
       expect(got.forms).toEqual(c.forms!.length > 1 ? forms : [{ name: '', code: c.source }]);
       expect(got.default).toBe(got.forms[0].code);
     });
@@ -51,19 +54,25 @@ describe('the shared choices fixture', () => {
 
   it('splitStarter reads the Java cases without a language', () => {
     for (const c of choiceCases.filter((x) => x.language === 'java21' && !x.error && x.forms!.length > 1)) {
-      expect(splitStarter(c.source).forms.map((f) => f.name)).toEqual(c.forms!.map((f) => f.name));
+      expect(splitStarter(c.source).forms.map((f) => f.name).sort()).toEqual(c.forms!.map((f) => f.name).sort());
     }
   });
 
   it('never leaves marker text in a form', () => {
     for (const c of choiceCases.filter((x) => x.language === 'java21' && !x.error && x.forms!.length > 1)) {
-      for (const f of splitStarter(c.source).forms) expect(f.code).not.toMatch(/\/\/ choice:/);
+      for (const f of splitStarter(c.source).forms) expect(f.code).not.toMatch(/^\/\/ choice:/m);
     }
   });
 });
 
 describe('starters with a choice', () => {
   const two = '// choice: int[]\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n';
+
+  it('gives the array form first and as the default when the file lists the ArrayList first', () => {
+    const listFirst = '// choice: ArrayList<Integer>\nclass B {}\n// choice: int[]\nclass A {}\n';
+    expect(starter('java21', { java21: listFirst })).toBe('class A {}\n');
+    expect(starterForms('java21', { java21: listFirst }).forms.map((f) => f.name)).toEqual(['int[]', 'ArrayList<Integer>']);
+  });
 
   it('starter() returns the first form and never the marker text', () => {
     expect(starter('java21', { java21: two })).toBe('class A {}\n');

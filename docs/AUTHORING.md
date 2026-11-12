@@ -530,6 +530,7 @@ On the problem page of a function problem, the "Languages" list in "What student
 - **A function problem written or edited by hand is never checked automatically.** Its offered languages read "Not checked yet" until you press Check. The same happens when the wizard's chain stops before the languages are run (the generator or an output failed). Nothing blocks validation in that state.
 - **Python and JavaScript starting code is not compiled.** It is only run, so a mistake that shows only at run time appears as a failed test, not a compile error.
 - **A correct but slow solution is removed.** A solution that runs past the time limit on any test counts as failed.
+- **Check on a Java problem with two forms runs the pasted solution only.** It does not run the other form or the starting codes again; those are proved only by the wizard's run. Paste the class for the form you want to test (it extends the base class in the locked top).
 - **"Fix Java with AI" writes arrays.** It does not know whether the wizard chose arrays or ArrayList, so it always asks for `int[]`.
 - On a fix, the AI receives the statement, the reference solution, the sample tests and the failure summary. It never receives a hidden test.
 

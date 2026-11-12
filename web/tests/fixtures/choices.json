@@ -156,6 +156,52 @@
       "language": "java21",
       "source": "// choice: int[]\n// choice: ArrayList<Integer>\nclass B {}\n",
       "error": "Put some code under each choice line."
+    },
+    {
+      "name": "a non-breaking space before a marker-like line is ordinary code",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n\u00a0// choice: x\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "shared": "",
+      "forms": [
+        { "name": "int[]", "code": "class A {}\n\u00a0// choice: x\n" },
+        { "name": "ArrayList<Integer>", "code": "class B {}\n" }
+      ]
+    },
+    {
+      "name": "a vertical tab before a marker-like line is ordinary code",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n\u000b// choice: x\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "shared": "",
+      "forms": [
+        { "name": "int[]", "code": "class A {}\n\u000b// choice: x\n" },
+        { "name": "ArrayList<Integer>", "code": "class B {}\n" }
+      ]
+    },
+    {
+      "name": "a byte order mark before the first marker hides it",
+      "language": "java21",
+      "source": "\ufeff// choice: int[]\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "error": "Choose between int[] and ArrayList<Integer>, or between long[] and ArrayList<Long>: one of each."
+    },
+    {
+      "name": "markers are read by line, even inside a block comment",
+      "language": "java21",
+      "source": "/*\n// choice: int[]\n*/\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "shared": "/*\n",
+      "forms": [
+        { "name": "int[]", "code": "*/\nclass A {}\n" },
+        { "name": "ArrayList<Integer>", "code": "class B {}\n" }
+      ]
+    },
+    {
+      "name": "marker text inside a string literal is ordinary code",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A { String s = \"// choice: x\"; }\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "shared": "",
+      "forms": [
+        { "name": "int[]", "code": "class A { String s = \"// choice: x\"; }\n" },
+        { "name": "ArrayList<Integer>", "code": "class B {}\n" }
+      ]
     }
   ]
 }

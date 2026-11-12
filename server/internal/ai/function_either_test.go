@@ -48,6 +48,11 @@ func TestEitherSchemaIsStrictAndAddsOneField(t *testing.T) {
 			t.Errorf("schema for %q differs from the function schema", v)
 		}
 	}
+	for k := range base["properties"].(map[string]any) {
+		if props[k] == nil {
+			t.Errorf("the either schema lacks %s", k)
+		}
+	}
 	if len(props) != len(base["properties"].(map[string]any))+1 {
 		t.Error("the either schema adds more than one property")
 	}
@@ -145,6 +150,21 @@ func TestCheckFunctionForTwoForms(t *testing.T) {
 	p.JavaSolutionArrayList = nil
 	if got := strings.Join(CheckFunction(p), " | "); !strings.Contains(got, "one list type") {
 		t.Errorf("two forms in a one-type run: %q", got)
+	}
+	// A broken or lone choice line in a one-type run is reported too, so the model gets its retry.
+	for name, starter := range map[string]string{
+		"a lone marker":      "// choice: int[]\nclass Solution extends Base {}\n",
+		"a near-miss marker": "//choice: int[]\nclass Solution extends Base {}\n",
+	} {
+		p := FakeFunctionArraySum()
+		for i := range p.Languages {
+			if p.Languages[i].Language == "java21" {
+				p.Languages[i].Starter = starter
+			}
+		}
+		if got := strings.Join(CheckFunction(p), " | "); !strings.Contains(got, "java21: starter") {
+			t.Errorf("%s in a one-type run: %q", name, got)
+		}
 	}
 }
 

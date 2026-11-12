@@ -67,11 +67,11 @@ func TestFunctionSchemaIsStrict(t *testing.T) {
 	var want []string
 	rt := reflect.TypeOf(FunctionPack{})
 	for i := 0; i < rt.NumField(); i++ {
-		tag := rt.Field(i).Tag.Get("json")
-		if strings.HasSuffix(tag, ",omitempty") { // java_solution_arraylist: only the "either" schema has it
+		name := strings.Split(rt.Field(i).Tag.Get("json"), ",")[0]
+		if name == "java_solution_arraylist" { // only the either schema has it (TestEitherSchemaIsStrictAndAddsOneField)
 			continue
 		}
-		want = append(want, strings.Split(tag, ",")[0])
+		want = append(want, name)
 	}
 	if len(props) != len(want) {
 		t.Errorf("schema has %d properties, the type %d", len(props), len(want))

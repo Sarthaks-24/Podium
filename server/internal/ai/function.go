@@ -106,6 +106,7 @@ func DecodeFunctionFor(text, javaLists string) (*FunctionPack, error) {
 	if err := decodeStrict(text, FunctionSchemaFor(javaLists), &p); err != nil {
 		return nil, err
 	}
+	// The base struct knows the field, so the strict decode does not refuse it as unknown.
 	if p.JavaSolutionArrayList != nil && javaLists != JavaListsEither {
 		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.",
 			Reasons: []string{"The answer was not in the format Podium asked for: java_solution_arraylist was not asked for."}, answer: text}
@@ -242,7 +243,9 @@ func checkJavaForms(add func(string, ...any), p *FunctionPack) {
 		}
 		c, err := problems.SplitStarter(l.Starter)
 		if p.JavaSolutionArrayList == nil {
-			if err == nil && len(c.Forms) > 1 {
+			if err != nil {
+				add("java21: starter: %s", err)
+			} else if len(c.Forms) > 1 {
 				add("java21: starter has choice lines, but this run asked for one list type. Write one form with no // choice line.")
 			}
 			continue

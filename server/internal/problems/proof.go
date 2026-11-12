@@ -431,7 +431,7 @@ type roundJob struct {
 func (k ValidateKind) finishProof(ctx context.Context, tx *sql.Tx, job *jobs.Job, pl proofValidate) error {
 	if gone, err := closeIfDeleted(ctx, tx, pl.ProblemID, job); gone || err != nil {
 		if gone {
-			job.Result.Summary, _ = json.Marshal(proofSummary{Result: ProofResult{Language: pl.Proof.Language, Part: pl.Proof.Part,
+			job.Result.Summary, _ = json.Marshal(proofSummary{Result: ProofResult{Language: pl.Proof.Language, Part: pl.Proof.Part, Variant: pl.Proof.Variant,
 				Outcome: ProofUnchecked, Reason: "deleted", Verdicts: map[string]int{}}})
 		}
 		return err
@@ -779,7 +779,7 @@ func latestProofs(ctx context.Context, q queryer, id int64) (map[string]*latestP
 func summaryOf(pl proofValidate, summary string) proofSummary {
 	var sm proofSummary
 	if json.Unmarshal([]byte(summary), &sm) != nil || sm.Result.Outcome == "" {
-		sm.Result = ProofResult{Language: pl.Proof.Language, Part: pl.Proof.Part,
+		sm.Result = ProofResult{Language: pl.Proof.Language, Part: pl.Proof.Part, Variant: pl.Proof.Variant,
 			Outcome: ProofUnchecked, Reason: "judge_error", Verdicts: map[string]int{}}
 	}
 	return sm
