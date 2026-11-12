@@ -87,3 +87,28 @@ func TestCheckingRefusalResponse(t *testing.T) {
 		t.Errorf("response %d %s, want 409 %s", w.Code, w.Body.String(), want)
 	}
 }
+
+// A retry of a submission that is already stored gets that submission back,
+// even while a proof is open: the repeat check comes before the refusal.
+func TestARetriedSubmitDuringAProofReturnsTheStoredSubmission(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	p := r.importPack(t, nil)
+	req := SubmitRequest{ProblemID: p.ID, UserID: 2, Language: "cpp17", Source: "int main(){}", ClientKey: "same-key"}
+	first, dup, err := r.svc.Submit(ctx, req)
+	if err != nil || dup {
+		t.Fatalf("first submit: %v dup %v", err, dup)
+	}
+	r.openProof(t, p.ID, "leased")
+	again, dup, err := r.svc.Submit(ctx, req)
+	if err != nil || !dup || again.ID != first.ID {
+		t.Fatalf("retry during a proof: %+v dup %v err %v, want the stored submission %d", again, dup, err, first.ID)
+	}
+	req.ClientKey = "new-key"
+	if _, _, err := r.svc.Submit(ctx, req); !errors.Is(err, ErrChecking) {
+		t.Errorf("a new submission during a proof: %v", err)
+	}
+	if n := countRows(t, r, "submissions"); n != 1 {
+		t.Errorf("%d submissions, want 1", n)
+	}
+}

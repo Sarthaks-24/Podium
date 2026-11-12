@@ -468,9 +468,6 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err := checkUnchanged(ctx, tx, p); err != nil {
 		return nil, false, err
 	}
-	if err := checkNotBeingChecked(ctx, tx, p.ID, r.Scope.RevisionID); err != nil {
-		return nil, false, err
-	}
 	if r.ClientKey != "" {
 		var id int64
 		err := tx.QueryRowContext(ctx, `SELECT id FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ?
@@ -483,6 +480,11 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 		if !errors.Is(err, sql.ErrNoRows) {
 			return nil, false, err
 		}
+	}
+	// After the repeat check, so a retried request still gets its stored
+	// submission back.
+	if err := checkNotBeingChecked(ctx, tx, p.ID, r.Scope.RevisionID); err != nil {
+		return nil, false, err
 	}
 	now := r.At
 	if now.IsZero() {
