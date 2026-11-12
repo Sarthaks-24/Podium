@@ -79,14 +79,12 @@ func (d *Handlers) AIFix(w http.ResponseWriter, r *http.Request) {
 // reasons. Never the content, never the key.
 func (d *Handlers) fixRefused(w http.ResponseWriter, err error, userID, problemID int64, lang string, entry KeyEntry) {
 	var e *Error
-	if !errors.As(err, &e) {
-		d.logProviderFault("ai fix failed", entry.Key, err, "problem_id", problemID, "language", lang)
-		we := wizardError(err)
-		httpx.WriteJSON(w, http.StatusBadGateway, map[string]httpx.APIError{"error": {Code: we.Code, Message: we.Message, Problems: we.Reasons}})
-		return
-	}
-	if e.Code != CodeInvalidAnswer {
-		d.Log.Info("ai fix ended without a result", "user_id", userID, "problem_id", problemID, "language", lang, "provider", entry.Provider, "code", e.Code)
+	if !errors.As(err, &e) || e.Code != CodeInvalidAnswer {
+		if e == nil {
+			d.logProviderFault("ai fix failed", entry.Key, err, "problem_id", problemID, "language", lang)
+		} else {
+			d.Log.Info("ai fix ended without a result", "user_id", userID, "problem_id", problemID, "language", lang, "provider", entry.Provider, "code", e.Code)
+		}
 		we := wizardError(err)
 		httpx.WriteJSON(w, http.StatusBadGateway, map[string]httpx.APIError{"error": {Code: we.Code, Message: we.Message, Problems: we.Reasons}})
 		return

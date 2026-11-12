@@ -1181,7 +1181,7 @@ The body is the usual `{"error": {"code": "checking", "message": "..."}}`. Each 
 
 #### Language checks
 
-Three routes, all for organisers, admins and the owner (a student gets 403, a signed-out request 401). Any organiser may use them on any problem, as with the other problem routes. `{language}` is `cpp17`, `java21`, `python3` or `node22`; any other value is 400 `bad_request`: "Choose C++17, Java 21, Python 3 or JavaScript." A request body with a field not listed here is 400 `bad_request`. Hidden test data never appears in a response or in a request to a model.
+Three routes, all for organisers, admins and the owner (a student gets 403, a signed-out request 401). Any organiser may use them on any problem, as with the other problem routes. `{language}` is `cpp17`, `java21`, `python3` or `node22`; any other value is 400 `bad_request`: "Choose C++17, Java 21, Python 3 or JavaScript." A request body with a field not listed here is 400 `bad_request`, and a body that is not sent as `application/json` is 415 `bad_request` "Send the request body as application/json." Hidden test data never appears in a response or in a request to a model.
 
 **`GET /api/admin/problems/{id}/proof`** returns what is known about each language.
 
@@ -1194,7 +1194,7 @@ Three routes, all for organisers, admins and the owner (a student gets 403, a si
 
 - `languages` always lists the four languages in the order cpp17, java21, python3, node22, and is empty for a whole-program problem.
 - `offered` is live. `result` is `passed`, `failed`, `unchecked` (the judge could not run it) or `none` (never checked). `reason` is empty for a pass, else `compile_error`, `wrong_answer`, `runtime_error`, `time_limit`, `memory_limit`, `output_limit`, `judge_error`, `internal_error`, `no_report`, `skipped` or `ignores_function`. `ignores_function` means the untouched starting code was accepted on every test, so the locked code passes without the student's function; show it as "The locked code passes without the student's function." Every language's round has a starting-code job that runs the tests, so a wizard round for four languages has 7 jobs and `progress.total` counts them. `compiler` holds at most 10 lines of compiler output. `tests` holds at most 60 failed tests as index and verdict only.
-- `current` is false when the result is from other content than the problem has now. `source` is `wizard`, `fix` or `check`.
+- `current` is false when the result is from other content than the problem has now. An edit of a starting code alone does not turn it false (the content hash leaves starting code out); the apply step still skips such a language. `source` is `wizard`, `fix` or `check`.
 - `progress` is present only while `checking` is true; `total` is 0 until the first proof job is queued.
 - `applied` is what the newest finished round did: `kept` (`reference_failed`, `reference_unchecked`, `not_added`), `discarded` (`gone`, `changed`), `removed` (language ids), `added`, `stale`, `validating`, `error`, `hash`. It is absent when no round has finished.
 - Refusals: 404 `not_found` "There is no such problem."; 409 `deleted`.

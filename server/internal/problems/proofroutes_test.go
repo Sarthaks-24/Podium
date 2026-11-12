@@ -177,8 +177,8 @@ func TestProofStateQueriesUseTheStateIndex(t *testing.T) {
 			plan = append(plan, detail)
 		}
 		rows.Close()
-		if !strings.Contains(strings.Join(plan, "\n"), "jobs_by_state") {
-			t.Errorf("%s does not use jobs_by_state:\n%s", name, strings.Join(plan, "\n"))
+		if joined := strings.Join(plan, " | "); !strings.Contains(joined, "SEARCH jobs USING INDEX jobs_by_state (state=? AND priority=?)") || strings.Contains(joined, "SCAN jobs") {
+			t.Errorf("%s does not search jobs_by_state by state and priority: %s", name, strings.Join(plan, " | "))
 		}
 	}
 }

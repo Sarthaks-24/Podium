@@ -332,8 +332,15 @@ func problemID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// problemError maps the problems package's errors to responses.
+// problemError answers err for a handler of this package.
 func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err error) {
+	WriteError(d.Log, w, r, err)
+}
+
+// WriteError maps the problems package's errors to responses. The problem
+// routes use it, and so does a route outside this package that calls the bank
+// (the AI fix route).
+func WriteError(log *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
 	var fields FieldErrors
 	var pack *PackError
 	var taken *SlugTakenError
@@ -381,7 +388,7 @@ func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err erro
 		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "not_ready",
 			Message: "The problem is not ready. Fix these first.", Problems: notReady.Problems}})
 	default:
-		d.internalError(w, r, err)
+		httpx.InternalError(log, w, r, err)
 	}
 }
 
@@ -956,10 +963,4 @@ func (d *Handlers) CheckLanguage(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Log.Info("language check queued", "by", by, "problem_id", id, "language", lang)
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"state": "checking", "language": lang, "server_now": time.Now().UnixMilli()})
-}
-
-// WriteError answers err the way the problem routes do, for a route outside
-// this package that calls the bank (the AI fix route).
-func WriteError(log *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
-	(&Handlers{Log: log}).problemError(w, r, err)
 }

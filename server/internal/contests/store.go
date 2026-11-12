@@ -520,9 +520,6 @@ func (s *Service) GetBySlug(ctx context.Context, slug string) (*Contest, error) 
 	return c, s.loadProblems(ctx, c)
 }
 
-// refuseAIDraft is a FieldErrors refusal when the problem's tags carry the AI
-// draft tag, and an error when they cannot be read, so the guard never fails
-// open. Both SetProblems and the pin update use it.
 // refuseChecking refuses a pin while a proof of the problem is open. It runs
 // in the pinning transaction, so a proof round cannot be queued between the
 // check and the pin.
@@ -537,6 +534,9 @@ func refuseChecking(ctx context.Context, tx *sql.Tx, problemID int64, label stri
 	return nil
 }
 
+// refuseAIDraft is a FieldErrors refusal when the problem's tags carry the AI
+// draft tag, and an error when they cannot be read, so the guard never fails
+// open. Both SetProblems and the pin update use it.
 func refuseAIDraft(tags string, problemID int64, label string) error {
 	var tagList []string
 	if err := json.Unmarshal([]byte(tags), &tagList); err != nil {
