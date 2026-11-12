@@ -51,15 +51,18 @@ console.log(out.join('\\n'));
 `,
 };
 
-/** The starter code for a language: the problem's own when it has one. */
+/** The starter code for a language: the problem's own when it has one, and for Java its first form. */
 export function starter(language: Language, own: Partial<Record<string, string>> = {}): string {
-  return own[language] || STARTERS[language];
+  return starterForms(language, own).default;
 }
 
-/** True when the source is empty or still one of the starters, the problem's own included, untouched. */
+/** True when the source is empty or still one of the starters, every form of the problem's own included, untouched. */
 export function isStarterOrEmpty(source: string, own: Partial<Record<string, string>> = {}): boolean {
   const s = source.trim();
-  return s === '' || [...Object.values(STARTERS), ...Object.values(own)].some((t) => t !== undefined && t.trim() === s);
+  const ownForms = Object.entries(own).flatMap(([language, code]) =>
+    code === undefined ? [] : language === 'java21' ? splitStarter(code).forms.map((f) => f.code) : [code],
+  );
+  return s === '' || [...Object.values(STARTERS), ...ownForms].some((t) => t.trim() === s);
 }
 
 /**
@@ -70,4 +73,60 @@ export function isStarterOrEmpty(source: string, own: Partial<Record<string, str
  */
 export function withLanguage<P extends { language: Language; source: string }>(program: P, next: Language): P {
   return { ...program, language: next, source: isStarterOrEmpty(program.source) ? starter(next) : program.source };
+}
+
+/** One way to write a Java function: its marker name ('' when there is no choice) and the code a student sees. */
+export interface StarterForm {
+  name: string;
+  code: string;
+}
+
+/** A starting code as the editor uses it: single forms only, never marker text. */
+export interface StarterForms {
+  forms: StarterForm[];
+  default: string;
+}
+
+const MARKER_LIKE = /^\s*\/\/\s*choice\s*:/i;
+const PAIRS: [string, string][] = [
+  ['int[]', 'ArrayList<Integer>'],
+  ['long[]', 'ArrayList<Long>'],
+];
+
+/**
+ * Splits a Java starting code at its choice markers, the same rules as
+ * problems.SplitStarter and the same fixture. A marker is a line that is
+ * exactly `// choice: Name`; the text before the first one is shared and
+ * starts every form. Each form holds shared text plus its own code and never
+ * a marker line. No marker, or a code the server would have refused, gives
+ * one plain form: no choice.
+ */
+export function splitStarter(source: string): StarterForms {
+  const plain = { forms: [{ name: '', code: source }], default: source };
+  let shared = '';
+  const found: { name: string; code: string }[] = [];
+  for (const line of source.split(/(?<=\n)/)) {
+    const bare = line.replace(/\r?\n$/, '');
+    if (MARKER_LIKE.test(bare)) {
+      const name = bare.startsWith('// choice: ') ? bare.slice('// choice: '.length) : '';
+      if (name === '' || /[ \t]/.test(name)) return plain;
+      found.push({ name, code: '' });
+    } else if (found.length === 0) {
+      shared += line;
+    } else {
+      found[found.length - 1].code += line;
+    }
+  }
+  if (found.length === 0) return plain;
+  const [a, b] = found.map((f) => f.name);
+  const paired = found.length === 2 && PAIRS.some(([x, y]) => (a === x && b === y) || (a === y && b === x));
+  if (!paired || found.some((f) => f.code.trim() === '')) return plain;
+  const forms = found.map((f) => ({ name: f.name, code: shared + f.code }));
+  return { forms, default: forms[0].code };
+}
+
+/** The forms of a language's starting code: only Java is split; the problem's own starter wins over the built-in one. */
+export function starterForms(language: Language, own: Partial<Record<string, string>> = {}): StarterForms {
+  const code = own[language] || STARTERS[language];
+  return language === 'java21' ? splitStarter(code) : { forms: [{ name: '', code }], default: code };
 }

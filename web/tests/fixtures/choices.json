@@ -1,0 +1,161 @@
+{
+  "about": "Java starting code with a list choice: the forms split by a line that is exactly '// choice: Name', the text before the first marker shared by every form. 'shared' is the text before the first marker, each form's 'code' the lines after its marker up to the next one, both kept byte for byte. A case with an 'error' is refused at save with that sentence (Go); the editor then sees one plain form with no choice (TypeScript). A case with no markers has one form with no name. Only Java is read, so a marker in another language is ordinary text. Read by the Go test on problems.SplitStarter and by the editor's splitStarter, so the two cannot drift.",
+  "cases": [
+    {
+      "name": "no markers means no choice",
+      "language": "java21",
+      "source": "class Solution {\n    long arraySum(int[] a) {\n        return 0;\n    }\n}\n",
+      "shared": "",
+      "forms": [{ "name": "", "code": "class Solution {\n    long arraySum(int[] a) {\n        return 0;\n    }\n}\n" }]
+    },
+    {
+      "name": "an empty starter",
+      "language": "java21",
+      "source": "",
+      "shared": "",
+      "forms": [{ "name": "", "code": "" }]
+    },
+    {
+      "name": "two forms",
+      "language": "java21",
+      "source": "// choice: int[]\nclass Solution extends Base {\n    @Override\n    long arraySum(int[] a) {\n        return 0;\n    }\n}\n// choice: ArrayList<Integer>\nclass Solution extends Base {\n    @Override\n    long arraySum(ArrayList<Integer> a) {\n        return 0;\n    }\n}\n",
+      "shared": "",
+      "forms": [
+        { "name": "int[]", "code": "class Solution extends Base {\n    @Override\n    long arraySum(int[] a) {\n        return 0;\n    }\n}\n" },
+        { "name": "ArrayList<Integer>", "code": "class Solution extends Base {\n    @Override\n    long arraySum(ArrayList<Integer> a) {\n        return 0;\n    }\n}\n" }
+      ]
+    },
+    {
+      "name": "text before the first marker is shared",
+      "language": "java21",
+      "source": "// Helpers for both.\nstatic int twice(int x) { return 2 * x; }\n// choice: int[]\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "shared": "// Helpers for both.\nstatic int twice(int x) { return 2 * x; }\n",
+      "forms": [
+        { "name": "int[]", "code": "class A {}\n" },
+        { "name": "ArrayList<Integer>", "code": "class B {}\n" }
+      ]
+    },
+    {
+      "name": "CRLF line endings",
+      "language": "java21",
+      "source": "// helper\r\n// choice: int[]\r\nclass A {}\r\n// choice: ArrayList<Integer>\r\nclass B {}\r\n",
+      "shared": "// helper\r\n",
+      "forms": [
+        { "name": "int[]", "code": "class A {}\r\n" },
+        { "name": "ArrayList<Integer>", "code": "class B {}\r\n" }
+      ]
+    },
+    {
+      "name": "the long pair, the list first",
+      "language": "java21",
+      "source": "// choice: ArrayList<Long>\nclass B {}\n// choice: long[]\nclass A {}\n",
+      "shared": "",
+      "forms": [
+        { "name": "ArrayList<Long>", "code": "class B {}\n" },
+        { "name": "long[]", "code": "class A {}\n" }
+      ]
+    },
+    {
+      "name": "a form with no final newline",
+      "language": "java21",
+      "source": "// choice: long[]\nclass A {}\n// choice: ArrayList<Long>\nclass B {}",
+      "shared": "",
+      "forms": [
+        { "name": "long[]", "code": "class A {}\n" },
+        { "name": "ArrayList<Long>", "code": "class B {}" }
+      ]
+    },
+    {
+      "name": "a marker in a C++ starter is ordinary text",
+      "language": "cpp17",
+      "source": "// choice: int[]\nint main() {}\n// choice: ArrayList<Integer>\n",
+      "shared": "",
+      "forms": [{ "name": "", "code": "// choice: int[]\nint main() {}\n// choice: ArrayList<Integer>\n" }]
+    },
+    {
+      "name": "a marker in a Python starter is ordinary text",
+      "language": "python3",
+      "source": "# choice: int[]\n// choice: nonsense\n",
+      "shared": "",
+      "forms": [{ "name": "", "code": "# choice: int[]\n// choice: nonsense\n" }]
+    },
+    {
+      "name": "no space after the slashes",
+      "language": "java21",
+      "source": "//choice: int[]\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "error": "This looks like a choice line. Write it exactly as // choice: Name."
+    },
+    {
+      "name": "no space after the colon",
+      "language": "java21",
+      "source": "// choice:int[]\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "error": "This looks like a choice line. Write it exactly as // choice: Name."
+    },
+    {
+      "name": "a capital letter",
+      "language": "java21",
+      "source": "// Choice: int[]\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "error": "This looks like a choice line. Write it exactly as // choice: Name."
+    },
+    {
+      "name": "trailing spaces",
+      "language": "java21",
+      "source": "// choice: int[] \nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "error": "This looks like a choice line. Write it exactly as // choice: Name."
+    },
+    {
+      "name": "trailing text",
+      "language": "java21",
+      "source": "// choice: int[] first\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "error": "This looks like a choice line. Write it exactly as // choice: Name."
+    },
+    {
+      "name": "an indented marker",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n    // choice: ArrayList<Integer>\nclass B {}\n",
+      "error": "This looks like a choice line. Write it exactly as // choice: Name."
+    },
+    {
+      "name": "a third form",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n// choice: ArrayList<Integer>\nclass B {}\n// choice: long[]\nclass C {}\n",
+      "error": "Give two choices at most: an array and an ArrayList."
+    },
+    {
+      "name": "one marker only",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n",
+      "error": "Choose between int[] and ArrayList<Integer>, or between long[] and ArrayList<Long>: one of each."
+    },
+    {
+      "name": "the same name twice",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n// choice: int[]\nclass B {}\n",
+      "error": "Choose between int[] and ArrayList<Integer>, or between long[] and ArrayList<Long>: one of each."
+    },
+    {
+      "name": "an int array with a long list",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n// choice: ArrayList<Long>\nclass B {}\n",
+      "error": "Choose between int[] and ArrayList<Integer>, or between long[] and ArrayList<Long>: one of each."
+    },
+    {
+      "name": "an unknown name",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n// choice: List<Integer>\nclass B {}\n",
+      "error": "Choose between int[] and ArrayList<Integer>, or between long[] and ArrayList<Long>: one of each."
+    },
+    {
+      "name": "an empty form",
+      "language": "java21",
+      "source": "// choice: int[]\nclass A {}\n// choice: ArrayList<Integer>\n  \n",
+      "error": "Put some code under each choice line."
+    },
+    {
+      "name": "two markers in a row",
+      "language": "java21",
+      "source": "// choice: int[]\n// choice: ArrayList<Integer>\nclass B {}\n",
+      "error": "Put some code under each choice line."
+    }
+  ]
+}

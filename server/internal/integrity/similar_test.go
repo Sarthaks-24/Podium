@@ -412,3 +412,27 @@ func TestCommonFingerprintsAreDropped(t *testing.T) {
 		t.Errorf("a program everyone shares produced %d pairs", len(pairs))
 	}
 }
+
+// A starting code with two forms (a choice of int[] or ArrayList, v2.1.0) is
+// shared base text whole: students who submit an untouched form, with the
+// shared text before the first marker, are not linked to each other, and the
+// marker lines are comments that add nothing.
+func TestTwoFormStarterCodeDoesNotCount(t *testing.T) {
+	shared := "static int clamp(int lo, int hi, int x) {\n    if (x < lo) return lo;\n    if (x > hi) return hi;\n    return x;\n}\n"
+	formA := "class Solution extends Base {\n    @Override\n    long arraySum(int[] a) {\n        long total = 0;\n        for (int i = 0; i < a.length; i++) {\n            total += clamp(-5, 5, a[i]);\n        }\n        return total;\n    }\n}\n"
+	formB := "class Solution extends Base {\n    @Override\n    long arraySum(ArrayList<Integer> a) {\n        long total = 0;\n        for (int i = 0; i < a.size(); i++) {\n            total += clamp(-5, 5, a.get(i));\n        }\n        return total;\n    }\n}\n"
+	stored := shared + "// choice: int[]\n" + formA + "// choice: ArrayList<Integer>\n" + formB
+	base := []Subject{{Language: "java21", Source: stored}}
+	subs := []Subject{
+		{SubmissionID: 1, UserID: 1, Language: "java21", Source: shared + formA},
+		{SubmissionID: 2, UserID: 2, Language: "java21", Source: shared + formA},
+		{SubmissionID: 3, UserID: 3, Language: "java21", Source: shared + formB},
+		{SubmissionID: 4, UserID: 4, Language: "java21", Source: shared + formB},
+	}
+	if pairs := Compare(subs, nil, Defaults); len(pairs) == 0 {
+		t.Fatal("the untouched forms are not similar to each other at all, so this test shows nothing")
+	}
+	if pairs := Compare(subs, base, Defaults); len(pairs) != 0 {
+		t.Errorf("untouched forms of a two-form starter reported: %d pairs, first at %.2f", len(pairs), pairs[0].Score)
+	}
+}

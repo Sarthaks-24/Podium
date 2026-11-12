@@ -349,6 +349,9 @@ func checkMode(errs FieldErrors, p *Problem) {
 			errs["starters"] = fmt.Sprintf("Add a starter for %s: the function a student fills in.", lang)
 		}
 	}
+	if _, err := SplitStarter(p.Starters["java21"]); err != nil && errs["starters"] == "" {
+		errs["starters"] = err.Error()
+	}
 	offered := []string{}
 	for _, lang := range p.Offered() {
 		offered = append(offered, judge.Languages[lang].Name)
