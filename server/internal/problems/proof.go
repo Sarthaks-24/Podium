@@ -207,8 +207,22 @@ func newRound() string {
 // unless it is the reference language (its outputs come from the reference,
 // so that job would pass by construction), and a starter job for a compiled
 // language. A check or a fix covers spec.Language alone; a check has no
-// starter job and a fix takes its three parts from spec.Parts.
+// starter job and a fix takes its three parts from spec.Parts. It refuses a
+// round that could not be applied or would never finish: a whole-program
+// problem, an unknown source or language, a fix without its parts, and a
+// round of no jobs (a caller with an interpreted reference language as the
+// only language queues the validation itself).
 func (q queue) enqueueProofs(ctx context.Context, tx *sql.Tx, p *Problem, by int64, spec ProofSpec) (int, error) {
+	switch {
+	case !p.IsFunction():
+		return 0, errors.New("proof: not a function problem")
+	case spec.Source != ProofSourceWizard && spec.Source != ProofSourceFix && spec.Source != ProofSourceCheck:
+		return 0, fmt.Errorf("proof: unknown source %q", spec.Source)
+	case spec.Source != ProofSourceWizard && judge.Languages[spec.Language].ID == "":
+		return 0, fmt.Errorf("proof: unknown language %q", spec.Language)
+	case spec.Source == ProofSourceFix && (spec.Parts == nil || spec.Parts.Top == "" || spec.Parts.Starter == "" || spec.Parts.Bottom == ""):
+		return 0, errors.New("proof: a fix needs its three parts")
+	}
 	base, err := q.payloadBase(ctx, tx, p)
 	if err != nil {
 		return 0, err
@@ -273,6 +287,9 @@ func (q queue) enqueueProofs(ctx context.Context, tx *sql.Tx, p *Problem, by int
 				return 0, err
 			}
 		}
+	}
+	if n == 0 {
+		return 0, errors.New("proof: nothing to prove")
 	}
 	return n, nil
 }
@@ -418,7 +435,7 @@ func roundJobs(ctx context.Context, tx *sql.Tx, pl proofValidate) ([]roundJob, e
 		}
 		var sm proofSummary
 		if json.Unmarshal([]byte(summary), &sm) != nil || sm.Result.Outcome == "" {
-			// Closed without Finish (superseded or cancelled): nothing ran.
+			// Closed without Finish (cancelled by the problem delete): nothing ran.
 			sm.Result = ProofResult{Language: sib.Proof.Language, Part: sib.Proof.Part,
 				Outcome: ProofUnchecked, Reason: "judge_error", Verdicts: map[string]int{}}
 		}
@@ -509,6 +526,10 @@ func (k ValidateKind) applyFix(ctx context.Context, tx *sql.Tx, p *Problem, pr *
 		app.Kept = "not_added"
 		return nil
 	}
+	if pr.Parts == nil {
+		app.Error = "The AI's code was not kept with this check, so nothing was changed."
+		return nil
+	}
 	var parts [3]string
 	for i, sha := range []string{pr.Parts.Top, pr.Parts.Starter, pr.Parts.Bottom} {
 		b, err := k.Store.Read(sha, MaxStarter+1)
@@ -536,6 +557,10 @@ func (k ValidateKind) saveApplied(ctx context.Context, tx *sql.Tx, p *Problem, n
 		return false, nil
 	}
 	err := (&Service{Now: k.Now}).save(ctx, tx, p, note)
+	// ErrDeleted, ErrModeLocked and a slug clash cannot happen here: the row was
+	// loaded in this transaction and closeIfDeleted ran, the mode is unchanged
+	// (store.go checkModeChange) and the slug is the row's own. Any other error
+	// is the database's.
 	var locked *LanguageLockedError // a student began the language while the round ran
 	if errors.As(err, &locked) {
 		app.Error = err.Error()

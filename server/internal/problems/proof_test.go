@@ -1051,3 +1051,114 @@ func TestProofQueriesUseTheStateIndex(t *testing.T) {
 		}
 	}
 }
+
+// javaRemoved is the example problem with Java taken off, and the spec of a
+// fix that would put it back.
+func javaRemoved(t *testing.T, s *Service) (*Problem, ProofSpec) {
+	t.Helper()
+	p := proofProblem(t, s)
+	full := map[string]string{"top": p.LockedTop["java21"], "starter": p.Starters["java21"], "bottom": p.LockedBottom["java21"]}
+	for _, m := range []*map[string]string{&p.LockedTop, &p.LockedBottom, &p.Starters} {
+		delete(*m, "java21")
+	}
+	e := editOf(p)
+	e.LockedTop, e.LockedBottom, e.Starters = &p.LockedTop, &p.LockedBottom, &p.Starters
+	p, err := s.Update(context.Background(), p.ID, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parts ProofParts
+	for name, dst := range map[string]*string{"top": &parts.Top, "starter": &parts.Starter, "bottom": &parts.Bottom} {
+		if *dst, err = s.Blobs.Write([]byte(full[name])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sol, _ := s.Blobs.Write([]byte("SOLUTION java21\n"))
+	return p, ProofSpec{Source: ProofSourceFix, Language: "java21", Solutions: map[string]string{"java21": sol}, Parts: &parts}
+}
+
+func enqueueErr(t *testing.T, s *Service, p *Problem, spec ProofSpec) error {
+	t.Helper()
+	tx, err := s.DB.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	_, err = s.queue().enqueueProofs(context.Background(), tx, p, 1, spec)
+	return err
+}
+
+// A fix without its three parts is refused at the door, and a fix job whose
+// payload lost them (an old or hand-made payload) closes with an error in
+// its result and changes nothing.
+func TestFixNeedsItsParts(t *testing.T) {
+	s := newProofBank(t, true)
+	p, spec := javaRemoved(t, s)
+	noParts := spec
+	noParts.Parts = nil
+	emptyHash := spec
+	emptyHash.Parts = &ProofParts{Top: spec.Parts.Top, Bottom: spec.Parts.Bottom}
+	for name, bad := range map[string]ProofSpec{"nil parts": noParts, "empty starter hash": emptyHash} {
+		if err := enqueueErr(t, s, p, bad); err == nil {
+			t.Errorf("%s: a fix round was queued", name)
+		}
+	}
+	queueRound(t, s, p, spec)
+	if _, err := s.DB.Exec(`UPDATE jobs SET payload = json_remove(payload, '$.proof.parts') WHERE priority = ?`, ProofPriority); err != nil {
+		t.Fatal(err)
+	}
+	revs := revCount(t, s, p.ID)
+	runProofs(t, s, nil)
+	a := applied(t, s)
+	if a.Error == "" || a.Added != "" || a.Validating || revCount(t, s, p.ID) != revs || offered(t, s, p.ID) != "cpp17,node22,python3" {
+		t.Errorf("applied %+v offered %s", a, offered(t, s, p.ID))
+	}
+}
+
+// Only a function problem, a known source and a known language are proved.
+func TestEnqueueProofsRefusesWhatItCannotProve(t *testing.T) {
+	s := newProofBank(t, true)
+	p, fix := javaRemoved(t, s)
+	whole := importExample(t, s, "a-plus-b")
+	check := ProofSpec{Source: ProofSourceCheck, Language: "java21", Solutions: fix.Solutions}
+	wrongLang := func(sp ProofSpec) ProofSpec { sp.Language = "cobol"; return sp }
+	for name, tc := range map[string]struct {
+		p    *Problem
+		spec ProofSpec
+	}{
+		"whole problem, fix":   {whole, fix},
+		"whole problem, check": {whole, check},
+		"unknown source":       {p, ProofSpec{Source: "magic", Language: "java21", Solutions: fix.Solutions}},
+		"no source":            {p, ProofSpec{Language: "java21", Solutions: fix.Solutions}},
+		"unknown language fix": {p, wrongLang(fix)},
+		"unknown language chk": {p, wrongLang(check)},
+		"no language check":    {p, ProofSpec{Source: ProofSourceCheck, Solutions: fix.Solutions}},
+	} {
+		if err := enqueueErr(t, s, tc.p, tc.spec); err == nil {
+			t.Errorf("%s: a round was queued", name)
+		}
+	}
+	if n := count(t, s, "SELECT count(*) FROM jobs"); n != 0 {
+		t.Errorf("%d jobs queued by refused rounds", n)
+	}
+}
+
+// A round of no jobs would never finish and never queue the validation, so
+// it is refused: here the only language is an interpreted reference.
+func TestEnqueueProofsRefusesAnEmptyRound(t *testing.T) {
+	s := newProofBank(t, true)
+	ctx := context.Background()
+	p := proofProblem(t, s)
+	only := func(m map[string]string) *map[string]string { return &map[string]string{"node22": m["node22"]} }
+	e := editOf(p)
+	e.LockedTop, e.LockedBottom, e.Starters = only(p.LockedTop), only(p.LockedBottom), only(p.Starters)
+	e.Reference = Source{"node22", "function arraySum(a) { return 0; }\n"}
+	e.Brute = &Source{"node22", "function arraySum(a) { return 0; }\n"}
+	p, err := s.Update(ctx, p.ID, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := enqueueErr(t, s, p, ProofSpec{Source: ProofSourceWizard}); err == nil {
+		t.Error("an empty round was queued")
+	}
+}
