@@ -7,8 +7,12 @@
   request id in the address so a reload picks the progress up again.
   Progress comes from the `wizard` live event, with polling while the
   stream is down, and follows the draft through its tests and validation
-  to "Validation passed. Open the draft". One status line is a live
-  region; nothing else announces.
+  to "Validation passed. Open the draft". Under "Start from" the organiser
+  chooses what students write, a whole program (the default) or one function
+  between locked code with the Java list type; a function draft adds the step
+  "Checking each language" and, once the round ends, a Languages block that
+  says which languages are offered and why one is not. One status line is a
+  live region; nothing else announces.
 -->
 <script lang="ts">
   import { organises } from '../lib/roles';
@@ -35,9 +39,12 @@
     wizardStatusText,
     type Brief,
     type InputGeneration,
+    type JavaLists,
     type KeyStatus,
+    type StudentsWrite,
     type Wizard,
   } from '../lib/ai';
+  import { checkingLine, notOffered, notOfferedLine, offeredNames, proofPaths, referenceBanner, roundFinished, type ProofState } from '../lib/proof';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
   import { problemPath, type Validation } from '../lib/problems';
   import type { Generation } from '../lib/workspace';
@@ -63,6 +70,8 @@
   let mode = $state<'brief' | 'paste'>('brief');
   let brief = $state<Brief>({ topic: '', difficulty: 'medium', constraints: '', subtasks: '' });
   let text = $state('');
+  let studentsWrite = $state<StudentsWrite>('program');
+  let javaLists = $state<JavaLists>('array');
   let fields = $state<Record<string, string>>({});
   let requestError = $state<{ message: string; problems: readonly string[]; code: string } | null>(null);
   let sending = $state(false);
@@ -78,13 +87,24 @@
   let chainInputs = $state<InputGeneration | null>(null);
   let chainOutputs = $state<Generation | null>(null);
   let chainValidation = $state<Validation | null>(null);
-  const chain = $derived(wizard ? draftChainSteps(wizard, chainInputs, chainOutputs, chainValidation) : null);
+  // A function draft is also checked language by language. null until known: a resumed page learns it from the first answer.
+  let functionRun = $state<boolean | null>(null);
+  let proof = $state<ProofState | null>(null);
+  let proofStopped = false;
+  let proofError = $state(false);
+  const chain = $derived(wizard ? draftChainSteps(wizard, chainInputs, chainOutputs, chainValidation, proof, functionRun === true) : null);
   const steps = $derived(chain?.steps ?? []);
+  const languageStep = $derived(steps.find((s) => s.text === 'Checking each language')?.state);
+  const refBanner = $derived(referenceBanner(proof));
+  const showLanguages = $derived(functionRun === true && proof !== null && roundFinished(proof) && refBanner === '');
   const chainStatus = $derived.by(() => {
     if (!wizard) return '';
     if (chain?.outcome === 'passed') return 'Validation passed';
     if (chain?.outcome === 'failed') return 'Validation failed';
     if (chain?.outcome === 'tests_failed') return 'The tests could not be generated';
+    if (chain?.outcome === 'reference_failed') return "The AI's own solution failed its tests";
+    if (chain?.outcome === 'reference_unchecked') return "The AI's own solution could not be checked";
+    if (languageStep === 'current') return proof ? checkingLine(proof) : 'Checking the languages.';
     if (wizard.problem_id) return chainValidation ? 'Validating the draft' : 'Generating the tests';
     return wizardStatusText(wizard);
   });
@@ -158,8 +178,34 @@
       if (handleAuth(e)) return;
       // A failed poll is tried again on the next tick.
     }
+    await pollProof(pid);
     clearTimeout(chainTimer);
-    if (alive && !chain?.done && Date.now() - chainStarted < CHAIN_MAX_MS) chainTimer = setTimeout(pollChain, POLL_DOWN_MS);
+    if (alive && !proofError && !chain?.done && Date.now() - chainStarted < CHAIN_MAX_MS) chainTimer = setTimeout(pollChain, POLL_DOWN_MS);
+  }
+
+  /**
+   * The language checks of a function draft. Asked for on each tick until the
+   * round has ended; a whole program never asks, and an error stops the page
+   * asking (the draft in the editor holds the same answer).
+   */
+  async function pollProof(pid: number) {
+    if (functionRun === false || proofStopped || !alive) return;
+    try {
+      const p = await job<ProofState>(proofPaths.state(pid));
+      if (!alive) return;
+      if (p === null) {
+        functionRun = false;
+        proofStopped = true;
+        return;
+      }
+      proof = p;
+      functionRun = p.languages.length > 0;
+      if (!functionRun || roundFinished(p)) proofStopped = true;
+    } catch (e) {
+      if (handleAuth(e)) return;
+      proofStopped = true;
+      proofError = true;
+    }
   }
 
   function schedulePoll() {
@@ -253,7 +299,7 @@
     event.preventDefault();
     requestError = null;
     lostWizard = false;
-    const built = wizardRequest(mode, brief, text);
+    const built = wizardRequest(mode, brief, text, studentsWrite, javaLists);
     if (!built.ok) {
       fields = built.fields;
       await focusFirstInvalid('.wizard-form');
@@ -264,6 +310,7 @@
     try {
       const answer = await sendJSON<{ wizard_id: string | number }>('POST', aiPaths.wizard, built.body);
       wizard = { id: String(answer.wizard_id), state: 'thinking' };
+      functionRun = studentsWrite === 'function';
       if (!alive) return;
       navigate(`/admin/ai/new?wizard=${encodeURIComponent(String(answer.wizard_id))}`, { replace: true });
       startWatch();
@@ -296,6 +343,10 @@
     chainInputs = null;
     chainOutputs = null;
     chainValidation = null;
+    proof = null;
+    proofStopped = false;
+    proofError = false;
+    functionRun = null;
     wizard = null;
     requestError = null;
     navigate('/admin/ai/new', { replace: true });
@@ -403,10 +454,41 @@
                 ? 'Validation failed. Open the draft to see what to fix.'
                 : chain?.outcome === 'tests_failed'
                   ? 'The tests could not be generated. Open the draft to see why.'
-                  : 'The draft is in the problem bank. Its tests are being generated and validated; this page follows each step.']
+                  : chain?.outcome === 'reference_failed' || chain?.outcome === 'reference_unchecked'
+                    ? 'The draft is in the problem bank. It is not validated.'
+                    : 'The draft is in the problem bank. Its tests are being generated and validated; this page follows each step.']
               .filter((x) => x !== '')
               .join(' ')}
           </p>
+          {#if proofError}
+            <div class="banner banner-error" role="alert">
+              <p>Could not read the language checks. Open the draft to see them.</p>
+            </div>
+          {:else if refBanner !== ''}
+            <div class="banner banner-error" role="alert">
+              <p>{refBanner}</p>
+            </div>
+          {:else if showLanguages && proof}
+            <section class="languages" aria-labelledby="languages-heading">
+              <h3 id="languages-heading">Languages</h3>
+              {#if offeredNames(proof).length > 0}<p>Offered: {offeredNames(proof).join(', ')}.</p>{/if}
+              {#each notOffered(proof) as l (l.language)}
+                <div class="not-offered">
+                  <p class="not-offered-line">
+                    <span class="mark-icon failed" aria-hidden="true"><Icon name="circle-x" /></span>
+                    <span>{notOfferedLine(l)}</span>
+                  </p>
+                  {#if l.reason === 'compile_error' && l.compiler.trim() !== ''}
+                    <details>
+                      <summary>Details</summary>
+                      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                      <pre class="compiler" tabindex="0" translate="no" aria-label="Compiler output">{l.compiler}</pre>
+                    </details>
+                  {/if}
+                </div>
+              {/each}
+            </section>
+          {/if}
           <p class="actions">
             <a class="btn btn-primary" href="/admin/problems/{wizard.problem_id}">{chain?.outcome === 'passed' ? 'Open the draft' : 'Open the draft in the editor'}</a>
             <button type="button" class="btn btn-quiet" onclick={startAgain}>Start another</button>
@@ -435,6 +517,37 @@
             </span>
           </label>
         </fieldset>
+
+        <fieldset class="modes">
+          <legend>Students write</legend>
+          <label class="mode" class:selected={studentsWrite === 'program'}>
+            <input type="radio" name="students-write" value="program" bind:group={studentsWrite} />
+            <span class="mode-text">
+              <span class="mode-name">A whole program</span>
+              <span class="mode-help">Each student writes a full program that reads input and prints output.</span>
+            </span>
+          </label>
+          <label class="mode" class:selected={studentsWrite === 'function'}>
+            <input type="radio" name="students-write" value="function" bind:group={studentsWrite} />
+            <span class="mode-text">
+              <span class="mode-name">One function, between locked code</span>
+              <span class="mode-help">
+                The AI also writes the code students cannot change and the starting code they see, for each language. Podium runs each language against every test before it is
+                offered.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+        {#if studentsWrite === 'function'}
+          <fieldset class="lists">
+            <legend>In Java, lists are</legend>
+            <div class="list-choices">
+              <label class="choice"><input type="radio" name="java-lists" value="array" bind:group={javaLists} /> Arrays (int[])</label>
+              <label class="choice"><input type="radio" name="java-lists" value="arraylist" bind:group={javaLists} /> ArrayList</label>
+            </div>
+            <p class="field-help">C++, Python and JavaScript use their usual list either way.</p>
+          </fieldset>
+        {/if}
 
         {#if mode === 'brief'}
           <div class="field">
@@ -509,7 +622,7 @@
 
         <div class="actions">
           <button type="submit" class="btn {keyActive ? 'btn-primary' : 'btn-secondary'}" disabled={sending || !keyActive} aria-describedby={keyActive ? undefined : 'generate-help'}>
-            {sending ? 'Sending' : 'Generate draft'}
+            {sending ? 'Writing the draft' : 'Generate draft'}
           </button>
           {#if !keyActive}<span id="generate-help" class="field-help">{keyStatus ? (keyStatus.active ? 'Choose a model in the form above first.' : 'Add a key in the form above first.') : blocker}</span>{/if}
         </div>
@@ -717,6 +830,76 @@
 
   .mode-help {
     color: var(--ink-muted);
+    font-size: var(--fs-0);
+  }
+
+  .lists {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .lists legend {
+    margin-bottom: var(--space-1);
+    padding: 0;
+    font-size: var(--fs-0);
+    font-weight: 500;
+  }
+
+  .list-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+  }
+
+  .choice {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-h);
+    cursor: pointer;
+  }
+
+  .choice input {
+    width: var(--space-4);
+    height: var(--space-4);
+    margin: 0;
+    accent-color: var(--act);
+  }
+
+  .languages {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .languages h3 {
+    font-size: var(--fs-1);
+  }
+
+  .not-offered {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .not-offered-line {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    color: var(--bad);
+    font-weight: 500;
+  }
+
+  .compiler {
+    max-height: 16rem;
+    margin: var(--space-2) 0 0;
+    padding: var(--space-2) var(--space-3);
+    overflow: auto;
+    border: var(--rule) solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink);
     font-size: var(--fs-0);
   }
 

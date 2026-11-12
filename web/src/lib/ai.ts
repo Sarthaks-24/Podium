@@ -15,6 +15,7 @@
  */
 import { ApiError, errorText } from './api';
 import { verdictLabel, type PlannedTest } from './problems';
+import { roundFinished, type ProofState } from './proof';
 
 /** One model a provider offers, from the provider's own list. */
 export interface ModelOption {
@@ -216,19 +217,27 @@ export interface Brief {
   subtasks: string;
 }
 
+export type StudentsWrite = 'program' | 'function';
+export type JavaLists = 'array' | 'arraylist';
+
 /** The body of POST /api/admin/ai/wizard. */
-export type WizardRequest = { mode: 'brief'; brief: Brief } | { mode: 'paste'; text: string };
+export type WizardRequest = ({ mode: 'brief'; brief: Brief } | { mode: 'paste'; text: string }) & { students_write?: 'function'; java_lists?: JavaLists };
 
 export type WizardRequestResult = { ok: true; body: WizardRequest } | { ok: false; fields: Record<string, string> };
 
-/** Builds the wizard request from the form, refusing what cannot be sent. */
-export function wizardRequest(mode: 'brief' | 'paste', brief: Brief, text: string): WizardRequestResult {
+/**
+ * Builds the wizard request from the form, refusing what cannot be sent. A
+ * whole program sends exactly what it always did; one function adds the two
+ * choices the server reads.
+ */
+export function wizardRequest(mode: 'brief' | 'paste', brief: Brief, text: string, studentsWrite: StudentsWrite = 'program', javaLists: JavaLists = 'array'): WizardRequestResult {
   const fields: Record<string, string> = {};
+  const choices = studentsWrite === 'function' ? { students_write: 'function' as const, java_lists: javaLists } : {};
   if (mode === 'paste') {
     const t = text.trim();
     if (t === '') fields.text = 'Paste the problem you want rewritten.';
     else if (t.length > MAX_TEXT) fields.text = `Paste at most ${MAX_TEXT.toLocaleString('en-GB')} characters. This text has ${t.length.toLocaleString('en-GB')}.`;
-    return Object.keys(fields).length > 0 ? { ok: false, fields } : { ok: true, body: { mode: 'paste', text: t } };
+    return Object.keys(fields).length > 0 ? { ok: false, fields } : { ok: true, body: { mode: 'paste', text: t, ...choices } };
   }
   const b: Brief = {
     topic: brief.topic.trim(),
@@ -239,7 +248,7 @@ export function wizardRequest(mode: 'brief' | 'paste', brief: Brief, text: strin
   if (b.topic === '') fields.topic = 'Say what the problem is about, for example "shortest path with one free edge".';
   const total = b.topic.length + b.constraints.length + b.subtasks.length;
   if (total > MAX_TEXT) fields.constraints = `Keep the brief under ${MAX_TEXT.toLocaleString('en-GB')} characters in all.`;
-  return Object.keys(fields).length > 0 ? { ok: false, fields } : { ok: true, body: { mode: 'brief', brief: b } };
+  return Object.keys(fields).length > 0 ? { ok: false, fields } : { ok: true, body: { mode: 'brief', brief: b, ...choices } };
 }
 
 export type WizardState = 'thinking' | 'draft_created' | 'error' | 'done';
@@ -295,23 +304,31 @@ export function draftChainSteps(
   inputs: Job,
   outputs: Job,
   validation: Job,
-): { steps: WizardStep[]; done: boolean; outcome: '' | 'passed' | 'failed' | 'tests_failed' } {
+  proof: ProofState | null = null,
+  forFunction = false,
+): { steps: WizardStep[]; done: boolean; outcome: '' | 'passed' | 'failed' | 'tests_failed' | 'reference_failed' | 'reference_unchecked' } {
   const busy = (j: Job) => j !== null && (j.state === 'queued' || j.state === 'running');
   const broke = (j: Job) => j !== null && (j.state === 'error' || j.state === 'failed');
   const failed = w.state === 'error';
   const created = !failed && (w.state === 'draft_created' || w.state === 'done' || !!w.problem_id);
   const testsFailed = created && (broke(inputs) || broke(outputs));
   const testsDone = created && !testsFailed && (validation !== null || (outputs !== null && outputs.state === 'done' && !busy(inputs)));
-  const validationDone = testsDone && validation !== null && !busy(validation);
+  const isFunction = forFunction || (proof !== null && proof.languages.length > 0);
+  const kept = proof?.applied?.kept;
+  const referenceStop = testsDone && (kept === 'reference_failed' || kept === 'reference_unchecked') ? kept : '';
+  // A function draft is checked language by language between its tests and its validation.
+  const langsDone = !isFunction || validation !== null || (testsDone && proof !== null && roundFinished(proof) && referenceStop === '');
+  const validationDone = testsDone && langsDone && validation !== null && !busy(validation);
   const passed = validationDone && validation?.state === 'passed';
   const step = (done: boolean, current: boolean, bad = false): WizardStep['state'] => (bad ? 'failed' : done ? 'done' : current ? 'current' : 'waiting');
   const steps: WizardStep[] = [
     { text: 'Writing the problem', state: step(created, !created && !failed, failed) },
     { text: 'Draft created', state: step(created, false) },
     { text: 'Generating the tests', state: step(testsDone, created && !testsDone, testsFailed) },
-    { text: 'Validating the draft', state: step(passed, testsDone && !validationDone, validationDone && !passed) },
+    ...(isFunction ? [{ text: 'Checking each language', state: step(testsDone && langsDone, testsDone && !langsDone, referenceStop !== '') }] : []),
+    { text: 'Validating the draft', state: step(passed, testsDone && langsDone && !validationDone, validationDone && !passed) },
   ];
-  const outcome = testsFailed ? 'tests_failed' : validationDone ? (passed ? 'passed' : 'failed') : '';
+  const outcome = testsFailed ? 'tests_failed' : referenceStop !== '' ? referenceStop : validationDone ? (passed ? 'passed' : 'failed') : '';
   return { steps, done: failed || outcome !== '', outcome };
 }
 

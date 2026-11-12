@@ -23,6 +23,7 @@ import {
   type KeyStatus,
 } from './ai';
 import { ApiError } from './api';
+import type { ProofState } from './proof';
 
 // Split so tools/check-secrets.sh does not read the fake as a credential.
 const KEY = 'sk-' + 'ant-api03-TEST-ONLY-not-a-real-key-0123456789';
@@ -336,5 +337,76 @@ describe('draftChainSteps', () => {
     expect(states(failed)).toEqual(['done', 'done', 'done', 'failed']);
     expect(failed.outcome).toBe('failed');
     expect(states(draftChainSteps({ state: 'error' }, null, null, null))).toEqual(['failed', 'waiting', 'waiting', 'waiting']);
+  });
+});
+
+describe('the wizard request for one function', () => {
+  const brief = { topic: 'Grid paths', difficulty: 'medium' as const, constraints: '', subtasks: '' };
+
+  it('sends nothing new for a whole program, whatever the Java choice holds', () => {
+    const plain = wizardRequest('brief', brief, '');
+    expect(plain).toEqual(wizardRequest('brief', brief, '', 'program', 'arraylist'));
+    expect(plain.ok && Object.keys(plain.body)).toEqual(['mode', 'brief']);
+    const paste = wizardRequest('paste', brief, ' Two sum ', 'program', 'arraylist');
+    expect(paste.ok && Object.keys(paste.body)).toEqual(['mode', 'text']);
+  });
+
+  it('adds the two choices for one function, in both modes', () => {
+    expect(wizardRequest('brief', brief, '', 'function', 'array')).toEqual({
+      ok: true,
+      body: { mode: 'brief', brief: { topic: 'Grid paths', difficulty: 'medium', constraints: '', subtasks: '' }, students_write: 'function', java_lists: 'array' },
+    });
+    expect(wizardRequest('paste', brief, ' Two sum ', 'function', 'arraylist')).toEqual({
+      ok: true,
+      body: { mode: 'paste', text: 'Two sum', students_write: 'function', java_lists: 'arraylist' },
+    });
+  });
+});
+
+describe('draftChainSteps for a function problem', () => {
+  const states = (r: ReturnType<typeof draftChainSteps>) => r.steps.map((s) => s.state);
+  const texts = (r: ReturnType<typeof draftChainSteps>) => r.steps.map((s) => s.text);
+  const draft = { state: 'draft_created', problem_id: 20 };
+  const done = { state: 'done' };
+  const proof = (over: Partial<ProofState> = {}): ProofState => ({
+    checking: false,
+    languages: ['cpp17', 'java21'].map((language) => ({ language, offered: true, result: 'passed', reason: '', failed: 0, total: 4, compiler: '', tests: [], current: true, source: 'wizard' })),
+    ...over,
+  });
+
+  it('keeps the four steps of a whole program, and with a null proof for a draft not known to be a function', () => {
+    expect(draftChainSteps(draft, done, done, null, null)).toEqual(draftChainSteps(draft, done, done, null));
+    expect(texts(draftChainSteps(draft, done, done, null, proof({ languages: [] })))).toHaveLength(4);
+  });
+
+  it('adds Checking each language after the tests and holds validation back until it is done', () => {
+    const waiting = draftChainSteps({ state: 'thinking' }, null, null, null, null, true);
+    expect(texts(waiting)).toEqual(['Writing the problem', 'Draft created', 'Generating the tests', 'Checking each language', 'Validating the draft']);
+    expect(states(waiting)).toEqual(['current', 'waiting', 'waiting', 'waiting', 'waiting']);
+    const checking = draftChainSteps(draft, done, done, null, proof({ checking: true }), true);
+    expect(states(checking)).toEqual(['done', 'done', 'done', 'current', 'waiting']);
+    const validating = draftChainSteps(draft, done, done, { state: 'queued' }, proof(), true);
+    expect(states(validating)).toEqual(['done', 'done', 'done', 'done', 'current']);
+    const passed = draftChainSteps(draft, done, done, { state: 'passed' }, proof(), true);
+    expect(states(passed)).toEqual(['done', 'done', 'done', 'done', 'done']);
+    expect(passed).toMatchObject({ done: true, outcome: 'passed' });
+  });
+
+  it('knows it is a function problem from the proof alone', () => {
+    expect(texts(draftChainSteps(draft, done, done, null, proof({ checking: true })))).toContain('Checking each language');
+  });
+
+  it('stops at the language step when the AI own solution failed or could not be checked', () => {
+    const failed = draftChainSteps(draft, done, done, null, proof({ applied: { kept: 'reference_failed', validating: false } }), true);
+    expect(states(failed)).toEqual(['done', 'done', 'done', 'failed', 'waiting']);
+    expect(failed).toMatchObject({ done: true, outcome: 'reference_failed' });
+    const unchecked = draftChainSteps(draft, done, done, null, proof({ applied: { kept: 'reference_unchecked', validating: false } }), true);
+    expect(unchecked).toMatchObject({ done: true, outcome: 'reference_unchecked' });
+  });
+
+  it('still stops at the tests when they fail', () => {
+    const r = draftChainSteps(draft, { state: 'error' }, null, null, proof({ checking: true }), true);
+    expect(r).toMatchObject({ done: true, outcome: 'tests_failed' });
+    expect(states(r)).toEqual(['done', 'done', 'failed', 'waiting', 'waiting']);
   });
 });
