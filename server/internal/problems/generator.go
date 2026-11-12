@@ -191,6 +191,25 @@ type InputSummary struct {
 // RequestInputGeneration queues a run of the generator for every planned
 // test. When it succeeds, output generation and then validation follow.
 func (s *Service) RequestInputGeneration(ctx context.Context, id, userID int64) (*InputGeneration, error) {
+	return s.requestInputGeneration(ctx, id, userID, nil)
+}
+
+// RequestInputGenerationProof is RequestInputGeneration for a draft the
+// wizard made: it also stores the solution of each language that needs one
+// (solutions maps a language to its bare solution text; the reference
+// language's and unknown languages' entries are ignored) and carries them
+// down the chain, so that when the outputs exist the server proves each
+// language on the judge before it validates.
+func (s *Service) RequestInputGenerationProof(ctx context.Context, id, userID int64, solutions map[string]string) (*InputGeneration, error) {
+	if solutions == nil {
+		solutions = map[string]string{}
+	}
+	return s.requestInputGeneration(ctx, id, userID, solutions)
+}
+
+// requestInputGeneration queues the run; a non-nil solutions map is the
+// proof spec's source.
+func (s *Service) requestInputGeneration(ctx context.Context, id, userID int64, solutions map[string]string) (*InputGeneration, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -214,7 +233,21 @@ func (s *Service) RequestInputGeneration(ctx context.Context, id, userID int64) 
 	if err := pendingGeneration(ctx, tx, id); err != nil {
 		return nil, err
 	}
-	if err := s.queue().enqueueInputGeneration(ctx, tx, p, userID); err != nil {
+	q := s.queue()
+	var spec *ProofSpec
+	if solutions != nil {
+		spec = &ProofSpec{Source: ProofSourceWizard, Solutions: map[string]string{}}
+		for _, lang := range proofSolutionLanguages(p) {
+			text, ok := solutions[lang]
+			if !ok {
+				return nil, &NotReadyError{[]string{fmt.Sprintf("Add a %s solution: each language is checked with one.", lang)}}
+			}
+			if spec.Solutions[lang], err = q.blobs.Put(ctx, tx, []byte(text)); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := q.enqueueInputGeneration(ctx, tx, p, userID, spec); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -223,14 +256,21 @@ func (s *Service) RequestInputGeneration(ctx context.Context, id, userID int64) 
 	return s.LatestInputGeneration(ctx, id)
 }
 
-func (q queue) enqueueInputGeneration(ctx context.Context, tx *sql.Tx, p *Problem, userID int64) error {
+// generateInputsPayload is the judge's payload plus the proof spec, which
+// only the server reads; the chain copies it forward.
+type generateInputsPayload struct {
+	judgeapi.GenerateInputsPayload
+	Proof *ProofSpec `json:"proof,omitempty"`
+}
+
+func (q queue) enqueueInputGeneration(ctx context.Context, tx *sql.Tx, p *Problem, userID int64, spec *ProofSpec) error {
 	sha, err := q.blobs.Put(ctx, tx, []byte(p.Generator.Source))
 	if err != nil {
 		return err
 	}
-	pl := judgeapi.GenerateInputsPayload{ProblemID: p.ID, ContentHash: p.ContentHash, PlanHash: PlanHash(p),
+	pl := generateInputsPayload{Proof: spec, GenerateInputsPayload: judgeapi.GenerateInputsPayload{ProblemID: p.ID, ContentHash: p.ContentHash, PlanHash: PlanHash(p),
 		Generator:   judgeapi.Program{Language: p.Generator.Language, SourceSHA: sha},
-		TimeLimitMS: GeneratorTimeLimitMS, MemoryLimitMB: GeneratorMemoryMB}
+		TimeLimitMS: GeneratorTimeLimitMS, MemoryLimitMB: GeneratorMemoryMB}}
 	for _, t := range p.Plan {
 		pl.Tests = append(pl.Tests, judgeapi.PlannedInput{Idx: t.Test, Subtask: t.Subtask, Seed: t.Seed, Args: nonNil(t.Args)})
 	}
@@ -313,6 +353,14 @@ func decodeGenerateInputs(raw json.RawMessage) (judgeapi.GenerateInputsPayload, 
 	return pl, nil
 }
 
+func decodeGenerateInputsFull(raw json.RawMessage) (generateInputsPayload, error) {
+	var pl generateInputsPayload
+	if err := json.Unmarshal(raw, &pl); err != nil {
+		return pl, fmt.Errorf("generate_inputs payload: %w", err)
+	}
+	return pl, nil
+}
+
 // MaxUploads is one input per planned test plus two retried uploads.
 func (GenerateInputsKind) MaxUploads(raw json.RawMessage) int {
 	pl, err := decodeGenerateInputs(raw)
@@ -385,7 +433,7 @@ func (k GenerateInputsKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Jo
 	if job.State == jobs.Failed {
 		return nil
 	}
-	pl, err := decodeGenerateInputs(job.Payload)
+	pl, err := decodeGenerateInputsFull(job.Payload)
 	if err != nil {
 		return err
 	}
@@ -483,7 +531,7 @@ func (k GenerateInputsKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Jo
 		return err
 	}
 	var notReady *NotReadyError
-	err = queue{k.Jobs, k.Store, k.Now}.enqueueGeneration(ctx, tx, p, by, false, true)
+	err = queue{k.Jobs, k.Store, k.Now}.enqueueGeneration(ctx, tx, p, by, false, true, pl.Proof)
 	switch {
 	case errors.As(err, &notReady):
 		return nil

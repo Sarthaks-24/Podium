@@ -44,6 +44,9 @@ type GenerationSummary struct {
 	// Validating is set when this generation queued a validation (the
 	// generate inputs, outputs, validate chain).
 	Validating bool `json:"validating,omitempty"`
+	// Proofs is how many proof jobs this generation queued instead of a
+	// validation (a function draft from the wizard).
+	Proofs int `json:"proofs,omitempty"`
 }
 
 // RequestGeneration queues a run of the reference solution on the
@@ -90,7 +93,7 @@ func (s *Service) requestGeneration(ctx context.Context, id, userID int64, all, 
 	if err := pendingGeneration(ctx, tx, id); err != nil {
 		return nil, err
 	}
-	if err := s.queue().enqueueGeneration(ctx, tx, p, userID, all, thenValidate); err != nil {
+	if err := s.queue().enqueueGeneration(ctx, tx, p, userID, all, thenValidate, nil); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -100,9 +103,14 @@ func (s *Service) requestGeneration(ctx context.Context, id, userID int64, all, 
 }
 
 // pendingGeneration refuses a new input or output generation while one of
-// either is waiting or running for the problem: each replaces files the
-// other reads.
+// either is waiting or running for the problem (each replaces files the
+// other reads), and while a proof is open (ErrChecking).
 func pendingGeneration(ctx context.Context, tx *sql.Tx, id int64) error {
+	if open, err := OpenProof(ctx, tx, id); err != nil {
+		return err
+	} else if open {
+		return ErrChecking
+	}
 	var outputs, inputs int
 	if err := tx.QueryRowContext(ctx, `SELECT
 		(SELECT count(*) FROM generations g JOIN jobs j ON j.id = g.job_id WHERE g.problem_id = ? AND j.state IN ('queued', 'leased')),
@@ -119,12 +127,19 @@ func pendingGeneration(ctx context.Context, tx *sql.Tx, id int64) error {
 	return nil
 }
 
+// generatePayload is the judge's payload plus the proof spec a wizard draft
+// carries from its input generation; only the server reads it.
+type generatePayload struct {
+	judgeapi.GeneratePayload
+	Proof *ProofSpec `json:"proof,omitempty"`
+}
+
 // enqueueGeneration queues output generation for p inside tx: tests
 // missing an output, or every test when all is set. thenValidate asks the
 // job's Finish to queue a validation once every output arrived.
-func (q queue) enqueueGeneration(ctx context.Context, tx *sql.Tx, p *Problem, userID int64, all, thenValidate bool) error {
-	pl := judgeapi.GeneratePayload{ProblemID: p.ID, ContentHash: p.ContentHash, TimeLimitMS: p.TimeLimitMS,
-		MemoryLimitMB: p.MemoryLimitMB, All: all, ThenValidate: thenValidate}
+func (q queue) enqueueGeneration(ctx context.Context, tx *sql.Tx, p *Problem, userID int64, all, thenValidate bool, spec *ProofSpec) error {
+	pl := generatePayload{Proof: spec, GeneratePayload: judgeapi.GeneratePayload{ProblemID: p.ID, ContentHash: p.ContentHash, TimeLimitMS: p.TimeLimitMS,
+		MemoryLimitMB: p.MemoryLimitMB, All: all, ThenValidate: thenValidate}}
 	for _, t := range p.Tests {
 		if all || t.OutputSHA == "" {
 			pl.Inputs = append(pl.Inputs, judgeapi.RunInput{Idx: t.Idx, InputSHA: t.InputSHA})
@@ -213,6 +228,14 @@ func decodeGenerate(raw json.RawMessage) (judgeapi.GeneratePayload, error) {
 	return pl, nil
 }
 
+func decodeGenerateFull(raw json.RawMessage) (generatePayload, error) {
+	var pl generatePayload
+	if err := json.Unmarshal(raw, &pl); err != nil {
+		return pl, fmt.Errorf("generate payload: %w", err)
+	}
+	return pl, nil
+}
+
 // CheckReport refuses results for inputs the job does not have, roles
 // other than the reference program, and output hashes that are not hashes.
 func (GenerateKind) CheckReport(raw json.RawMessage, r judgeapi.Report) error {
@@ -277,7 +300,7 @@ func (k GenerateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 	if job.State == jobs.Failed {
 		return nil
 	}
-	pl, err := decodeGenerate(job.Payload)
+	pl, err := decodeGenerateFull(job.Payload)
 	if err != nil {
 		return err
 	}
@@ -358,7 +381,12 @@ func (k GenerateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 	if err != nil {
 		return err
 	}
-	sm.Validating, err = queue{k.Jobs, k.Store, k.Now}.enqueueValidation(ctx, tx, p, by)
+	q := queue{k.Jobs, k.Store, k.Now}
+	if pl.Proof != nil && provesLanguages(p) {
+		sm.Proofs, err = q.enqueueProofs(ctx, tx, p, by, *pl.Proof)
+		return err
+	}
+	sm.Validating, err = q.enqueueValidation(ctx, tx, p, by)
 	return err
 }
 

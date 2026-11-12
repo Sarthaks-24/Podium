@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/jobs"
@@ -399,5 +401,326 @@ func TestPackCarriesGeneratorAndPlan(t *testing.T) {
 	pk.Problem.Slug = "pair-sums-copy"
 	if _, err := s.Import(ctx, pk, 1); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// funcDraft is the wizard's draft of a function problem: the array-sum
+// example's locked parts and starters in four languages, a C++ reference
+// and brute force, and the generator and plan of sumDraft.
+func funcDraft(t *testing.T, s *Service) Draft {
+	t.Helper()
+	ex := importExample(t, s, "array-sum")
+	d := sumDraft()
+	d.Problem.Mode, d.Problem.LockedTop, d.Problem.LockedBottom, d.Problem.Starters = ex.Mode, ex.LockedTop, ex.LockedBottom, ex.Starters
+	d.Problem.Reference = ex.Reference
+	d.Problem.Brute = &Source{"cpp17", ex.Reference.Source}
+	return d
+}
+
+func solutionTexts(langs ...string) map[string]string {
+	out := map[string]string{}
+	for _, l := range langs {
+		out[l] = "SOLUTION " + l + "\n"
+	}
+	return out
+}
+
+// runInputs plays the judge over the open input generation: every planned
+// test gets an input.
+func runInputs(t *testing.T, s *Service) {
+	t.Helper()
+	var pl judgeapi.GenerateInputsPayload
+	c := claim(t, s, judgeapi.KindGenerateInputs, &pl)
+	rep := judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Final: true,
+		Compile: []judgeapi.CompileResult{{Role: judgeapi.RoleGenerator, Verdict: "OK"}}}
+	for _, pt := range pl.Tests {
+		sha := upload(t, s, c, fmt.Sprintf("1\n%d %d\n", pt.Idx, pt.Seed))
+		rep.Results = append(rep.Results, judgeapi.TestResult{Idx: pt.Idx, Role: judgeapi.RoleGenerator, Verdict: "OK", OutputSHA: sha})
+	}
+	if err := s.Jobs.Report(context.Background(), rep); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// runOutputs plays the judge over the open output generation; the reference
+// fails on test failIdx when that is not 0.
+func runOutputs(t *testing.T, s *Service, failIdx int) {
+	t.Helper()
+	var pl judgeapi.GeneratePayload
+	c := claim(t, s, judgeapi.KindGenerate, &pl)
+	rep := judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Final: true,
+		Compile: []judgeapi.CompileResult{{Role: judgeapi.RoleProgram, Verdict: "OK"}}}
+	for _, in := range pl.Inputs {
+		if in.Idx == failIdx {
+			rep.Results = append(rep.Results, judgeapi.TestResult{Idx: in.Idx, Role: judgeapi.RoleProgram, Verdict: "RE"})
+			continue
+		}
+		sha := upload(t, s, c, fmt.Sprintf("%d\n", in.Idx))
+		rep.Results = append(rep.Results, judgeapi.TestResult{Idx: in.Idx, Role: judgeapi.RoleProgram, Verdict: "OK", OutputSHA: sha})
+	}
+	if err := s.Jobs.Report(context.Background(), rep); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// payloadProof is the proof spec on the newest job of a kind, nil when its
+// payload has none.
+func payloadProof(t *testing.T, s *Service, kind string) *ProofSpec {
+	t.Helper()
+	var raw string
+	if err := s.DB.QueryRow(`SELECT payload FROM jobs WHERE kind = ? ORDER BY id DESC LIMIT 1`, kind).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	var pl struct {
+		Proof *ProofSpec `json:"proof"`
+	}
+	if err := json.Unmarshal([]byte(raw), &pl); err != nil {
+		t.Fatal(err)
+	}
+	return pl.Proof
+}
+
+func openProof(t *testing.T, s *Service, id int64) bool {
+	t.Helper()
+	open, err := OpenProof(context.Background(), s.DB, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return open
+}
+
+func proofJobs(t *testing.T, s *Service) int {
+	return count(t, s, "SELECT count(*) FROM jobs WHERE kind = 'validate' AND priority = ?", ProofPriority)
+}
+
+// solutionsOnDisk fails unless every solution blob of spec is stored with
+// the text that was given.
+func solutionsOnDisk(t *testing.T, s *Service, spec *ProofSpec, texts map[string]string) {
+	t.Helper()
+	for lang, sha := range spec.Solutions {
+		b, err := s.Blobs.Read(sha, 1000)
+		if err != nil || string(b) != texts[lang] {
+			t.Errorf("solution %s: %q %v", lang, b, err)
+		}
+	}
+}
+
+func TestWizardFunctionDraftChainQueuesProofsNotValidation(t *testing.T) {
+	s := newGenBank(t)
+	ctx := context.Background()
+	s.Jobs.Kinds[judgeapi.KindValidate] = ValidateKind{Store: s.Blobs, Jobs: s.Jobs}
+	p, err := s.CreateDraft(ctx, funcDraft(t, s), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts := solutionTexts("java21", "python3", "node22")
+	if g, err := s.RequestInputGenerationProof(ctx, p.ID, 1, texts); err != nil || g.State != ValidationQueued {
+		t.Fatalf("request %+v %v", g, err)
+	}
+	spec := payloadProof(t, s, judgeapi.KindGenerateInputs)
+	if spec == nil || spec.Source != ProofSourceWizard || len(spec.Solutions) != 3 {
+		t.Fatalf("generate_inputs payload spec %+v", spec)
+	}
+	solutionsOnDisk(t, s, spec, texts)
+	if !openProof(t, s, p.ID) {
+		t.Error("a draft with a proof ahead of it is not marked as being checked")
+	}
+	if _, err := s.RequestGeneration(ctx, p.ID, 1, true); !errors.Is(err, ErrChecking) {
+		t.Errorf("output generation during the chain: %v", err)
+	}
+	if _, err := s.RequestInputGeneration(ctx, p.ID, 1); !errors.Is(err, ErrChecking) {
+		t.Errorf("input generation during the chain: %v", err)
+	}
+	// The solutions live only in the open jobs' payloads: a collection with
+	// every blob long out of its grace period still keeps them.
+	gcKeeps := func(when string) {
+		t.Helper()
+		age(t, s, time.Now().Add(-30*24*time.Hour))
+		if _, err := s.Blobs.GC(ctx, s.DB, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		for lang, sha := range spec.Solutions {
+			if !onDisk(s, sha) || !hasRow(t, s, sha) {
+				t.Errorf("%s: GC removed the %s solution", when, lang)
+			}
+		}
+	}
+	gcKeeps("while inputs are generated")
+
+	runInputs(t, s)
+	if got := payloadProof(t, s, judgeapi.KindGenerate); got == nil || !maps.Equal(got.Solutions, spec.Solutions) || got.Source != ProofSourceWizard {
+		t.Fatalf("generate payload spec %+v, want %+v", got, spec)
+	}
+	if !openProof(t, s, p.ID) {
+		t.Error("not marked as being checked between inputs and outputs")
+	}
+	gcKeeps("while outputs are generated")
+
+	runOutputs(t, s, 0)
+	gen, _ := s.LatestGeneration(ctx, p.ID)
+	if gen.State != "done" || gen.Summary.Applied != 2 || gen.Summary.Validating || gen.Summary.Proofs != 6 {
+		t.Fatalf("generation %+v %+v", gen, gen.Summary)
+	}
+	if validateJobs(t, s) != 0 || proofJobs(t, s) != 6 || !openProof(t, s, p.ID) {
+		t.Fatalf("validate jobs %d, proof jobs %d, open %v: want 0, 6, true", validateJobs(t, s), proofJobs(t, s), openProof(t, s, p.ID))
+	}
+	gcKeeps("while the languages are proved")
+
+	// The round passes: nothing is removed and Validate follows.
+	runProofs(t, s, nil)
+	if validateJobs(t, s) != 1 || openProof(t, s, p.ID) {
+		t.Errorf("after the proofs: validate jobs %d, open %v", validateJobs(t, s), openProof(t, s, p.ID))
+	}
+	if got, _ := s.Get(ctx, p.ID); len(got.Offered()) != 4 {
+		t.Errorf("offered %v", got.Offered())
+	}
+}
+
+func TestAnOldPayloadWithNoProofGoesToValidation(t *testing.T) {
+	s := newGenBank(t)
+	ctx := context.Background()
+	p, err := s.CreateDraft(ctx, funcDraft(t, s), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RequestInputGeneration(ctx, p.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if payloadProof(t, s, judgeapi.KindGenerateInputs) != nil || openProof(t, s, p.ID) {
+		t.Fatal("a plain input generation carries or shows a proof")
+	}
+	runInputs(t, s)
+	if payloadProof(t, s, judgeapi.KindGenerate) != nil {
+		t.Error("the generate payload gained a proof")
+	}
+	runOutputs(t, s, 0)
+	gen, _ := s.LatestGeneration(ctx, p.ID)
+	if !gen.Summary.Validating || gen.Summary.Proofs != 0 || validateJobs(t, s) != 1 || proofJobs(t, s) != 0 {
+		t.Errorf("summary %+v, validate jobs %d, proof jobs %d", gen.Summary, validateJobs(t, s), proofJobs(t, s))
+	}
+}
+
+func TestAWholeProgramDraftWithASpecStillValidates(t *testing.T) {
+	s := newGenBank(t)
+	ctx := context.Background()
+	p, err := s.CreateDraft(ctx, sumDraft(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RequestInputGenerationProof(ctx, p.ID, 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	runInputs(t, s)
+	runOutputs(t, s, 0)
+	gen, _ := s.LatestGeneration(ctx, p.ID)
+	if !gen.Summary.Validating || gen.Summary.Proofs != 0 || validateJobs(t, s) != 1 || proofJobs(t, s) != 0 {
+		t.Errorf("summary %+v, validate jobs %d, proof jobs %d", gen.Summary, validateJobs(t, s), proofJobs(t, s))
+	}
+}
+
+func TestAReferenceWithNoCompileStepAloneValidatesDirectly(t *testing.T) {
+	s := newGenBank(t)
+	ctx := context.Background()
+	d := funcDraft(t, s)
+	for _, m := range []map[string]string{d.Problem.LockedTop, d.Problem.LockedBottom, d.Problem.Starters} {
+		for _, lang := range []string{"cpp17", "java21", "python3"} {
+			delete(m, lang)
+		}
+	}
+	d.Problem.Reference = Source{"node22", "function arraySum(a) { return a.reduce((x, y) => x + y, 0); }\n"}
+	d.Problem.Brute = &Source{"node22", d.Problem.Reference.Source}
+	p, err := s.CreateDraft(ctx, d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Offered(); len(got) != 1 || got[0] != "node22" {
+		t.Fatalf("offered %v", got)
+	}
+	if _, err := s.RequestInputGenerationProof(ctx, p.ID, 1, solutionTexts("node22")); err != nil {
+		t.Fatal(err)
+	}
+	if spec := payloadProof(t, s, judgeapi.KindGenerateInputs); spec == nil || len(spec.Solutions) != 0 {
+		t.Fatalf("spec %+v: the reference language needs no solution", spec)
+	}
+	runInputs(t, s)
+	runOutputs(t, s, 0)
+	gen, _ := s.LatestGeneration(ctx, p.ID)
+	if !gen.Summary.Validating || gen.Summary.Proofs != 0 || validateJobs(t, s) != 1 || proofJobs(t, s) != 0 || openProof(t, s, p.ID) {
+		t.Errorf("summary %+v, validate jobs %d, proof jobs %d", gen.Summary, validateJobs(t, s), proofJobs(t, s))
+	}
+}
+
+func TestAChainThatStopsEarlyQueuesNoProof(t *testing.T) {
+	ctx := context.Background()
+	t.Run("generator fails", func(t *testing.T) {
+		s := newGenBank(t)
+		p, err := s.CreateDraft(ctx, funcDraft(t, s), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.RequestInputGenerationProof(ctx, p.ID, 1, solutionTexts("java21", "python3", "node22")); err != nil {
+			t.Fatal(err)
+		}
+		var pl judgeapi.GenerateInputsPayload
+		c := claim(t, s, judgeapi.KindGenerateInputs, &pl)
+		rep := judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Final: true,
+			Compile: []judgeapi.CompileResult{{Role: judgeapi.RoleGenerator, Verdict: "OK"}},
+			Results: []judgeapi.TestResult{{Idx: 3, Role: judgeapi.RoleGenerator, Verdict: "RE"}, {Idx: 4, Role: judgeapi.RoleGenerator, Verdict: "RE"}}}
+		if err := s.Jobs.Report(ctx, rep); err != nil {
+			t.Fatal(err)
+		}
+		if count(t, s, "SELECT count(*) FROM jobs WHERE kind = ?", judgeapi.KindGenerate) != 0 || proofJobs(t, s) != 0 || validateJobs(t, s) != 0 || openProof(t, s, p.ID) {
+			t.Error("a failed generator left a job behind or the draft marked as being checked")
+		}
+	})
+	t.Run("an output fails", func(t *testing.T) {
+		s := newGenBank(t)
+		p, err := s.CreateDraft(ctx, funcDraft(t, s), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.RequestInputGenerationProof(ctx, p.ID, 1, solutionTexts("java21", "python3", "node22")); err != nil {
+			t.Fatal(err)
+		}
+		runInputs(t, s)
+		runOutputs(t, s, 4)
+		gen, _ := s.LatestGeneration(ctx, p.ID)
+		if gen.Summary.Applied != 1 || len(gen.Summary.Problems) != 1 || gen.Summary.Proofs != 0 {
+			t.Fatalf("summary %+v", gen.Summary)
+		}
+		if proofJobs(t, s) != 0 || validateJobs(t, s) != 0 || openProof(t, s, p.ID) {
+			t.Error("a failed output left a job behind or the draft marked as being checked")
+		}
+	})
+}
+
+func TestRequestInputGenerationProofTakesTheSolutionsItNeeds(t *testing.T) {
+	s := newGenBank(t)
+	ctx := context.Background()
+	p, err := s.CreateDraft(ctx, funcDraft(t, s), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var notReady *NotReadyError
+	if _, err := s.RequestInputGenerationProof(ctx, p.ID, 1, solutionTexts("java21", "python3")); !errors.As(err, &notReady) ||
+		!strings.Contains(strings.Join(notReady.Problems, " "), "node22") {
+		t.Fatalf("a missing solution: %v", err)
+	}
+	if count(t, s, "SELECT count(*) FROM jobs") != 0 || count(t, s, "SELECT count(*) FROM input_generations") != 0 {
+		t.Error("a refused request queued a job")
+	}
+	// The reference language's solution and unknown languages are ignored.
+	texts := solutionTexts("java21", "python3", "node22", "cpp17", "cobol")
+	if _, err := s.RequestInputGenerationProof(ctx, p.ID, 1, texts); err != nil {
+		t.Fatal(err)
+	}
+	spec := payloadProof(t, s, judgeapi.KindGenerateInputs)
+	if len(spec.Solutions) != 3 || spec.Solutions["cpp17"] != "" || spec.Solutions["cobol"] != "" {
+		t.Errorf("spec %+v", spec)
+	}
+	solutionsOnDisk(t, s, spec, texts)
+	// A second request while the first is open is refused, as a plain one is.
+	if _, err := s.RequestInputGenerationProof(ctx, p.ID, 1, texts); !errors.Is(err, ErrChecking) {
+		t.Errorf("second request: %v", err)
 	}
 }

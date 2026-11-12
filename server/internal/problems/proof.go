@@ -579,3 +579,21 @@ func (k ValidateKind) queueValidation(ctx context.Context, tx *sql.Tx, p *Proble
 	app.Validating, err = queue{k.Jobs, k.Store, k.Now}.enqueueValidation(ctx, tx, p, by)
 	return err
 }
+
+// ErrChecking refuses an action while a proof is open.
+var ErrChecking = errors.New("Podium is still checking the languages of this problem.")
+
+// proofSolutionLanguages are the languages of a wizard draft that need a
+// solution to be proved: every offered language but the reference language,
+// whose outputs come from the reference.
+func proofSolutionLanguages(p *Problem) []string {
+	return slices.DeleteFunc(p.Offered(), func(lang string) bool { return lang == p.Reference.Language })
+}
+
+// provesLanguages reports whether a wizard round for p would queue any job:
+// it must be a function problem and have a language other than the
+// reference language, or a compiled reference language (its starter is
+// compiled). A draft that does not validates directly instead.
+func provesLanguages(p *Problem) bool {
+	return p.IsFunction() && (len(proofSolutionLanguages(p)) > 0 || judge.Languages[p.Reference.Language].Compile != nil)
+}
