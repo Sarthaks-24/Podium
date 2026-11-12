@@ -566,15 +566,19 @@
   }
 
   // Problems: every change is saved at once.
-  async function addProblem() {
+  function addProblem() {
     const p = bank.find((x) => String(x.id) === addId);
     if (!p) return;
+    addId = '';
+    void queued(() => addNow(p));
+  }
+
+  async function addNow(p: ProblemSummary) {
     const used = new Set(picked.map((x) => x.label));
     let i = 0;
     while (used.has(labelFor(i))) i++;
     const label = labelFor(i);
     picked = [...picked, { problem_id: p.id, title: p.title || p.slug, label, ready: true, max_score: p.points }];
-    addId = '';
     const from = document.activeElement;
     const saved = await putProblems('', `Added ${p.title || p.slug} as ${label}`);
     // Back to the picker for the next one, unless the person moved on while the save ran.
