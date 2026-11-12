@@ -1178,10 +1178,11 @@ test('keyboard only: a student starts, solves, submits, reads the verdict, asks 
   await expect(dialog).toBeHidden();
   await expect(messages).toBeFocused();
 
-  // Standings: the button before Messages in the rail (forward, Tab would
-  // have to cross the editor) opens the board over the editor (B3).
+  // Standings: the next button after Messages in the bar. Backward would wrap
+  // round the whole page and through the editor, where Shift+Tab indents and
+  // only leaves within 2 s of an Escape; the board opens over the editor (B3).
   const standingsButton = page.getByRole('button', { name: 'Standings' });
-  await tabTo(page, standingsButton, { back: true });
+  await tabTo(page, standingsButton);
   await page.keyboard.press('Enter');
   const board = page.getByRole('dialog', { name: 'Standings' });
   await expect(board.locator('tr.me')).toBeVisible();
