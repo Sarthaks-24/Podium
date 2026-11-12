@@ -101,7 +101,7 @@ func queueRound(t *testing.T, s *Service, p *Problem, spec ProofSpec) int {
 
 // proofReport is the report a judge would send for a proof job. how is
 // "", "ce" (reference does not compile), "wa", "tle", "ie" (first test), "norep" (compiled,
-// no results) or "fatal".
+// no results), "accepted" (a starter job accepted on every test) or "fatal".
 func proofReport(c *judgeapi.Claim, pl proofValidate, how string) judgeapi.Report {
 	rep := judgeapi.Report{JobID: c.JobID, Lease: c.Lease, Final: true}
 	switch how {
@@ -114,11 +114,14 @@ func proofReport(c *judgeapi.Claim, pl proofValidate, how string) judgeapi.Repor
 		return rep
 	}
 	rep.Compile = []judgeapi.CompileResult{{Role: judgeapi.RoleReference, Verdict: "OK"}}
-	if pl.Proof.Part == ProofPartStarter || how == "norep" {
+	if how == "norep" {
 		return rep
 	}
 	for i, test := range pl.Tests {
 		v, msg := "AC", ""
+		if pl.Proof.Part == ProofPartStarter && how != "accepted" {
+			v = "WA" // the untouched starting code does not solve the problem
+		}
 		switch {
 		case how == "wa":
 			v, msg = "WA", secretMessage
@@ -264,8 +267,16 @@ func TestClassify(t *testing.T) {
 		{"skipped", mk("solution", 1), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("SK")}}, ProofFailed, "skipped", 1},
 		{"compile error", mk("solution", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{{Role: "reference", Verdict: "CE", Output: "boom"}}}}, ProofFailed, "compile_error", 0},
 		{"starter does not compile", mk("starter", 0), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{{Role: "reference", Verdict: "CE", Output: "boom"}}}}, ProofFailed, "compile_error", 0},
-		{"starter compiles", mk("starter", 0), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}}}, ProofPassed, "", 0},
-		{"starter with no compile report", mk("starter", 0), jobs.Job{}, ProofUnchecked, "no_report", 0},
+		{"starter accepted on every test", mk("starter", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("AC", "AC", "AC")}}, ProofFailed, "ignores_function", 0},
+		{"starter with one wrong answer", mk("starter", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("AC", "WA", "AC")}}, ProofPassed, "", 0},
+		{"starter wrong on every test", mk("starter", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("WA", "WA", "WA")}}, ProofPassed, "", 0},
+		{"starter over the time limit on every test", mk("starter", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("TLE", "TLE", "TLE")}}, ProofPassed, "", 0},
+		{"starter that crashes", mk("starter", 2), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("RE", "RE")}}, ProofPassed, "", 0},
+		{"starter with an internal error", mk("starter", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("IE", "WA", "WA")}}, ProofUnchecked, "internal_error", 0},
+		{"starter with no report at all", mk("starter", 3), jobs.Job{}, ProofUnchecked, "no_report", 0},
+		{"starter compiled, no results", mk("starter", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}}}, ProofUnchecked, "no_report", 0},
+		{"starter of an interpreted language, no compile report", mk("starter", 2), jobs.Job{Result: jobs.Result{Tests: ref("WA", "WA")}}, ProofPassed, "", 0},
+		{"starter with no tests", mk("starter", 0), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}}}, ProofUnchecked, "no_report", 0},
 		{"internal error", mk("solution", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("AC", "IE", "AC")}}, ProofUnchecked, "internal_error", 0},
 		{"fewer results than tests", mk("solution", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}, Tests: ref("AC", "WA")}}, ProofUnchecked, "no_report", 0},
 		{"no results at all", mk("solution", 3), jobs.Job{Result: jobs.Result{Compile: []judgeapi.CompileResult{ok}}}, ProofUnchecked, "no_report", 0},
@@ -304,14 +315,14 @@ func TestClassify(t *testing.T) {
 }
 
 // A round queues a solution job for each language but the reference's and a
-// starter job for each compiled language; the judge's own fields are the
+// starter job, which also runs every test, for each language; the judge's own fields are the
 // same as a validation's, so protocol 3 workers run it unchanged.
 func TestEnqueueProofsPayloads(t *testing.T) {
 	s := newProofBank(t, true)
 	p := proofProblem(t, s)
 	spec := wizardSpec(t, s, p)
-	if n := queueRound(t, s, p, spec); n != 6 {
-		t.Fatalf("%d jobs queued, want 6 (C++ starter; Java, Python solution and starter; Node solution)", n)
+	if n := queueRound(t, s, p, spec); n != 7 {
+		t.Fatalf("%d jobs queued, want 7 (C++ starter; solution and starter for Java, Python and Node)", n)
 	}
 	seen := map[string]proofValidate{}
 	for {
@@ -326,7 +337,7 @@ func TestEnqueueProofsPayloads(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := []string{"cpp17/starter", "java21/solution", "java21/starter", "node22/solution", "python3/solution", "python3/starter"}
+	want := []string{"cpp17/starter", "java21/solution", "java21/starter", "node22/solution", "node22/starter", "python3/solution", "python3/starter"}
 	got := []string{}
 	for k := range seen {
 		got = append(got, k)
@@ -355,10 +366,8 @@ func TestEnqueueProofsPayloads(t *testing.T) {
 		middle := "SOLUTION " + pr.Language + "\n"
 		if pr.Part == ProofPartStarter {
 			middle = p.Starters[pr.Language]
-			if len(pl.Tests) != 0 {
-				t.Errorf("%s: a starter job has %d tests", k, len(pl.Tests))
-			}
-		} else if len(pl.Tests) != len(p.Tests) {
+		}
+		if len(pl.Tests) != len(p.Tests) {
 			t.Errorf("%s: %d tests, want %d", k, len(pl.Tests), len(p.Tests))
 		}
 		if want := Compose(p.LockedTop[pr.Language], middle, p.LockedBottom[pr.Language]).Source; string(src) != want {
@@ -471,7 +480,8 @@ func TestFailedAndUncheckedLanguagesAreRemovedInOneSave(t *testing.T) {
 		// A bottom that prints more than the answer, or never calls the
 		// student's function, shows as wrong answer on the tests.
 		"bottom prints extra output":      {map[string]string{"java21/solution": "wa"}, ProofFailed, "wrong_answer"},
-		"bottom ignores the function":     {map[string]string{"python3/solution": "wa"}, ProofFailed, "wrong_answer"},
+		"bottom ignores the function":     {map[string]string{"python3/starter": "accepted"}, ProofFailed, "ignores_function"},
+		"bottom of Node ignores it":       {map[string]string{"node22/starter": "accepted"}, ProofFailed, "ignores_function"},
 		"starter does not compile (Java)": {map[string]string{"java21/starter": "ce"}, ProofFailed, "compile_error"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -535,7 +545,8 @@ func TestReferenceLanguageFailureKeepsEverything(t *testing.T) {
 	for name, tc := range map[string]struct {
 		how  string
 		kept string
-	}{"does not compile": {"ce", "reference_failed"}, "judge fatal": {"fatal", "reference_unchecked"}} {
+	}{"does not compile": {"ce", "reference_failed"}, "judge fatal": {"fatal", "reference_unchecked"},
+		"locked code ignores the function": {"accepted", "reference_failed"}} {
 		t.Run(name, func(t *testing.T) {
 			s := newProofBank(t, true)
 			p := proofProblem(t, s)
@@ -824,7 +835,7 @@ func TestDeletedProblemDuringAProof(t *testing.T) {
 			t.Errorf("%s: %+v", k, sm.Result)
 		}
 	}
-	if n := count(t, s, "SELECT count(*) FROM jobs WHERE priority = ? AND state = 'failed'", ProofPriority); n != 6 {
+	if n := count(t, s, "SELECT count(*) FROM jobs WHERE priority = ? AND state = 'failed'", ProofPriority); n != 7 {
 		t.Errorf("%d jobs failed", n)
 	}
 	if revCount(t, s, p.ID) != revs || validateJobs(t, s) != 0 {
@@ -859,8 +870,8 @@ func TestARefusedSaveStillClosesTheJob(t *testing.T) {
 	if !strings.Contains(a.Error, "lowercase letters") || a.Validating {
 		t.Errorf("applied %+v", a)
 	}
-	if n := count(t, s, "SELECT count(*) FROM jobs WHERE priority = ? AND state = 'done'", ProofPriority); n != 6 {
-		t.Errorf("%d jobs closed done, want 6", n)
+	if n := count(t, s, "SELECT count(*) FROM jobs WHERE priority = ? AND state = 'done'", ProofPriority); n != 7 {
+		t.Errorf("%d jobs closed done, want 7", n)
 	}
 	if got := offered(t, s, p.ID); got != "cpp17,java21,node22,python3" {
 		t.Errorf("offered %s", got)
@@ -916,6 +927,7 @@ func TestFixAddsALanguageOnlyOnAPass(t *testing.T) {
 		"pass":                     {nil, false, "java21", ""},
 		"solution fails":           {map[string]string{"java21/solution": "wa"}, false, "", "not_added"},
 		"starter does not compile": {map[string]string{"java21/starter": "ce"}, false, "", "not_added"},
+		"starter accepted":         {map[string]string{"java21/starter": "accepted"}, false, "", "not_added"},
 		"problem edited":           {nil, true, "", ""},
 		"parts removed from disk":  {nil, false, "", ""},
 	} {
@@ -1140,25 +1152,5 @@ func TestEnqueueProofsRefusesWhatItCannotProve(t *testing.T) {
 	}
 	if n := count(t, s, "SELECT count(*) FROM jobs"); n != 0 {
 		t.Errorf("%d jobs queued by refused rounds", n)
-	}
-}
-
-// A round of no jobs would never finish and never queue the validation, so
-// it is refused: here the only language is an interpreted reference.
-func TestEnqueueProofsRefusesAnEmptyRound(t *testing.T) {
-	s := newProofBank(t, true)
-	ctx := context.Background()
-	p := proofProblem(t, s)
-	only := func(m map[string]string) *map[string]string { return &map[string]string{"node22": m["node22"]} }
-	e := editOf(p)
-	e.LockedTop, e.LockedBottom, e.Starters = only(p.LockedTop), only(p.LockedBottom), only(p.Starters)
-	e.Reference = Source{"node22", "function arraySum(a) { return 0; }\n"}
-	e.Brute = &Source{"node22", "function arraySum(a) { return 0; }\n"}
-	p, err := s.Update(ctx, p.ID, e)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := enqueueErr(t, s, p, ProofSpec{Source: ProofSourceWizard}); err == nil {
-		t.Error("an empty round was queued")
 	}
 }

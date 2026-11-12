@@ -108,6 +108,9 @@ func TestFailureText(t *testing.T) {
 	if !strings.Contains(ce, "compile_error") || !strings.Contains(ce, "Main.java:7: error: boom") {
 		t.Errorf("compile error text %q", ce)
 	}
+	if ig := FailureText(&problems.ProofResult{Outcome: "failed", Reason: "ignores_function", Total: 6}); !strings.Contains(ig, "The locked code passes without the student's function.") || strings.Contains(ig, "ignores_function") {
+		t.Errorf("ignores_function text %q", ig)
+	}
 	if un := FailureText(&problems.ProofResult{Outcome: "unchecked", Reason: "judge_error"}); !strings.Contains(un, "could not be checked") {
 		t.Errorf("unchecked text %q", un)
 	}

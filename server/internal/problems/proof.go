@@ -3,8 +3,9 @@ package problems
 // Proving the languages of a function problem on the judge (v2.1.0, stage
 // F). A proof is a set of validate-kind jobs, one round per request: for
 // each language a solution job (the language's locked top, a solution and
-// its locked bottom, run on every test) and, for a compiled language, a
-// starter job (the starting code compiled, no tests). A proof job carries a
+// its locked bottom, run on every test) and a starter job (the untouched
+// starting code, run on every test: it must fail at least one, or the locked
+// code does not depend on the student's function). A proof job carries a
 // server-only Proof in its payload, which the judge never reads. It never
 // marks the problem validated and writes no validations row. The job that
 // closes last in its round applies the result with an ordinary save, inside
@@ -52,6 +53,10 @@ const (
 	ProofFailed    = "failed"
 	ProofUnchecked = "unchecked" // the judge could not run it: not the language's fault
 )
+
+// ReasonIgnoresFunction is the reason of a starter job that was accepted on
+// every test: the locked code passes without the student's function.
+const ReasonIgnoresFunction = "ignores_function"
 
 // Limits on what a ProofResult keeps of a report.
 const (
@@ -125,7 +130,7 @@ type ProofResult struct {
 	Outcome  string `json:"outcome"`
 	// Reason is one of judge_error, internal_error, no_report, compile_error,
 	// wrong_answer, runtime_error, time_limit, memory_limit, output_limit,
-	// skipped or deleted; empty for a pass.
+	// skipped, ignores_function or deleted; empty for a pass.
 	Reason   string         `json:"reason,omitempty"`
 	Failed   int            `json:"failed"`
 	Total    int            `json:"total"`
@@ -208,13 +213,11 @@ func newRound() string {
 // enqueueProofs queues one round of proof jobs for p inside tx and returns
 // how many. A wizard round covers every offered language: a solution job
 // unless it is the reference language (its outputs come from the reference,
-// so that job would pass by construction), and a starter job for a compiled
+// so that job would pass by construction), and a starter job for every
 // language. A check or a fix covers spec.Language alone; a check has no
 // starter job and a fix takes its three parts from spec.Parts. It refuses a
-// round that could not be applied or would never finish: a whole-program
-// problem, an unknown source or language, a fix without its parts, and a
-// round of no jobs (a caller with an interpreted reference language as the
-// only language queues the validation itself).
+// round that could not be applied: a whole-program problem, an unknown source
+// or language, a fix without its parts.
 func (q queue) enqueueProofs(ctx context.Context, tx *sql.Tx, p *Problem, by int64, spec ProofSpec) (int, error) {
 	switch {
 	case !p.IsFunction():
@@ -246,9 +249,6 @@ func (q queue) enqueueProofs(ctx context.Context, tx *sql.Tx, p *Problem, by int
 			ContentHash: p.ContentHash, StarterSHA: SHA([]byte(p.Starters[lang])), By: by, Parts: spec.Parts,
 		}}
 		pl.Programs.Reference = judgeapi.Program{Language: lang, SourceSHA: sha}
-		if part == ProofPartStarter {
-			pl.Tests = nil
-		}
 		if _, err := q.jobs.Enqueue(ctx, tx, judgeapi.KindValidate, ProofPriority, pl, by); err != nil {
 			return err
 		}
@@ -285,14 +285,11 @@ func (q queue) enqueueProofs(ctx context.Context, tx *sql.Tx, p *Problem, by int
 				return 0, err
 			}
 		}
-		if spec.Source != ProofSourceCheck && judge.Languages[lang].Compile != nil {
+		if spec.Source != ProofSourceCheck {
 			if err := enqueue(lang, ProofPartStarter, Compose(top, starter, bottom).Source); err != nil {
 				return 0, err
 			}
 		}
-	}
-	if n == 0 {
-		return 0, errors.New("proof: nothing to prove")
 	}
 	return n, nil
 }
@@ -307,7 +304,6 @@ func classify(pl proofValidate, job *jobs.Job) ProofResult {
 	if job.State == jobs.Failed {
 		return unchecked("judge_error")
 	}
-	compiled := false
 	for _, c := range job.Result.Compile {
 		switch {
 		case c.Verdict == string(judge.CompileError) && c.Role == judgeapi.RoleReference:
@@ -315,16 +311,7 @@ func classify(pl proofValidate, job *jobs.Job) ProofResult {
 			return res
 		case c.Verdict == string(judge.CompileError):
 			return unchecked("internal_error") // the checker, not the language
-		case c.Role == judgeapi.RoleReference:
-			compiled = true
 		}
-	}
-	if pl.Proof.Part == ProofPartStarter {
-		if !compiled {
-			return unchecked("no_report")
-		}
-		res.Outcome = ProofPassed
-		return res
 	}
 	res.Total = len(pl.Tests)
 	seen := 0
@@ -345,9 +332,23 @@ func classify(pl proofValidate, job *jobs.Job) ProofResult {
 			}
 		}
 	}
-	if seen < res.Total {
+	starter := pl.Proof.Part == ProofPartStarter
+	if seen < res.Total || (starter && res.Total == 0) {
 		res.Failed, res.Verdicts, res.Tests = 0, map[string]int{}, nil
 		return unchecked("no_report")
+	}
+	if starter {
+		// The untouched starting code must get at least one test wrong, with any
+		// verdict: a crash or a timeout is as good as a wrong answer. If it is
+		// accepted on every test, the locked code does not use the student's function.
+		failed := res.Failed
+		res.Failed, res.Verdicts, res.Tests = 0, map[string]int{}, nil
+		if failed == 0 {
+			res.Outcome, res.Reason = ProofFailed, ReasonIgnoresFunction
+		} else {
+			res.Outcome = ProofPassed
+		}
+		return res
 	}
 	if res.Failed == 0 {
 		res.Outcome = ProofPassed
@@ -588,14 +589,6 @@ var ErrChecking = errors.New("Podium is still checking the languages of this pro
 // whose outputs come from the reference.
 func proofSolutionLanguages(p *Problem) []string {
 	return slices.DeleteFunc(p.Offered(), func(lang string) bool { return lang == p.Reference.Language })
-}
-
-// provesLanguages reports whether a wizard round for p would queue any job:
-// it must be a function problem and have a language other than the
-// reference language, or a compiled reference language (its starter is
-// compiled). A draft that does not validates directly instead.
-func provesLanguages(p *Problem) bool {
-	return p.IsFunction() && (len(proofSolutionLanguages(p)) > 0 || judge.Languages[p.Reference.Language].Compile != nil)
 }
 
 // proofLanguages are the languages a function problem can offer, in the

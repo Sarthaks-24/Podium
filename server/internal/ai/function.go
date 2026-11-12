@@ -352,6 +352,8 @@ func FailureText(r *problems.ProofResult) string {
 	}
 	var b strings.Builder
 	switch {
+	case r.Reason == problems.ReasonIgnoresFunction:
+		b.WriteString("The last check failed: The locked code passes without the student's function.")
 	case r.Outcome == problems.ProofUnchecked:
 		fmt.Fprintf(&b, "This language could not be checked (%s), so nothing is known about its code.", r.Reason)
 	default:

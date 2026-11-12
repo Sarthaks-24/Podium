@@ -142,7 +142,9 @@ func TestFunctionVariants(t *testing.T) {
 		{VariantExtraOutput, "python3", func(a, b FunctionLanguage) bool {
 			return strings.Contains(b.LockedBottom, "done") && a.LockedBottom != b.LockedBottom
 		}},
-		{VariantIgnoresFunction, "python3", func(a, b FunctionLanguage) bool { return !strings.Contains(b.LockedBottom, "solve(") }},
+		{VariantIgnoresFunction, "python3", func(a, b FunctionLanguage) bool {
+			return !strings.Contains(b.LockedBottom, "solve(") && strings.Contains(b.LockedBottom, "print(sum(a))") && a.Solution == b.Solution
+		}},
 		{VariantReferenceFails, "cpp17", func(a, b FunctionLanguage) bool { return a.Starter != b.Starter }},
 	} {
 		v := FakeFunctionVariant(c.name)

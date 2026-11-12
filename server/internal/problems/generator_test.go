@@ -558,11 +558,11 @@ func TestWizardFunctionDraftChainQueuesProofsNotValidation(t *testing.T) {
 
 	runOutputs(t, s, 0)
 	gen, _ := s.LatestGeneration(ctx, p.ID)
-	if gen.State != "done" || gen.Summary.Applied != 2 || gen.Summary.Validating || gen.Summary.Proofs != 6 {
+	if gen.State != "done" || gen.Summary.Applied != 2 || gen.Summary.Validating || gen.Summary.Proofs != 7 {
 		t.Fatalf("generation %+v %+v", gen, gen.Summary)
 	}
-	if validateJobs(t, s) != 0 || proofJobs(t, s) != 6 || !openProof(t, s, p.ID) {
-		t.Fatalf("validate jobs %d, proof jobs %d, open %v: want 0, 6, true", validateJobs(t, s), proofJobs(t, s), openProof(t, s, p.ID))
+	if validateJobs(t, s) != 0 || proofJobs(t, s) != 7 || !openProof(t, s, p.ID) {
+		t.Fatalf("validate jobs %d, proof jobs %d, open %v: want 0, 7, true", validateJobs(t, s), proofJobs(t, s), openProof(t, s, p.ID))
 	}
 	gcKeeps("while the languages are proved")
 
@@ -618,7 +618,10 @@ func TestAWholeProgramDraftWithASpecStillValidates(t *testing.T) {
 	}
 }
 
-func TestAReferenceWithNoCompileStepAloneValidatesDirectly(t *testing.T) {
+// A draft whose only language is an interpreted reference is still proved: its
+// starting code runs the tests, so a locked bottom that ignores the student's
+// function is caught.
+func TestAReferenceWithNoCompileStepAloneIsProved(t *testing.T) {
 	s := newGenBank(t)
 	ctx := context.Background()
 	d := funcDraft(t, s)
@@ -645,7 +648,7 @@ func TestAReferenceWithNoCompileStepAloneValidatesDirectly(t *testing.T) {
 	runInputs(t, s)
 	runOutputs(t, s, 0)
 	gen, _ := s.LatestGeneration(ctx, p.ID)
-	if !gen.Summary.Validating || gen.Summary.Proofs != 0 || validateJobs(t, s) != 1 || proofJobs(t, s) != 0 || openProof(t, s, p.ID) {
+	if gen.Summary.Validating || gen.Summary.Proofs != 1 || validateJobs(t, s) != 0 || proofJobs(t, s) != 1 || !openProof(t, s, p.ID) {
 		t.Errorf("summary %+v, validate jobs %d, proof jobs %d", gen.Summary, validateJobs(t, s), proofJobs(t, s))
 	}
 }

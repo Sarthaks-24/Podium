@@ -255,7 +255,7 @@ const (
 	VariantJavaWrong       = "java-wrong"       // the Java solution returns a wrong answer
 	VariantStarterBroken   = "starter-broken"   // the Java starter does not compile
 	VariantExtraOutput     = "extra-output"     // the Python bottom prints an extra line
-	VariantIgnoresFunction = "ignores-function" // the Python bottom does not call the student's function
+	VariantIgnoresFunction = "ignores-function" // the Python bottom computes the answer itself, so the solution passes and the starter is accepted
 	VariantReferenceFails  = "reference-fails"  // the C++ starter does not compile
 )
 
@@ -372,7 +372,7 @@ func FakeFunctionVariant(name string) *FunctionPack {
 		l.LockedBottom += "print(\"done\")\n"
 	case VariantIgnoresFunction:
 		l := lang("python3")
-		l.LockedBottom = strings.Replace(l.LockedBottom, "print(solve(a))", "print(0)", 1)
+		l.LockedBottom = strings.Replace(l.LockedBottom, "print(solve(a))", "print(sum(a))", 1)
 	case VariantReferenceFails:
 		l := lang("cpp17")
 		l.Starter = strings.Replace(l.Starter, "return 0;", "return 0", 1)

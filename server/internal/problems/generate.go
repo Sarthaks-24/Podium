@@ -382,7 +382,7 @@ func (k GenerateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 		return err
 	}
 	q := queue{k.Jobs, k.Store, k.Now}
-	if pl.Proof != nil && provesLanguages(p) {
+	if pl.Proof != nil && p.IsFunction() {
 		sm.Proofs, err = q.enqueueProofs(ctx, tx, p, by, *pl.Proof)
 		return err
 	}
