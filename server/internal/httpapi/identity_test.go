@@ -134,7 +134,7 @@ func newSiteMode(t *testing.T, mode string) *site {
 	clock := &testClock{}
 	jobSvc := &jobs.Service{DB: d, Now: clock.now}
 	jobSvc.Kinds = map[string]jobs.Kind{
-		judgeapi.KindValidate:       problems.ValidateKind{},
+		judgeapi.KindValidate:       problems.ValidateKind{Store: blobs, Jobs: jobSvc, Now: clock.now},
 		judgeapi.KindGenerate:       problems.GenerateKind{Store: blobs, Jobs: jobSvc, Now: clock.now},
 		judgeapi.KindGenerateInputs: problems.GenerateInputsKind{Store: blobs, Jobs: jobSvc, Now: clock.now},
 		judgeapi.KindSubmit:         submissions.SubmitKind{Now: clock.now},
