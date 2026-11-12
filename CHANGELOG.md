@@ -42,6 +42,14 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage V: frontend fixes
 
+- Edit with AI: Accept is off while the editor has unsaved changes, with the existing line "Save or discard them first". Accepting reloads the problem and used to drop those changes. The key form inside the panel is now a level 3 heading under the panel's level 2.
+- Contest editor: adding a problem now waits in the same save queue as Move and Remove, so a quick Add then Move can no longer send two saves at once. A failed load of the problem bank says so and has a Retry button; an empty bank says so with a link. A bad problem letter marks its input invalid and the message is tied to it.
+- Locked code: "Add standard imports" adds only the lines the top lacks instead of replacing it. An error about one language names it (Java 21, not java21) and switches the field to it. The preview of what students see can be reached with the keyboard.
+- Dashboard, AI prompts: Try again shows the loading state; a stale Preferences save says that Reload replaces what you typed.
+- AI wizard intro: "solutions, a checker for the inputs and a test generator" in place of the setter words.
+- Fixed a flaky student keyboard test at its cause: it reached Standings by walking backward through the code editor.
+- Known limits: the audit's small items "the error banner read twice" and "a `finally` on the key save" were not changed (see the stage report): no citation was found for the first, and the key save cannot leave the form stuck because its helper never throws. The Edit with AI Close button and the "Draft rejected" toast came with stage A.
+
 ### v2.1.0 stage F: function problems from the wizard
 
 ### v2.1.0 stage K: other AI providers
