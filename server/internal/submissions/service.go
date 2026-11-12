@@ -854,7 +854,13 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 		return nil, err
 	}
 	pl.SubmissionID = id
-	jobID, err := s.Jobs.Enqueue(ctx, tx, judgeapi.KindRun, RunPriority, pl, r.UserID)
+	// A practice Run queues behind graded work (J0); with the end order off
+	// it is queued as before.
+	priority := RunPriority
+	if r.Scope.Practice && !s.Jobs.EndOrderOff {
+		priority = PracticePriority
+	}
+	jobID, err := s.Jobs.Enqueue(ctx, tx, judgeapi.KindRun, priority, pl, r.UserID)
 	if err != nil {
 		return nil, err
 	}

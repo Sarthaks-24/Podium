@@ -207,6 +207,7 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | Shared token for the judge API, at least 32 characters (`openssl rand -hex 32`). The same value goes in `judge.env`. Production refuses the testing token. Secret. |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | `debug`, `info`, `warn` or `error`. |
 | `PODIUM_AI_PROMPT_FILE` | optional | optional | optional | built-in rules | Path to a UTF-8 text file, at most 16 KB, that replaces the AI wizard's authoring rules (see "Custom wizard prompt"). A missing, empty, oversized or non-UTF-8 file stops the server at start-up with a message naming the variable and the path. |
+| `PODIUM_QUEUE_END_ORDER` | optional | optional | optional | `on` | `on` or `off`. On: a Run whose author's own contest time is over (the contest's close plus that student's extension) waits behind every graded submission, and a practice Run is queued at practice priority. No Run is cancelled; each still gets its result, later. Off: Runs queue as they did before v2.1.0. Leave it on; it exists so a test session can compare the two orders. |
 
 The AI wizard's provider key is deliberately not a variable: an admin pastes it in the web app and the server holds it in memory only (see "AI wizard keys").
 

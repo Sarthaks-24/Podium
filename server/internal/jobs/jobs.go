@@ -136,6 +136,10 @@ type Service struct {
 	// lastRun is set when the latest claim was a run, so the next claim
 	// prefers a waiting submission (runs never starve submissions).
 	lastRun bool
+	// EndOrderOff turns off the queue order at a contest's end (J0): a Run
+	// whose author's contest time is over then queues like any other. The
+	// zero value is on.
+	EndOrderOff bool
 	// done remembers recently closed jobs for Stats, as a ring of
 	// finishedRing entries; doneNext is the next slot to overwrite.
 	done     []finishedJob
@@ -242,26 +246,36 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 	var payload string
 	var deadline sql.NullInt64
 	var contestID sql.NullInt64
-	// Jobs of a paused contest wait in the queue (judging paused, nothing
-	// lost); everything behind them still runs.
-	pick := func(kinds []any) error {
-		q := `SELECT id, kind, payload, deadline_at, contest_id FROM jobs WHERE state = 'queued' AND kind IN (?` + strings.Repeat(", ?", len(kinds)-1) + `)
-			AND (contest_id IS NULL OR NOT EXISTS (SELECT 1 FROM contests c WHERE c.id = jobs.contest_id AND c.paused = 1))
-			ORDER BY priority, id LIMIT 1`
-		return tx.QueryRowContext(ctx, q, kinds...).Scan(&c.JobID, &c.Kind, &payload, &deadline, &contestID)
+	mode := pickOnTime
+	if s.EndOrderOff {
+		mode = pickAll
+	}
+	pick := func(kinds []any, mode pickMode) error {
+		args := kinds
+		if mode != pickAll {
+			args = append(kinds[:len(kinds):len(kinds)], now.UnixMilli())
+		}
+		return tx.QueryRowContext(ctx, claimSQL(len(kinds), mode), args...).Scan(&c.JobID, &c.Kind, &payload, &deadline, &contestID)
 	}
 	// Runs outrank submissions, so students pressing Run could starve
 	// judging. After a run, the next claim takes other work first when any
-	// is waiting: at least every other claim goes to a submission.
+	// is waiting: at least every other claim goes to a submission. A run
+	// whose author's contest time is over is not counted: it waits behind
+	// everything else (see pickMode).
 	err = sql.ErrNoRows
 	s.mu.Lock()
 	afterRun := s.lastRun
 	s.mu.Unlock()
 	if others := withoutKind(known, judgeapi.KindRun); afterRun && len(others) > 0 && len(others) < len(known) {
-		err = pick(others)
+		err = pick(others, mode)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		err = pick(known)
+		err = pick(known, mode)
+	}
+	late := false
+	if errors.Is(err, sql.ErrNoRows) && mode == pickOnTime {
+		late = true
+		err = pick(known, pickLateRuns)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -285,13 +299,51 @@ func (s *Service) Claim(ctx context.Context, req judgeapi.ClaimRequest) (*judgea
 		return nil, err
 	}
 	s.mu.Lock()
-	s.lastRun = c.Kind == judgeapi.KindRun
+	s.lastRun = c.Kind == judgeapi.KindRun && !late
 	s.mu.Unlock()
 	s.changed(c.JobID, c.Kind, contestID.Int64, false)
 	c.Lease = lease
 	c.LeaseSeconds = judgeapi.LeaseSeconds
 	c.Payload = json.RawMessage(payload)
 	return &c, nil
+}
+
+// pickMode says which queued jobs a claim query may return.
+type pickMode int
+
+const (
+	// pickAll: any queued job (the order before the end-of-contest rule).
+	pickAll pickMode = iota
+	// pickOnTime: any job except a Run whose author's contest time is over.
+	pickOnTime
+	// pickLateRuns: only those Runs.
+	pickLateRuns
+)
+
+// lateRun is true for a Run whose author's own contest time is over: the
+// contest's close plus that student's extension (the SQL twin of
+// contests.Schedule.StudentWindow), read at claim so "Extend" and "End now"
+// count. It takes one argument, now in Unix ms. A Run outside a contest, or
+// of a student still inside their time, is not late. The subqueries run only
+// for Run rows of a contest.
+const lateRun = `(kind = 'run' AND contest_id IS NOT NULL AND coalesce(? >= (SELECT c.ends_at + 60000 * (c.extended_minutes +
+	coalesce((SELECT e.minutes FROM contest_extensions e WHERE e.contest_id = c.id AND e.user_id = jobs.created_by), 0))
+	FROM contests c WHERE c.id = jobs.contest_id), 0))`
+
+// claimSQL is the claim's query for n kinds. It walks jobs_by_state in
+// (priority, id) order and stops at the first match; the late-run test only
+// filters, so it never sorts. Jobs of a paused contest wait in the queue
+// (judging paused, nothing lost); everything behind them still runs.
+func claimSQL(n int, mode pickMode) string {
+	q := `SELECT id, kind, payload, deadline_at, contest_id FROM jobs WHERE state = 'queued' AND kind IN (?` + strings.Repeat(", ?", n-1) + `)
+		AND (contest_id IS NULL OR NOT EXISTS (SELECT 1 FROM contests c WHERE c.id = jobs.contest_id AND c.paused = 1))`
+	switch mode {
+	case pickOnTime:
+		q += " AND NOT " + lateRun
+	case pickLateRuns:
+		q += " AND " + lateRun
+	}
+	return q + " ORDER BY priority, id LIMIT 1"
 }
 
 func withoutKind(kinds []any, drop string) []any {

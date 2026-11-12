@@ -70,6 +70,8 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage J: judge speed and sizing
 
+- Changed: at a contest's end, graded submissions are judged before the Runs of students whose own contest time is over (the close plus their extension, read when a lane takes a job). Before, Runs took about every other turn while the last submissions waited. A student still inside an extension keeps the old order. Practice Runs queue behind graded work. No Run is cancelled: each still finishes with its result, a little later, and the student can press Run again as soon as it does. `PODIUM_QUEUE_END_ORDER=off` brings the old order back (default `on`).
+
 ### v2.1.0 stage P: server measurement
 
 ### v2.1.0 stage W: rewrite with AI
