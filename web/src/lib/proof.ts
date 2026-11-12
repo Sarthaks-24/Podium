@@ -24,6 +24,8 @@ export interface ProofLanguage {
   failed: number;
   total: number;
   compiler: string;
+  /** The form of Java the result is about when its starting code has two (such as "ArrayList<Integer>"), else "". */
+  variant?: string;
   tests: ProofTest[];
   /** False when the result is from other content than the problem has now. */
   current: boolean;
@@ -97,11 +99,12 @@ function testCount(failed: number, total: number): string {
 /** Why a language failed its check, in a sentence, or "" when it never ran. */
 export function failureText(l: ProofLanguage): string {
   const name = languageName(l.language);
+  const code = l.variant ? `${name} code for ${l.variant}` : `${name} code`;
   if (l.result === 'unchecked') return 'It could not be checked.';
   if (l.result !== 'failed') return '';
   if (l.reason === 'ignores_function') return IGNORES;
-  if (l.reason === 'compile_error') return `The AI's ${name} code did not compile.`;
-  return l.total > 0 ? `The AI's ${name} code failed ${testCount(l.failed, l.total)}.` : `The AI's ${name} code failed its check.`;
+  if (l.reason === 'compile_error') return `The AI's ${code} did not compile.`;
+  return l.total > 0 ? `The AI's ${code} failed ${testCount(l.failed, l.total)}.` : `The AI's ${code} failed its check.`;
 }
 
 /** The "Not offered: Java. ..." line of the wizard's result, with the way forward. */

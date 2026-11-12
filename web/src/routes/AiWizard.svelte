@@ -553,12 +553,13 @@
         </fieldset>
         {#if studentsWrite === 'function'}
           <fieldset class="lists">
-            <legend>In Java, lists are</legend>
+            <legend>In Java, students may use</legend>
             <div class="list-choices">
-              <label class="choice"><input type="radio" name="java-lists" value="array" bind:group={javaLists} /> Arrays (int[])</label>
-              <label class="choice"><input type="radio" name="java-lists" value="arraylist" bind:group={javaLists} /> ArrayList</label>
+              <label class="choice"><input type="radio" name="java-lists" value="array" bind:group={javaLists} /> int[] only</label>
+              <label class="choice"><input type="radio" name="java-lists" value="arraylist" bind:group={javaLists} /> ArrayList only</label>
+              <label class="choice"><input type="radio" name="java-lists" value="either" bind:group={javaLists} /> Either, the student picks</label>
             </div>
-            <p class="field-help">C++, Python and JavaScript use their usual list either way.</p>
+            <p class="field-help">C++, Python and JavaScript use their usual list whatever you choose.</p>
           </fieldset>
         {/if}
 

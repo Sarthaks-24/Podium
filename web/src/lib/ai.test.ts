@@ -351,6 +351,17 @@ describe('the wizard request for one function', () => {
     expect(paste.ok && Object.keys(paste.body)).toEqual(['mode', 'text']);
   });
 
+  it('sends either as the Java choice', () => {
+    expect(wizardRequest('brief', brief, '', 'function', 'either')).toEqual({
+      ok: true,
+      body: { mode: 'brief', brief: { topic: 'Grid paths', difficulty: 'medium', constraints: '', subtasks: '' }, students_write: 'function', java_lists: 'either' },
+    });
+    expect(wizardRequest('paste', brief, 'Two sum', 'function', 'either')).toEqual({
+      ok: true,
+      body: { mode: 'paste', text: 'Two sum', students_write: 'function', java_lists: 'either' },
+    });
+  });
+
   it('adds the two choices for one function, in both modes', () => {
     expect(wizardRequest('brief', brief, '', 'function', 'array')).toEqual({
       ok: true,

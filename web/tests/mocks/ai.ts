@@ -182,10 +182,10 @@ export interface MockOptions {
   chain?: boolean;
   /**
    * A function run: after the draft, its tests are done at once and GET .../proof walks through a round
-   * (stage F7). 'pass' offers every language; 'java_fail' and 'java_compile' remove Java; 'reference_fail' keeps
+   * (stage F7). 'pass' offers every language; 'java_fail', 'java_form_fail' (the ArrayList form) and 'java_compile' remove Java; 'reference_fail' keeps
    * everything and stops; 'forever' never finishes; 'error' answers 500.
    */
-  proof?: 'pass' | 'java_fail' | 'java_compile' | 'reference_fail' | 'forever' | 'error' | 'changed' | 'gone' | 'apply_error';
+  proof?: 'pass' | 'java_fail' | 'java_form_fail' | 'java_compile' | 'reference_fail' | 'forever' | 'error' | 'changed' | 'gone' | 'apply_error';
 }
 
 const LANG_IDS = ['cpp17', 'java21', 'python3', 'node22'];
@@ -226,7 +226,7 @@ export function proofScript(kind: NonNullable<MockOptions['proof']>): Json[] {
   const java =
     kind === 'java_compile'
       ? { offered: false, result: 'failed', reason: 'compile_error', compiler: 'Main.java:7: error: cannot find symbol\n  symbol: variable lenn\n  location: class Solution', total: 0 }
-      : { offered: false, result: 'failed', reason: 'wrong_answer', failed: 3, total: 12, tests: [{ idx: 4, verdict: 'WA' }] };
+      : { offered: false, result: 'failed', reason: 'wrong_answer', failed: 3, total: 12, tests: [{ idx: 4, verdict: 'WA' }], ...(kind === 'java_form_fail' ? { variant: 'ArrayList<Integer>' } : {}) };
   return [...lead, { checking: false, languages: proofLanguages({ ...passedAll(), java21: java }), applied: { removed: ['java21'], validating: true }, server_now: T0 }];
 }
 

@@ -43,7 +43,7 @@ test('a whole program is the default and sends the request it always sent', asyn
   await page.goto('/admin/ai/new');
   const write = page.getByRole('group', { name: 'Students write' });
   await expect(write.getByLabel('A whole program')).toBeChecked();
-  await expect(page.getByRole('group', { name: 'In Java, lists are' })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'In Java, students may use' })).toHaveCount(0);
   await page.getByLabel('Topic', { exact: true }).fill('Maximum subarray sum');
   await page.getByRole('button', { name: 'Generate draft' }).click();
   await expect(page.getByRole('link', { name: 'Open the draft in the editor' })).toBeVisible({ timeout: 10_000 });
@@ -56,7 +56,7 @@ test('a whole program from pasted text sends only the mode and the text, even af
   const state = await mockApi(page, OPTS);
   await page.goto('/admin/ai/new');
   await chooseFunction(page);
-  await page.getByLabel('ArrayList').check();
+  await page.getByLabel('Either, the student picks').check();
   await page.getByLabel('A whole program').check();
   await page.getByLabel('From pasted text').check();
   await page.getByLabel('Problem text').fill('Two sum. Given an array, print two numbers.');
@@ -70,10 +70,10 @@ test('one function sends both choices, from a brief and from pasted text', async
   await page.goto('/admin/ai/new');
   await page.getByLabel('Topic', { exact: true }).fill('Sum of an array');
   await chooseFunction(page);
-  const lists = page.getByRole('group', { name: 'In Java, lists are' });
-  await expect(lists.getByLabel('Arrays (int[])')).toBeChecked();
-  await expect(page.getByText('C++, Python and JavaScript use their usual list either way.')).toBeVisible();
-  await lists.getByLabel('ArrayList').check();
+  const lists = page.getByRole('group', { name: 'In Java, students may use' });
+  await expect(lists.getByLabel('int[] only')).toBeChecked();
+  await expect(page.getByText('C++, Python and JavaScript use their usual list whatever you choose.')).toBeVisible();
+  await lists.getByLabel('ArrayList only').check();
   await page.getByRole('button', { name: 'Generate draft' }).click();
   await expect(progress(page)).toBeVisible();
   expect(state.wizardBodies[0]).toEqual({
@@ -91,6 +91,35 @@ test('one function sends both choices, from a brief and from pasted text', async
   await page.getByRole('button', { name: 'Generate draft' }).click();
   await expect(progress(page)).toBeVisible();
   expect(again.wizardBodies[0]).toEqual({ mode: 'paste', text: 'Array sum, rewrite it.', students_write: 'function', java_lists: 'array' });
+});
+
+test('the Java question offers three answers and Either sends either', async ({ page }) => {
+  const state = await mockApi(page, OPTS);
+  await page.goto('/admin/ai/new');
+  await page.getByLabel('Topic', { exact: true }).fill('Sum of an array');
+  await chooseFunction(page);
+  const lists = page.getByRole('group', { name: 'In Java, students may use' });
+  await expect(lists.getByRole('radio')).toHaveCount(3);
+  await expect(lists.getByLabel('int[] only')).toBeChecked();
+  // From the keyboard: arrow down twice from the first radio.
+  await lists.getByLabel('int[] only').focus();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await expect(lists.getByLabel('Either, the student picks')).toBeChecked();
+  await page.getByRole('button', { name: 'Generate draft' }).click();
+  await expect(progress(page)).toBeVisible();
+  expect(state.wizardBodies[0]).toEqual({
+    mode: 'brief',
+    brief: { topic: 'Sum of an array', difficulty: 'medium', constraints: '', subtasks: '' },
+    students_write: 'function',
+    java_lists: 'either',
+  });
+});
+
+test('the reason names the Java form that failed', async ({ page }) => {
+  await runBrief(page, { proof: 'java_form_fail' });
+  const block = languages(page);
+  await expect(block.getByText("Not offered: Java. The AI's Java code for ArrayList<Integer> failed 3 of 12 tests. Open the draft to fix it.")).toBeVisible({ timeout: 15_000 });
 });
 
 test('the submit button says Writing the draft while it sends', async ({ page }) => {
@@ -112,9 +141,11 @@ test('the choices are reachable and operable from the keyboard', async ({ page }
   await page.keyboard.press('ArrowDown');
   await expect(page.getByLabel('One function, between locked code')).toBeChecked();
   await page.keyboard.press('Tab');
-  await expect(page.getByLabel('Arrays (int[])')).toBeFocused();
+  await expect(page.getByLabel('int[] only')).toBeFocused();
   await page.keyboard.press('ArrowDown');
-  await expect(page.getByLabel('ArrayList')).toBeChecked();
+  await expect(page.getByLabel('ArrayList only')).toBeChecked();
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByLabel('Either, the student picks')).toBeChecked();
 });
 
 test('a function run shows the language step with its count, then the Languages block with Java not offered', async ({ page }) => {
@@ -210,7 +241,7 @@ for (const theme of THEMES) {
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto('/admin/ai/new');
       await chooseFunction(page);
-      await expect(page.getByRole('group', { name: 'In Java, lists are' })).toBeVisible();
+      await expect(page.getByRole('group', { name: 'In Java, students may use' })).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
       for (const width of WIDTHS) {
         await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });

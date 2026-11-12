@@ -218,7 +218,7 @@ export interface Brief {
 }
 
 export type StudentsWrite = 'program' | 'function';
-export type JavaLists = 'array' | 'arraylist';
+export type JavaLists = 'array' | 'arraylist' | 'either';
 
 /** The body of POST /api/admin/ai/wizard. */
 export type WizardRequest = ({ mode: 'brief'; brief: Brief } | { mode: 'paste'; text: string }) & { students_write?: 'function'; java_lists?: JavaLists };

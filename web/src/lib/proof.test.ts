@@ -54,6 +54,13 @@ describe('names and lists', () => {
 });
 
 describe('why a language failed', () => {
+  it('names the form when Java has two', () => {
+    expect(failureText(lang({ variant: 'ArrayList<Integer>' }))).toBe("The AI's Java code for ArrayList<Integer> failed 3 of 12 tests.");
+    expect(failureText(lang({ variant: 'int[]', reason: 'compile_error', failed: 0 }))).toBe("The AI's Java code for int[] did not compile.");
+    expect(notOfferedLine(lang({ variant: 'ArrayList<Integer>' }))).toBe("Not offered: Java. The AI's Java code for ArrayList<Integer> failed 3 of 12 tests. Open the draft to fix it.");
+    expect(failureText(lang({ variant: '' }))).toBe("The AI's Java code failed 3 of 12 tests.");
+  });
+
   it('counts the failed tests', () => {
     expect(failureText(lang())).toBe("The AI's Java code failed 3 of 12 tests.");
     expect(failureText(lang({ failed: 1, total: 1 }))).toBe("The AI's Java code failed 1 of 1 test.");

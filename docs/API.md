@@ -1163,7 +1163,7 @@ A `POST`, `PUT`, `PATCH` or `DELETE` under `/api/` that carries the session cook
 | Field | Values | Default | Refusal |
 |---|---|---|---|
 | `students_write` | `"program"`, `"function"` | `"program"` | 400 `bad_request`: "Choose a whole program or one function." |
-| `java_lists` | `"array"`, `"arraylist"` | `"array"` | 400 `bad_request`: "Choose arrays or ArrayList." Ignored when `students_write` is `"program"`. |
+| `java_lists` | `"array"`, `"arraylist"`, `"either"` | `"array"` | 400 `bad_request`: "Choose arrays, ArrayList or either." `"either"` asks for a Java starting code with both forms and a second Java solution; the proof then runs two solution jobs and two starting-code jobs for Java and offers Java only if all four pass. Ignored when `students_write` is `"program"`. |
 
 For a function run the AI writes a function problem: the draft has mode `function`, and the C++ reference and brute force are bare functions. The draft is saved with every language the AI returned, then input generation is queued carrying the AI's solution for each language other than the reference's. When the outputs exist, the chain queues one proof job per language (see `GET .../proof` below) and then the normal validation. The response and the `Wizard` object are the same as for a whole program: a function run ends `draft_created` with `problem_id`, and its progress is read from `GET /api/admin/problems/{id}/proof`. The caller needs an organiser, admin or owner session and a key, as for any wizard run.
 
@@ -1188,12 +1188,13 @@ Three routes, all for organisers, admins and the owner (`organiser` level) (a st
 ```json
 {"checking": true, "progress": {"done": 2, "total": 4, "current": "java21"},
  "languages": [{"language": "java21", "offered": false, "result": "failed", "reason": "wrong_answer",
-   "failed": 3, "total": 12, "compiler": "", "tests": [{"idx": 4, "verdict": "WA"}], "current": true, "source": "wizard"}],
+   "failed": 3, "total": 12, "variant": "", "compiler": "", "tests": [{"idx": 4, "verdict": "WA"}], "current": true, "source": "wizard"}],
  "applied": {"kept": "reference_failed", "validating": false, "hash": "..."}, "server_now": 1792190392359}
 ```
 
 - `languages` always lists the four languages in the order cpp17, java21, python3, node22, and is empty for a whole-program problem.
 - `offered` is live. `result` is `passed`, `failed`, `unchecked` (the judge could not run it) or `none` (never checked). `reason` is empty for a pass, else `compile_error`, `wrong_answer`, `runtime_error`, `time_limit`, `memory_limit`, `output_limit`, `judge_error`, `internal_error`, `no_report`, `skipped` or `ignores_function`. `ignores_function` means the untouched starting code was accepted on every test, so the locked code passes without the student's function; show it as "The locked code passes without the student's function." Every language's round has a starting-code job that runs the tests, so a wizard round for four languages has 7 jobs and `progress.total` counts them. `compiler` holds at most 10 lines of compiler output. `tests` holds at most 60 failed tests as index and verdict only.
+- `variant` is the Java form the language's worst job proved when its starting code has two forms (for example `"ArrayList<Integer>"`), else `""`. A wizard round with `java_lists` `"either"` has 9 jobs for four languages, and Java's `reason`, `failed` and `total` are those of the worst of its four jobs.
 - `current` is false when the result is from other content than the problem has now. An edit of a starting code alone does not turn it false (the content hash leaves starting code out); the apply step still skips such a language. `source` is `wizard`, `fix` or `check`.
 - `progress` is present only while `checking` is true; `total` is 0 until the first proof job is queued.
 - `applied` is what the newest finished round did: `kept` (`reference_failed`, `reference_unchecked`, `not_added`), `discarded` (`gone`, `changed`), `removed` (language ids), `added`, `stale`, `validating`, `error`, `hash`. It is absent when no round has finished.

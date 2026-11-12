@@ -448,7 +448,7 @@ The three providers get the same instructions and the same answer schema, and ev
 Both ways of starting (a brief or pasted text) ask "Students write":
 
 - **A whole program** is the default. Each student writes a full program that reads input and prints output. Nothing about this choice has changed.
-- **One function, between locked code.** The AI also writes, for each language, the locked code before and after the student's function and the starting code the student sees. Only this choice shows "In Java, lists are": arrays (`int[]`) or ArrayList. It changes Java only. C++ uses `vector`, Python a list and JavaScript an array either way.
+- **One function, between locked code.** The AI also writes, for each language, the locked code before and after the student's function and the starting code the student sees. Only this choice shows "In Java, students may use" with three answers: "int[] only", "ArrayList only" and "Either, the student picks". It changes Java only. C++ uses `vector`, Python a list and JavaScript an array whatever you choose.
 
 For a function problem the AI writes:
 
@@ -462,6 +462,10 @@ When the tests and their expected outputs exist, Podium runs each language on th
 
 1. The AI's own solution, joined to the locked code, on every test. It must pass every test.
 2. The untouched starting code, joined to the locked code, on the same tests. It must compile, and it must fail at least one test. If it passes every test, the locked code does not need the student's function (for example the bottom prints the answer itself), so every student answer would be accepted.
+
+#### Either, the student picks
+
+With "Either, the student picks" the AI writes the Java entry in the pattern the sandbox suite proves: a base class in the locked top with one overload for `int[]` and one for `ArrayList<Integer>` (each converts and calls the other, with a check that gives one plain line if the student overrides neither), a starting code with both forms under the lines `// choice: int[]` and `// choice: ArrayList<Integer>`, and a locked bottom that calls the function. It also writes two Java solutions, one per form. Podium proves all four Java parts: both solutions must pass every test, and each starting form, put between the locked parts on its own, must compile and fail at least one test. Java is offered only if all four pass. If one fails, Java is removed as for any other failure and the reason names the form, for example "The AI's Java code for ArrayList<Integer> failed 3 of 12 tests." A wizard run with this choice runs 9 judge jobs for four languages instead of 7. Fix Java with AI always writes one form with arrays and replaces any choice; Check Java runs the pasted class between the locked parts as a student's submission runs, so it works for either form. The base class is written by the model: the proof shows that both forms compile and run, but not the plain line for a student who overrides neither, so read the base class in the problem editor before a contest.
 
 A language that fails either run is removed from the problem. The problem stays. A language the AI did not write is not offered either. Four languages are seven judge jobs: the reference language only needs the starting-code run, because its solution already made the expected outputs. The wizard page shows "Checking each language" and then lists:
 
