@@ -410,3 +410,17 @@ describe('draftChainSteps for a function problem', () => {
     expect(states(r)).toEqual(['done', 'done', 'failed', 'waiting', 'waiting']);
   });
 });
+
+describe('draftChainSteps when a language round did not count', () => {
+  const draft = { state: 'draft_created', problem_id: 20 };
+  const done = { state: 'done' };
+  const stopped = (applied: NonNullable<ProofState['applied']>): ProofState => ({ checking: false, languages: [{ language: 'cpp17', offered: true, result: 'passed', reason: '', failed: 0, total: 4, compiler: '', tests: [], current: true, source: 'wizard' }], applied });
+
+  it('stops at the language step for a dropped round or an apply error', () => {
+    for (const applied of [{ discarded: 'changed', validating: false }, { discarded: 'gone', validating: false }, { error: 'x', validating: false }]) {
+      const r = draftChainSteps(draft, done, done, null, stopped(applied), true);
+      expect(r).toMatchObject({ done: true, outcome: 'proof_stopped' });
+      expect(r.steps.map((s) => s.state)).toEqual(['done', 'done', 'done', 'failed', 'waiting']);
+    }
+  });
+});

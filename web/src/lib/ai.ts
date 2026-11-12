@@ -306,7 +306,7 @@ export function draftChainSteps(
   validation: Job,
   proof: ProofState | null = null,
   forFunction = false,
-): { steps: WizardStep[]; done: boolean; outcome: '' | 'passed' | 'failed' | 'tests_failed' | 'reference_failed' | 'reference_unchecked' } {
+): { steps: WizardStep[]; done: boolean; outcome: '' | 'passed' | 'failed' | 'tests_failed' | 'reference_failed' | 'reference_unchecked' | 'proof_stopped' } {
   const busy = (j: Job) => j !== null && (j.state === 'queued' || j.state === 'running');
   const broke = (j: Job) => j !== null && (j.state === 'error' || j.state === 'failed');
   const failed = w.state === 'error';
@@ -315,7 +315,8 @@ export function draftChainSteps(
   const testsDone = created && !testsFailed && (validation !== null || (outputs !== null && outputs.state === 'done' && !busy(inputs)));
   const isFunction = forFunction || (proof !== null && proof.languages.length > 0);
   const kept = proof?.applied?.kept;
-  const referenceStop = testsDone && (kept === 'reference_failed' || kept === 'reference_unchecked') ? kept : '';
+  const dropped = proof?.applied?.discarded || proof?.applied?.error;
+  const referenceStop = testsDone && (kept === 'reference_failed' || kept === 'reference_unchecked') ? kept : testsDone && dropped ? 'proof_stopped' : '';
   // A function draft is checked language by language between its tests and its validation.
   const langsDone = !isFunction || validation !== null || (testsDone && proof !== null && roundFinished(proof) && referenceStop === '');
   const validationDone = testsDone && langsDone && validation !== null && !busy(validation);

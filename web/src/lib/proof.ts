@@ -120,6 +120,8 @@ export function lastCheckLine(l: ProofLanguage): string {
   if (l.result === 'passed') return l.current ? 'Passes every test.' : `Passed before the last change. Press Check ${name} again.`;
   if (l.reason === 'ignores_function') return IGNORES;
   if (l.reason === 'compile_error') return 'Did not compile in the last check.';
+  if (l.total === 0) return `The last check could not be run. Press Check ${name} to try again.`;
+  if (!l.current) return `Failed before the last change. Press Check ${name} again.`;
   return `Failed ${testCount(l.failed, l.total)} in the last check.`;
 }
 
@@ -130,6 +132,7 @@ export function checkResultLine(l: ProofLanguage): string {
   if (l.result === 'unchecked') return `${name} could not be checked.`;
   if (l.reason === 'compile_error') return `${name} does not compile.`;
   if (l.reason === 'ignores_function') return `${name}: ${IGNORES}`;
+  if (l.total === 0) return `${name} could not be checked.`;
   return `${name} fails ${testCount(l.failed, l.total)}.`;
 }
 
@@ -142,9 +145,13 @@ export function checkingLine(state: Pick<ProofState, 'progress' | 'languages'>):
   return at < 0 ? `Checking ${languageName(current)}.` : `Checking ${languageName(current)}, ${at + 1} of ${offered.length}.`;
 }
 
-/** The banner for a draft whose own reference language failed or could not be checked, or "". */
+/** The banner for a draft whose round did not count (its own solution failed, it was changed or deleted, the save failed), or "". */
 export function referenceBanner(state: Pick<ProofState, 'applied'> | null): string {
-  const kept = state?.applied?.kept;
+  const a = state?.applied;
+  if (a?.discarded === 'changed') return 'The draft was changed while its languages were being checked, so the result was not used. Open the draft and press Check for each language.';
+  if (a?.discarded === 'gone') return 'The draft was deleted while its languages were being checked.';
+  if (a?.error) return `${a.error} Open the draft to see its languages.`;
+  const kept = a?.kept;
   if (kept === 'reference_failed') return "The AI's own solution failed its tests, so this draft cannot be validated. Open it to look, or ask again with a simpler description.";
   if (kept === 'reference_unchecked') return "The AI's own solution could not be checked, so this draft cannot be validated. Open it and press Validate.";
   return '';

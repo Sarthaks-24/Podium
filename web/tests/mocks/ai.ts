@@ -185,7 +185,7 @@ export interface MockOptions {
    * (stage F7). 'pass' offers every language; 'java_fail' and 'java_compile' remove Java; 'reference_fail' keeps
    * everything and stops; 'forever' never finishes; 'error' answers 500.
    */
-  proof?: 'pass' | 'java_fail' | 'java_compile' | 'reference_fail' | 'forever' | 'error';
+  proof?: 'pass' | 'java_fail' | 'java_compile' | 'reference_fail' | 'forever' | 'error' | 'changed' | 'gone' | 'apply_error';
 }
 
 const LANG_IDS = ['cpp17', 'java21', 'python3', 'node22'];
@@ -207,19 +207,25 @@ export function proofLanguages(over: Record<string, Json> = {}): Json[] {
 }
 const passedAll = (): Record<string, Json> => Object.fromEntries(LANG_IDS.map((l) => [l, { result: 'passed', total: 12 }]));
 
+const JAVA_FAILED_MOCK = { offered: false, result: 'failed', reason: 'wrong_answer', failed: 3, total: 12 };
+
 /** The answers GET .../proof gives one after another; the last repeats. */
 export function proofScript(kind: NonNullable<MockOptions['proof']>): Json[] {
   const running = (done: number, current: string): Json => ({ checking: true, progress: { done, total: 7, current }, languages: proofLanguages(), server_now: T0 });
   const lead = [running(0, ''), running(2, 'java21')];
   if (kind === 'forever') return lead;
   if (kind === 'pass') return [...lead, { checking: false, languages: proofLanguages(passedAll()), applied: { validating: true }, server_now: T0 }];
+  if (kind === 'changed' || kind === 'gone' || kind === 'apply_error') {
+    const applied = kind === 'apply_error' ? { error: 'Java 21 could not be removed.', validating: false } : { discarded: kind, validating: false };
+    return [...lead, { checking: false, languages: proofLanguages({ ...passedAll(), java21: JAVA_FAILED_MOCK }), applied, server_now: T0 }];
+  }
   if (kind === 'reference_fail') {
     const languages = proofLanguages({ ...passedAll(), cpp17: { result: 'failed', reason: 'wrong_answer', failed: 5, total: 12 } });
     return [...lead, { checking: false, languages, applied: { kept: 'reference_failed', validating: false }, server_now: T0 }];
   }
   const java =
     kind === 'java_compile'
-      ? { offered: false, result: 'failed', reason: 'compile_error', compiler: 'Main.java:7: error: cannot find symbol\n  symbol: variable lenn\n  location: class Solution', total: 12 }
+      ? { offered: false, result: 'failed', reason: 'compile_error', compiler: 'Main.java:7: error: cannot find symbol\n  symbol: variable lenn\n  location: class Solution', total: 0 }
       : { offered: false, result: 'failed', reason: 'wrong_answer', failed: 3, total: 12, tests: [{ idx: 4, verdict: 'WA' }] };
   return [...lead, { checking: false, languages: proofLanguages({ ...passedAll(), java21: java }), applied: { removed: ['java21'], validating: true }, server_now: T0 }];
 }
@@ -404,7 +410,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
             return json(route, 200, script[Math.min(state.proofGets, script.length) - 1]);
           }
           if (rest === '/validation') {
-            if (state.proofGets < script.length || opts.proof === 'reference_fail') return apiError(route, 404, 'not_found', 'This problem has not been validated yet.');
+            if (state.proofGets < script.length || ['reference_fail', 'changed', 'gone', 'apply_error', 'forever'].includes(opts.proof as string)) return apiError(route, 404, 'not_found', 'This problem has not been validated yet.');
             return json(route, 200, { id: 9, state: 'passed', content_hash: 'h20', current: true, queued_at: T0, finished_at: T0, queue_position: null, compile: [], tests: [], summary: null, error: null });
           }
         }

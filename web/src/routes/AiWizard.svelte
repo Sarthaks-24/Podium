@@ -92,6 +92,8 @@
   let proof = $state<ProofState | null>(null);
   let proofStopped = false;
   let proofError = $state(false);
+  /** The ten minute limit passed with the chain unfinished. */
+  let chainSlow = $state(false);
   const chain = $derived(wizard ? draftChainSteps(wizard, chainInputs, chainOutputs, chainValidation, proof, functionRun === true) : null);
   const steps = $derived(chain?.steps ?? []);
   const languageStep = $derived(steps.find((s) => s.text === 'Checking each language')?.state);
@@ -104,6 +106,8 @@
     if (chain?.outcome === 'tests_failed') return 'The tests could not be generated';
     if (chain?.outcome === 'reference_failed') return "The AI's own solution failed its tests";
     if (chain?.outcome === 'reference_unchecked') return "The AI's own solution could not be checked";
+    if (chain?.outcome === 'proof_stopped') return 'The language checks did not count';
+    if (chainSlow) return 'This is taking longer than usual';
     if (languageStep === 'current') return proof ? checkingLine(proof) : 'Checking the languages.';
     if (wizard.problem_id) return chainValidation ? 'Validating the draft' : 'Generating the tests';
     return wizardStatusText(wizard);
@@ -170,7 +174,7 @@
         job<Generation>(problemPath(pid, '/generation')),
         job<Validation>(problemPath(pid, '/validation')),
       ]);
-      if (!alive) return;
+      if (!alive || wizard?.problem_id !== pid) return;
       chainInputs = i;
       chainOutputs = o;
       chainValidation = v;
@@ -179,8 +183,11 @@
       // A failed poll is tried again on the next tick.
     }
     await pollProof(pid);
+    if (!alive || wizard?.problem_id !== pid) return;
     clearTimeout(chainTimer);
-    if (alive && !proofError && !chain?.done && Date.now() - chainStarted < CHAIN_MAX_MS) chainTimer = setTimeout(pollChain, POLL_DOWN_MS);
+    if (!alive || proofError || chain?.done) return;
+    if (Date.now() - chainStarted < CHAIN_MAX_MS) chainTimer = setTimeout(pollChain, POLL_DOWN_MS);
+    else chainSlow = true;
   }
 
   /**
@@ -192,7 +199,7 @@
     if (functionRun === false || proofStopped || !alive) return;
     try {
       const p = await job<ProofState>(proofPaths.state(pid));
-      if (!alive) return;
+      if (!alive || wizard?.problem_id !== pid) return;
       if (p === null) {
         functionRun = false;
         proofStopped = true;
@@ -202,7 +209,7 @@
       functionRun = p.languages.length > 0;
       if (!functionRun || roundFinished(p)) proofStopped = true;
     } catch (e) {
-      if (handleAuth(e)) return;
+      if (handleAuth(e) || wizard?.problem_id !== pid) return;
       proofStopped = true;
       proofError = true;
     }
@@ -346,6 +353,7 @@
     proof = null;
     proofStopped = false;
     proofError = false;
+    chainSlow = false;
     functionRun = null;
     wizard = null;
     requestError = null;
@@ -454,12 +462,17 @@
                 ? 'Validation failed. Open the draft to see what to fix.'
                 : chain?.outcome === 'tests_failed'
                   ? 'The tests could not be generated. Open the draft to see why.'
-                  : chain?.outcome === 'reference_failed' || chain?.outcome === 'reference_unchecked'
+                  : chain?.outcome === 'reference_failed' || chain?.outcome === 'reference_unchecked' || chain?.outcome === 'proof_stopped'
                     ? 'The draft is in the problem bank. It is not validated.'
                     : 'The draft is in the problem bank. Its tests are being generated and validated; this page follows each step.']
               .filter((x) => x !== '')
               .join(' ')}
           </p>
+          {#if chainSlow && !chain?.done}
+            <div class="banner banner-info">
+              <p>This is taking longer than usual. Open the draft to see where it is.</p>
+            </div>
+          {/if}
           {#if proofError}
             <div class="banner banner-error" role="alert">
               <p>Could not read the language checks. Open the draft to see them.</p>

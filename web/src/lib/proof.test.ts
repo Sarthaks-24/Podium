@@ -156,3 +156,20 @@ describe('refusals', () => {
     expect(r.code).toBe('not_ready');
   });
 });
+
+describe('review fixes', () => {
+  it('says a round that was dropped or hit an error did not count', () => {
+    expect(referenceBanner({ applied: { discarded: 'changed', validating: false } })).toBe(
+      'The draft was changed while its languages were being checked, so the result was not used. Open the draft and press Check for each language.',
+    );
+    expect(referenceBanner({ applied: { discarded: 'gone', validating: false } })).toBe('The draft was deleted while its languages were being checked.');
+    expect(referenceBanner({ applied: { error: 'Java 21 is locked.', validating: false } })).toBe('Java 21 is locked. Open the draft to see its languages.');
+  });
+
+  it('does not say "failed 0 of 0 tests" and marks an old failure as old', () => {
+    const offered = (over: Partial<ProofLanguage>) => lang({ offered: true, ...over });
+    expect(lastCheckLine(offered({ reason: 'skipped', failed: 0, total: 0 }))).toBe('The last check could not be run. Press Check Java to try again.');
+    expect(lastCheckLine(offered({ current: false }))).toBe('Failed before the last change. Press Check Java again.');
+    expect(checkResultLine(lang({ reason: 'no_report', failed: 0, total: 0 }))).toBe('Java could not be checked.');
+  });
+});

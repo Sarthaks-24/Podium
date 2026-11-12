@@ -214,13 +214,16 @@
   /** Polls one job of the problem every 2 s while `pending` holds; `take` gets each answer. */
   function poller<T>(path: string, pending: () => boolean, take: (value: T) => void) {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // Only the newest request counts: an older answer that arrives late is dropped.
+    let latest = 0;
     async function tick() {
+      const mine = ++latest;
       try {
         const value = await getJSON<T>(problemPath(id, path));
-        if (!page.live) return;
+        if (!page.live || mine !== latest) return;
         take(value);
       } catch (e) {
-        if (handleAuth(e)) return;
+        if (mine !== latest || handleAuth(e)) return;
         // A failed poll is tried again on the next tick.
       }
       schedule();
@@ -265,10 +268,17 @@
   });
 
   // Asks while a round is open. When it ends the problem is read again (a fix may have added a language) and a queued validation is followed.
-  const proofPoll = poller<ProofState>('/proof', () => proof?.checking === true, (p) => {
+  // `awaiting` holds from a 202 until a round has been seen to end (or, after three quiet answers, until it is taken as already over).
+  let awaiting = $state(false);
+  let seenRound = false;
+  let quietTicks = 0;
+  const proofPoll = poller<ProofState>('/proof', () => proof?.checking === true || awaiting, (p) => {
     const was = proof?.checking === true;
     proof = p;
-    if (was && !p.checking) {
+    if (p.checking) seenRound = true;
+    const over = awaiting && !p.checking && (seenRound || ++quietTicks >= 3);
+    if (over) awaiting = false;
+    if ((was || over) && !p.checking) {
       void refreshProblem();
       if (p.applied?.validating && !isPending(validation)) void validationPoll.tick();
     }
@@ -277,6 +287,19 @@
   /** A refusal that says a round is open means the page missed it: read the state and watch. */
   function noteChecking(e: unknown) {
     if (e instanceof ApiError && e.code === 'checking') void proofPoll.tick();
+  }
+
+  /** A route accepted a Fix or a Check: read the state at once and keep reading until its round ends. */
+  function startRound(): Promise<void> {
+    awaiting = true;
+    seenRound = false;
+    quietTicks = 0;
+    return proofPoll.tick();
+  }
+
+  /** The panel was out of date (a refusal said so): read the state and the problem again. */
+  async function refreshLanguages() {
+    await Promise.all([proofPoll.tick(), refreshProblem()]);
   }
 
   async function refreshProblem() {
@@ -571,7 +594,7 @@
 
 {#snippet languagesPart()}
   {#if problem && proof && proof.languages.length > 0}
-    <LanguageProofPanel problemId={problem.id} {proof} {dirty} onstarted={() => proofPoll.tick()} />
+    <LanguageProofPanel problemId={problem.id} {proof} {dirty} {awaiting} onstarted={startRound} onstale={refreshLanguages} />
   {/if}
 {/snippet}
 
@@ -640,8 +663,11 @@
     />
 
     <div class="notes">
+      {#if isFunction}
+        <p class="visually-hidden" role="status">{proofChecking ? CHECKING_TEXT : ''}</p>
+      {/if}
       {#if proofChecking}
-        <div id="proof-checking" class="banner banner-info" role="status">
+        <div id="proof-checking" class="banner banner-info">
           <p>{CHECKING_TEXT}</p>
         </div>
       {/if}

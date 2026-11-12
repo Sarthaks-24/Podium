@@ -18,27 +18,33 @@
 
   The editor owns the state: it reads GET .../proof, keeps asking while a
   round is open and passes the answer in. Props: `problemId`, `proof` (the
-  latest answer), `dirty` (the editor has unsaved changes) and `onstarted`
-  (called after a route accepted a request, so the editor reads the state
-  again and watches until the round ends).
+  latest answer), `dirty` (the editor has unsaved changes), `awaiting` (a round
+  was started here and its end is not seen yet), `onstarted` (called when a
+  route accepted a request, so the editor reads the state and watches until
+  the round ends) and `onstale` (the panel was out of date: read the state
+  and the problem again). Each language has one status line that is always in
+  the page, empty and visually hidden until it has text: it says the start,
+  the progress and the result.
 -->
 <script lang="ts">
   import { tick } from 'svelte';
   import Icon from '../Icon.svelte';
   import { isKeyProblem } from '../../lib/ai';
-  import { sendJSON } from '../../lib/api';
+  import { ApiError, sendJSON } from '../../lib/api';
   import { verdictLabel } from '../../lib/problems';
-  import { checkResultLine, failureText, languageName, lastCheckLine, proofPaths, proofRefusal, type ProofLanguage, type ProofState } from '../../lib/proof';
+  import { checkResultLine, failureText, languageName, lastCheckLine, checkingLine, proofPaths, proofRefusal, type ProofLanguage, type ProofState } from '../../lib/proof';
   import { showToast } from '../../lib/toast.svelte';
 
   interface Props {
     problemId: number;
     proof: ProofState;
     dirty: boolean;
+    awaiting: boolean;
     onstarted: () => Promise<void>;
+    onstale: () => Promise<void>;
   }
 
-  let { problemId, proof, dirty, onstarted }: Props = $props();
+  let { problemId, proof, dirty, awaiting, onstarted, onstale }: Props = $props();
 
   /** The model can take minutes, as in Edit with AI. */
   const ASK_TIMEOUT_MS = 4 * 60 * 1000;
@@ -57,7 +63,7 @@
   let refusals = $state<Record<string, Refusal | undefined>>({});
   let results = $state<Record<string, string>>({});
 
-  const busy = $derived(working !== null || proof.checking);
+  const busy = $derived(working !== null || proof.checking || awaiting);
 
   const idOf = (language: string) => `lang-${language}`;
 
@@ -96,15 +102,16 @@
 
   $effect(() => {
     const w = working;
-    if (w && w.stage === 'checking' && !proof.checking) void finish(w);
+    if (w && w.stage === 'checking' && !proof.checking && !awaiting) void finish(w);
   });
 
   function refuse(language: string, control: Refusal['control'], e: unknown) {
     refusals[language] = { control, ...proofRefusal(e, language) };
-    if (refusals[language]?.code === 'checking') void onstarted();
+    if (['checking', 'not_offered', 'already_offered'].includes(refusals[language]?.code ?? '')) void onstale();
   }
 
   async function run(language: string, kind: 'fix' | 'check') {
+    if (busy) return;
     refusals[language] = undefined;
     results[language] = '';
     let body: Record<string, string> = {};
@@ -124,12 +131,15 @@
     } catch (e) {
       working = null;
       refuse(language, kind, e);
+      // A client timeout may still have queued the round: watch for it.
+      if (e instanceof ApiError && e.code === 'timeout') void onstarted();
       await tick();
       document.getElementById(`${idOf(language)}-${kind}`)?.focus();
       return;
     }
-    await onstarted();
+    const started = onstarted();
     working = { language, kind, stage: 'checking' };
+    await started;
   }
 
   const label = (l: ProofLanguage, kind: 'fix' | 'check') => {
@@ -137,6 +147,15 @@
     if (working?.language !== l.language || working.kind !== kind) return kind === 'fix' ? `Fix ${name} with AI` : `Check ${name}`;
     return working.stage === 'asking' && kind === 'fix' ? 'Asking the AI' : `Checking ${name}`;
   };
+
+  /** What the language's status line says now: the start, the progress or the result. */
+  function liveText(language: string): string {
+    if (working?.language === language) {
+      if (working.stage === 'asking') return working.kind === 'fix' ? 'Asking the AI.' : `Checking ${languageName(language)}.`;
+      return proof.checking ? checkingLine(proof) : `Checking ${languageName(language)}.`;
+    }
+    return results[language] ?? '';
+  }
 
   /** The reason line of a language that is not offered. */
   function reason(l: ProofLanguage): string {
@@ -233,7 +252,7 @@
           {/if}
         </div>
       {/if}
-      <p class="result" role="status">{results[l.language] ?? ''}</p>
+      <p class="result" class:visually-hidden={liveText(l.language) === ''} role="status">{liveText(l.language)}</p>
     </div>
   {/each}
 </section>
@@ -339,7 +358,4 @@
     padding-left: var(--space-5);
   }
 
-  .result:empty {
-    display: none;
-  }
 </style>

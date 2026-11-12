@@ -241,3 +241,67 @@ for (const theme of THEMES) {
     });
   });
 }
+
+const STOP_COPY: Record<string, string> = {
+  changed: 'The draft was changed while its languages were being checked, so the result was not used. Open the draft and press Check for each language.',
+  gone: 'The draft was deleted while its languages were being checked.',
+  apply_error: 'Java 21 could not be removed. Open the draft to see its languages.',
+};
+
+for (const kind of ['changed', 'gone', 'apply_error'] as const) {
+  test(`a round that ends ${kind} stops the wizard with a banner and no language lines`, async ({ page }) => {
+    const state = await runBrief(page, { proof: kind });
+    const banner = page.getByRole('alert').filter({ hasText: STOP_COPY[kind] });
+    await expect(banner).toBeVisible({ timeout: 15_000 });
+    await expect(languages(page)).toHaveCount(0);
+    await expect(page.getByText(/Offered:/)).toHaveCount(0);
+    await expect(progress(page).getByRole('listitem').nth(3)).toContainText(', failed');
+    await expect(page.getByRole('link', { name: 'Open the draft in the editor' })).toBeVisible();
+    const n = proofRequests(state.requestedUrls);
+    await page.waitForTimeout(4500);
+    expect(proofRequests(state.requestedUrls)).toBe(n);
+  });
+}
+
+test('after ten minutes with nothing finished the page says it is slow instead of stopping silently', async ({ page }) => {
+  await page.clock.install();
+  const state = await runBrief(page, { proof: 'forever' });
+  await expect(progress(page).getByRole('status')).toHaveText('Checking Java, 2 of 4.', { timeout: 15_000 });
+  await page.clock.fastForward('11:00');
+  await expect(page.getByText('This is taking longer than usual. Open the draft to see where it is.')).toBeVisible({ timeout: 15_000 });
+  const n = proofRequests(state.requestedUrls);
+  await page.clock.fastForward('00:30');
+  await page.waitForTimeout(500);
+  expect(proofRequests(state.requestedUrls)).toBe(n);
+});
+
+test('a proof answer that arrives after Start another is not written into the new run', async ({ page }) => {
+  const state = await mockApi(page, { ...OPTS, proof: 'forever' });
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((r) => (release = r));
+  let held = false;
+  await page.route('**/api/admin/problems/20/proof', async (route) => {
+    if (held) return route.fallback();
+    held = true;
+    await gate;
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ checking: false, languages: ['cpp17', 'java21'].map((language) => ({ language, offered: true, result: 'passed', reason: '', failed: 0, total: 4, compiler: '', tests: [], current: true, source: 'wizard' })), applied: { validating: true } }),
+    });
+  });
+  await page.goto('/admin/ai/new');
+  await page.getByLabel('Topic', { exact: true }).fill('Sum of an array');
+  await chooseFunction(page);
+  await page.getByRole('button', { name: 'Generate draft' }).click();
+  await expect(page.getByRole('button', { name: 'Start another' })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Start another' }).click();
+  await page.getByLabel('Topic', { exact: true }).fill('Another');
+  await chooseFunction(page);
+  release();
+  await page.getByRole('button', { name: 'Generate draft' }).click();
+  await expect(page.getByRole('button', { name: 'Start another' })).toBeVisible({ timeout: 15_000 });
+  await expect(progress(page).getByRole('status')).toHaveText('Checking Java, 2 of 4.', { timeout: 15_000 });
+  await expect(languages(page)).toHaveCount(0);
+  expect(state.wizardBodies).toHaveLength(2);
+});

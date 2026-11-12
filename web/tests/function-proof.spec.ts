@@ -79,13 +79,15 @@ interface Api {
   refuse?: { status: number; code: string; message: string; extra?: bank.Json };
   /** Wait this long before the check or fix answers. */
   delay: number;
+  /** How many of the next GET .../proof answers are a 500. */
+  failProofGets: number;
   /** When set, a check or fix moves the script to this and is answered 202. */
   after?: Proof[];
 }
 
 async function setup(page: Page, opts: { mode?: 'function' | 'whole'; script?: Proof[] } = {}): Promise<Api> {
   await bank.mockApi(page);
-  const api: Api = { script: opts.script ?? [MIXED], proofGets: 0, problemGets: 0, checks: [], fixes: [], validates: 0, delay: 0 };
+  const api: Api = { script: opts.script ?? [MIXED], proofGets: 0, problemGets: 0, checks: [], fixes: [], validates: 0, delay: 0, failProofGets: 0 };
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     async (route) => {
@@ -98,6 +100,10 @@ async function setup(page: Page, opts: { mode?: 'function' | 'whole'; script?: P
         return bank.json(route, 200, opts.mode === 'whole' ? unvalidated() : functionProblem());
       }
       if (path === '/api/admin/problems/1/proof' && method === 'GET') {
+        if (api.failProofGets > 0) {
+          api.failProofGets--;
+          return bank.apiError(route, 500, 'internal', 'The server failed.');
+        }
         api.proofGets++;
         const at = Math.min(api.proofGets, api.script.length) - 1;
         return bank.json(route, 200, { ...api.script[at], server_now: bank.T0 });
@@ -155,7 +161,8 @@ test('a whole-program problem shows none of it and never asks for the checks', a
 test('while the languages are being checked a banner says so and Validate is disabled with the same sentence', async ({ page }) => {
   const api = await setup(page, { script: [RUNNING, RUNNING, MIXED] });
   await page.goto('/admin/problems/1');
-  const banner = page.getByRole('status').filter({ hasText: 'Podium is checking the languages of this problem. This takes a few minutes.' });
+  await expect(page.getByRole('status')).toHaveCount(1);
+  const banner = page.locator('.banner-info', { hasText: 'Podium is checking the languages of this problem. This takes a few minutes.' });
   await expect(banner).toBeVisible();
   await expect(banner).toHaveClass(/banner-info/);
   const validate = validateButton(page);
@@ -175,7 +182,7 @@ test('pressing Validate when the server says it is checking shows the server sen
   await expect(validateButton(page)).toBeEnabled();
   await validateButton(page).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Podium is still checking the languages of this problem.' })).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'Podium is checking the languages of this problem.' })).toBeVisible();
+  await expect(page.locator('.banner-info', { hasText: 'Podium is checking the languages of this problem.' })).toBeVisible();
   expect(api.validates).toBe(1);
 });
 
@@ -373,6 +380,7 @@ test('Fix and Check are reachable and work from the keyboard', async ({ page }) 
   await openFold(page);
   await activate(page, page.getByRole('button', { name: 'Fix Java with AI' }));
   await expect.poll(() => api.fixes.length).toBe(1);
+  await expect(page.getByRole('button', { name: 'Fix Java with AI' })).toBeEnabled({ timeout: 15_000 });
   api.after = [{ checking: false, languages: lang({ ...passed(), java21: JAVA_FAILED, cpp17: { result: 'passed', total: 12, source: 'check' } }) }];
   const r = row(page, 'C++');
   await r.locator('summary', { hasText: 'Check C++' }).focus();
@@ -423,10 +431,65 @@ for (const theme of THEMES) {
       await setup(page, { script: [RUNNING] });
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto('/admin/problems/1');
-      await expect(page.getByRole('status').filter({ hasText: 'Podium is checking the languages' })).toBeVisible();
+      await expect(page.locator('.banner-info', { hasText: 'Podium is checking the languages' })).toBeVisible();
       await fits(page, 'problem-checking', theme);
       const results = await new AxeBuilder({ page }).include('.editor').withTags(AXE_TAGS).analyze();
       expect(results.violations.map((v) => v.id)).toEqual([]);
     });
   });
 }
+
+test('the live region is in the page before a round starts and holds its result after', async ({ page }) => {
+  const api = await setup(page);
+  api.after = [{ checking: false, languages: lang({ ...passed(), java21: JAVA_FAILED, python3: { result: 'passed', total: 12, source: 'check' } }) }];
+  await openFold(page);
+  const r = await checkBox(page, 'Python');
+  await expect(r.getByRole('status')).toHaveCount(1);
+  await r.getByLabel('Your solution in Python').fill('def solve(a): return 1');
+  await r.getByRole('button', { name: 'Check Python' }).click();
+  await expect(r.getByRole('status')).toHaveText('Python passes every test.', { timeout: 10_000 });
+});
+
+test('a failed read right after Fix is accepted does not end the working state early', async ({ page }) => {
+  const api = await setup(page);
+  api.after = [RUNNING, { checking: false, languages: lang({ ...passed(), java21: { ...JAVA_FAILED, failed: 2, source: 'fix' } }), applied: { kept: 'not_added', validating: false } }];
+  await openFold(page);
+  api.failProofGets = 1;
+  await page.getByRole('button', { name: 'Fix Java with AI' }).click();
+  await page.waitForTimeout(700);
+  await expect(row(page, 'Java').getByRole('status')).not.toContainText('Nothing was changed');
+  await expect(row(page, 'Java').getByRole('button', { name: 'Checking Java' })).toHaveAttribute('aria-busy', 'true');
+  await expect(row(page, 'Java').getByRole('status')).toContainText('Nothing was changed.', { timeout: 15_000 });
+});
+
+test('an older proof answer that arrives late does not replace a newer one', async ({ page }) => {
+  const api = await setup(page, { script: [RUNNING] });
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((r) => (release = r));
+  let held = false;
+  await page.route('**/api/admin/problems/1/proof', async (route) => {
+    if (held) return route.fallback();
+    held = true;
+    await gate;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...MIXED, server_now: bank.T0 }) });
+  });
+  await page.goto('/admin/problems/1');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('A plus B');
+  await page.getByLabel('Title', { exact: true }).fill('A plus B, edited');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  const banner = page.locator('.banner-info', { hasText: 'Podium is checking the languages' });
+  await expect(banner).toBeVisible();
+  release();
+  await page.waitForTimeout(700);
+  await expect(banner).toBeVisible();
+  expect(api.proofGets).toBeGreaterThan(0);
+});
+
+test('already_offered and not_offered reload the state so the right control shows', async ({ page }) => {
+  const api = await setup(page, { script: [MIXED, { checking: false, languages: lang({ ...passed(), java21: { offered: true, result: 'none' } }) }] });
+  api.refuse = { status: 409, code: 'already_offered', message: 'x' };
+  await openFold(page);
+  await page.getByRole('button', { name: 'Fix Java with AI' }).click();
+  await expect(row(page, 'Java').locator('.lang-state')).toHaveText('Offered');
+  await expect(page.getByRole('button', { name: 'Fix Java with AI' })).toHaveCount(0);
+});
