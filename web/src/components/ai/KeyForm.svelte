@@ -10,7 +10,7 @@
   it in the server's words, never with the key.
 
   Props: `status` (bindable KeyStatus; replaced by the server's answer
-  after a save), `id` (a prefix for the field ids, none by default), `heading` (the form's heading; "" for none), `primary` (whether
+  after a save), `id` (a prefix for the field ids, none by default), `heading` (the form's heading; "" for none), `level` (its heading level, 2 by default; 3 inside a panel that has its own h2), `primary` (whether
   Save is the page's primary action), `onsessionerror` (true when it
   handled a signed-out or forbidden answer) and `onsaved`. `reset()`
   puts the form back on the provider in use, after a key was forgotten.
@@ -26,12 +26,13 @@
     status: KeyStatus;
     id?: string;
     heading?: string;
+    level?: 2 | 3;
     primary?: boolean;
     onsessionerror?: (e: unknown) => boolean;
     onsaved?: (status: KeyStatus) => void;
   }
 
-  let { status = $bindable(), id = '', heading, primary = true, onsessionerror = () => false, onsaved }: Props = $props();
+  let { status = $bindable(), id = '', heading, level = 2, primary = true, onsessionerror = () => false, onsaved }: Props = $props();
 
   /** A field id, with the prefix when the page has more than one form. */
   function fid(name: string): string {
@@ -147,7 +148,7 @@
 </script>
 
 <form id={fid('key-form')} class="key-form" novalidate onsubmit={save} aria-labelledby={title ? fid('form-heading') : undefined} aria-label={title ? undefined : 'AI key'}>
-  {#if title}<h2 id={fid('form-heading')}>{title}</h2>{/if}
+  {#if title}<svelte:element this={`h${level}`} id={fid('form-heading')}>{title}</svelte:element>{/if}
 
   <div class="field provider-field">
     <label for={fid('provider')}>Provider</label>
@@ -245,7 +246,8 @@
 </form>
 
 <style>
-  h2 {
+  h2,
+  h3 {
     font-size: var(--fs-sub);
   }
 

@@ -178,6 +178,14 @@ test('Accept is disabled while the editor has unsaved changes, with the reason b
   expect(calls.accepted).toEqual([]);
 });
 
+test('the key form inside the panel is a level 3 heading under the panel level 2', async ({ page }) => {
+  await setup(page);
+  await openPanel(page);
+  await page.getByRole('button', { name: 'Change key or model' }).click();
+  await expect(page.getByRole('heading', { level: 3, name: /key or model/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: /key or model/ })).toHaveCount(0);
+});
+
 test('a running contest refuses Accept with the server sentence and keeps the draft', async ({ page }) => {
   const calls = await setup(page, undefined, RUNNING);
   await openPanel(page);

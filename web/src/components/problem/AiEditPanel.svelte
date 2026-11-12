@@ -196,6 +196,7 @@
       <KeyForm
         bind:status={keyStatus}
         id="aiedit"
+        level={3}
         heading={keyFormOpen && blocker === '' ? undefined : keyStatus.active ? 'Choose a model to start' : 'Add a key to start'}
         onsaved={(s) => {
           if (wizardBlocker(s) === '') keyFormOpen = false;

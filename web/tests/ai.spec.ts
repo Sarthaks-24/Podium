@@ -222,6 +222,14 @@ test('each provider keeps its own key, a typed model id is accepted, and the lis
   await page.screenshot({ path: `${shots()}ai-wizard-three-keys-1440-light.png`, fullPage: true });
 });
 
+test('the wizard intro uses plain words for what it writes', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/admin/ai/new');
+  const lead = page.locator('p.lead');
+  await expect(lead).toContainText('statement, subtasks, solutions, a checker for the inputs and a test generator.');
+  await expect(lead).not.toContainText('brute force');
+});
+
 test('the wizard waits for a model when a key was saved without one', async ({ page }) => {
   await mockApi(page, { key: 'no-model' });
   await page.goto('/admin/ai/new');

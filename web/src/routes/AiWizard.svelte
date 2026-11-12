@@ -335,7 +335,7 @@
     {/if}
 
     <p class="lead">
-      The model writes a draft: statement, subtasks, reference and brute force solutions, a validator and a test generator. Nothing reaches
+      The model writes a draft: statement, subtasks, solutions, a checker for the inputs and a test generator. Nothing reaches
       students until you have read it and it passes validation.
     </p>
 
