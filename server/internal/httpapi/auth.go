@@ -413,9 +413,11 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 // sameOrigin refuses state-changing API requests from other sites. SameSite
 // cookies already stop most of them; this covers older browsers and
 // same-site subdomains. A request that carries the session cookie must also
-// carry Origin or Sec-Fetch-Site: every browser sends one on a mutation, so a
-// script replaying a stolen cookie with neither is refused. Requests without
-// the cookie (sign-in, the bearer-token judge API) are not covered.
+// carry Origin or Sec-Fetch-Site: every current browser sends one on a
+// mutation, so a request with neither cannot be checked and is refused rather
+// than let through. A script can still add the header itself; this closes the
+// unchecked path, it does not stop a stolen cookie. Requests without the
+// cookie (sign-in, the bearer-token judge API) are not covered.
 func (d Deps) sameOrigin(next http.Handler) http.Handler {
 	want := d.BaseURL
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
