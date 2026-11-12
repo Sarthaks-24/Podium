@@ -1150,6 +1150,10 @@ By default nothing changes: every role is on "Nobody", the cookie has no `Max-Ag
 
 Migration `0016_v210_sessions.sql` adds `sessions.remember` (0 or 1, default 0) and `sessions.last_seen_at`. Every session that exists at the upgrade is ordinary.
 
+### Stage C: security
+
+A `POST`, `PUT`, `PATCH` or `DELETE` under `/api/` that carries the session cookie and has neither an `Origin` nor a `Sec-Fetch-Site` header is refused with `403 cross_site` and the message "This request had no Origin or Sec-Fetch-Site header and was refused. Use the web app, or send an Origin header equal to the server address." Every browser sends one of the two on a write; a script that replays a cookie must send `Origin` equal to `PODIUM_BASE_URL`. Nothing changes when either header is present (the checks in "Cross-site requests" above still apply), for `GET`, `HEAD` and `OPTIONS`, for a request with no session cookie (the sign-in start, the Google callback), or for the judge's bearer-token API, which is a separate listener and carries no cookie.
+
 ### Stage F: function problems from the wizard
 
 ### Stage K: other AI providers

@@ -412,7 +412,10 @@ func (d Deps) requireRole(min auth.Role, h http.HandlerFunc) http.HandlerFunc {
 
 // sameOrigin refuses state-changing API requests from other sites. SameSite
 // cookies already stop most of them; this covers older browsers and
-// same-site subdomains.
+// same-site subdomains. A request that carries the session cookie must also
+// carry Origin or Sec-Fetch-Site: every browser sends one on a mutation, so a
+// script replaying a stolen cookie with neither is refused. Requests without
+// the cookie (sign-in, the bearer-token judge API) are not covered.
 func (d Deps) sameOrigin(next http.Handler) http.Handler {
 	want := d.BaseURL
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -424,6 +427,10 @@ func (d Deps) sameOrigin(next http.Handler) http.Handler {
 				site := r.Header.Get("Sec-Fetch-Site")
 				if (origin != "" && origin != want) || (origin == "" && site != "" && site != "same-origin") {
 					httpx.WriteError(w, http.StatusForbidden, "cross_site", "This request came from another site and was refused.")
+					return
+				}
+				if _, err := r.Cookie(d.sessionCookieName()); err == nil && origin == "" && site == "" {
+					httpx.WriteError(w, http.StatusForbidden, "cross_site", "This request had no Origin or Sec-Fetch-Site header and was refused. Use the web app, or send an Origin header equal to the server address.")
 					return
 				}
 			}
