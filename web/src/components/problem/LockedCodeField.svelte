@@ -13,11 +13,14 @@
   mode choice, and the summary names the offered languages that were never
   checked. Props: `draft` (bindable), `fields` (the field errors by key),
   `languages` (the panel) and `unchecked` (names of offered languages that
-  were never checked, or "").
+  were never checked, or ""). A Java starter with two forms (a list choice,
+  lib/starters.ts) shows "Students choose between" and one read-only preview
+  per form.
 -->
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { layoutDoc } from '../../lib/lockedCode';
+  import { listChoice } from '../../lib/starters';
   import type { Draft } from '../../lib/problems';
 
   interface Props {
@@ -74,11 +77,20 @@
   });
 
   // What a student sees, joined by the editor's own join (lib/lockedCode.ts).
-  const preview = $derived.by(() => {
+  // A Java list choice previews each form; any other starter is one preview.
+  const previews = $derived.by(() => {
     const top = draft.locked_top?.[language] ?? '';
     const bottom = draft.locked_bottom?.[language] ?? '';
-    const l = layoutDoc(top, draft.starters?.[language] ?? '', bottom);
-    return { top: l.doc.slice(0, l.topEnd), code: l.doc.slice(l.topEnd, l.bottomStart < 0 ? undefined : l.bottomStart), bottom: l.bottomStart < 0 ? '' : l.doc.slice(l.bottomStart) };
+    const forms = language === 'java21' ? listChoice(draft.starters ?? {}) : [];
+    return (forms.length > 0 ? forms : [{ name: '', code: draft.starters?.[language] ?? '' }]).map((f) => {
+      const l = layoutDoc(top, f.code, bottom);
+      return {
+        name: f.name,
+        top: l.doc.slice(0, l.topEnd),
+        code: l.doc.slice(l.topEnd, l.bottomStart < 0 ? undefined : l.bottomStart),
+        bottom: l.bottomStart < 0 ? '' : l.doc.slice(l.bottomStart),
+      };
+    });
   });
 
   function write(part: 'locked_top' | 'locked_bottom', code: string) {
@@ -150,13 +162,20 @@
           </p>
           {#if fields.locked_bottom}<p id="locked-bottom-error" class="field-error">{said(fields.locked_bottom)}</p>{/if}
         </div>
-        <div class="field">
-          <p class="preview-label" id="locked-preview-label">What students see in {label}, with the starter between the locked parts</p>
-          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-          <div class="preview" role="region" aria-labelledby="locked-preview-label" tabindex="0">
-            <pre class="mono" translate="no"><span class="locked">{preview.top}</span>{preview.code}<span class="locked">{preview.bottom}</span></pre>
+        {#if previews.length > 1}
+          <p class="muted small">Students choose between: {previews.map((p) => p.name).join(', ')}.</p>
+        {/if}
+        {#each previews as preview, i (i)}
+          <div class="field">
+            <p class="preview-label" id="locked-preview-label-{i}">
+              What students see in {label}, with the {preview.name === '' ? '' : `${preview.name} `}starter between the locked parts
+            </p>
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+            <div class="preview" role="region" aria-labelledby="locked-preview-label-{i}" tabindex="0">
+              <pre class="mono" translate="no"><span class="locked">{preview.top}</span>{preview.code}<span class="locked">{preview.bottom}</span></pre>
+            </div>
           </div>
-        </div>
+        {/each}
       {/if}
     </fieldset>
   </details>

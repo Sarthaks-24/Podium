@@ -13,6 +13,10 @@
  *   in `pendingLanguage` for the confirm, and Cancel keeps the code.
  * - Reset puts the starter back and saves at once, so the next timed save
  *   or a reload cannot bring the old code back.
+ * - A Java starter with two forms (lib/starters.ts, v2.1.0 F13) is a choice
+ *   while the code equals one of them: `forms` lists them and `untouchedForm`
+ *   names the one in the editor. Nothing about the choice is stored; it is
+ *   read from the code.
  */
 import { ApiError, isSignedOut, sendJSON } from './api';
 import { serverClock } from './clock';
@@ -30,7 +34,7 @@ import {
   writeMirror,
   type LineHeight,
 } from './drafts';
-import { isStarterOrEmpty, starter } from './starters';
+import { isStarterOrEmpty, listChoice, starter, type StarterForm } from './starters';
 import type { Language, Workspace } from './workspace';
 
 export type SaveState = 'saved' | 'saving' | 'local' | 'failed';
@@ -70,7 +74,7 @@ export class Draft {
 
   private loaded = false;
   /** The problem's own starters, by language (v4 E5). */
-  private starters: Partial<Record<string, string>> = {};
+  private starters = $state.raw<Partial<Record<string, string>>>({});
   private savedLanguage = '';
   private savedSource = '';
   private mirrorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -95,6 +99,22 @@ export class Draft {
   /** True when the code on screen differs from the server's copy. */
   get unsaved(): boolean {
     return this.source !== this.savedSource || this.language !== this.savedLanguage;
+  }
+
+  /** The starting forms of the language shown, array form first, when its starter offers a choice; empty otherwise. */
+  get forms(): StarterForm[] {
+    return this.language === 'java21' ? listChoice(this.starters) : [];
+  }
+
+  /** The two types of the problem's Java choice, in any language; null when it has none. */
+  get pair(): string[] | null {
+    const forms = listChoice(this.starters);
+    return forms.length > 0 ? forms.map((f) => f.name) : null;
+  }
+
+  /** The name of the form the editor still holds unchanged, or null once the code was typed over (or there is no choice). */
+  get untouchedForm(): string | null {
+    return this.forms.find((f) => f.code.trim() === this.source.trim())?.name ?? null;
   }
 
   /** Takes the loaded workspace's draft, or the device mirror when it is newer, or the starter. */
@@ -198,9 +218,19 @@ export class Draft {
     if (next) this.switchTo(next, useStarter ? starter(next, this.starters) : null);
   }
 
-  /** Reset: the starter replaces the code and is saved at once. */
-  async reset(): Promise<void> {
-    const code = starter(this.language, this.starters);
+  /** Swaps the untouched starting code for another form; nothing typed is lost, so nothing is asked. */
+  chooseForm(name: string): void {
+    const form = this.forms.find((f) => f.name === name);
+    if (!form) return;
+    this.source = form.code;
+    this.editor?.setDoc(form.code);
+    this.queueMirror();
+    void this.save();
+  }
+
+  /** Reset: the starter (or the named form of a choice) replaces the code and is saved at once. */
+  async reset(form?: string): Promise<void> {
+    const code = this.forms.find((f) => f.name === form)?.code ?? starter(this.language, this.starters);
     this.source = code;
     this.editor?.setDoc(code);
     await this.save();

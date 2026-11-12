@@ -23,7 +23,8 @@
     type Submission,
     type TestResult,
   } from '../lib/workspace';
-  import { LOCKED_HINT, pointsIntoLocked } from '../lib/lockedCode';
+  import { getContext } from 'svelte';
+  import { LIST_PAIR, LOCKED_HINT, choiceHint, pointsIntoLocked } from '../lib/lockedCode';
   import CompileOutput from './CompileOutput.svelte';
   import SubtaskStrip from './SubtaskStrip.svelte';
   import TestDetail from './TestDetail.svelte';
@@ -46,6 +47,8 @@
   const stays = $derived(problemScoreLine(submission, problemScore));
 
   const head = $derived(headline(submission));
+  const listPair = getContext<(() => string[] | null) | undefined>(LIST_PAIR);
+  const overrideHint = $derived(choiceHint(submission.compile_output, listPair?.() ?? null));
   const fail = $derived(firstFailure(submission));
   // The subtask holding the first failure opens by itself.
   const failSubtask = $derived(
@@ -104,6 +107,7 @@
     <div class="compile">
       <p class="label" id="{idPrefix}-compile">Compiler output</p>
       {#if pointsIntoLocked(submission.compile_output)}<p class="advice">{LOCKED_HINT}</p>{/if}
+      {#if overrideHint}<p class="advice">{overrideHint}</p>{/if}
       <CompileOutput output={submission.compile_output} language={submission.language} {onjump} />
     </div>
   {/if}

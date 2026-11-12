@@ -96,3 +96,18 @@ export function pointsIntoLocked(output: string): boolean {
 
 /** The line "Common imports are already added" hint shown with a function problem. */
 export const IMPORTS_HINT = 'Common imports are already added. Add more if you need them.';
+
+/** What javac says when an @Override names no method of the base class: a wrong name or a wrong parameter type. */
+const NO_OVERRIDE = 'method does not override or implement a method from a supertype';
+
+/** Context key under which the workspace gives the result panels the two types of a list choice. */
+export const LIST_PAIR = 'podium-list-pair';
+
+/**
+ * The hint under a compile error on a Java problem with a list choice
+ * (v2.1.0 F13): the error points at the student's own @Override line, not
+ * into locked code, so pointsIntoLocked stays quiet. "" when it does not apply.
+ */
+export function choiceHint(output: string, pair: readonly string[] | null): string {
+  return pair && output.includes(NO_OVERRIDE) ? `The function must keep its name and take ${pair[0]} or ${pair[1]}.` : '';
+}

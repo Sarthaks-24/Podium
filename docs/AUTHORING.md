@@ -137,6 +137,85 @@ Rules, checked on every save and import:
 
 **Java.** The locked top holds the imports (`import java.util.*;`). The student writes `class Solution { ... }`, not public. The locked bottom holds `public class Main`, reads the input with `Scanner` and calls `new Solution().yourFunction(...)`. The judge always compiles `Main.java` and runs `Main`.
 
+**Java: arrays or ArrayList (two starting forms).** A function problem may let the student start from an array or from an ArrayList. Write both forms in the Java starting code, each under a marker line that is exactly `// choice: <name>` on a line of its own, with the array form first. Text before the first marker is shared by both forms. Rules, checked on every save:
+
+- The pair is `int[]` with `ArrayList<Integer>`, or `long[]` with `ArrayList<Long>`: one of each, no other names, at most two forms, and some code under each marker. The pair is fixed per problem.
+- A line that looks like a marker but is not exact (no space after the colon, a capital letter, an indent, trailing text) is refused: "This looks like a choice line. Write it exactly as // choice: Name."
+- No marker means no choice, and the problem works as before. Only Java is read; a marker in another language is ordinary text.
+
+The locked code must accept either form at compile time. The locked top declares a base class with two overloads of the function, each converting its argument and calling the other; the locked bottom calls one overload. Each starting form extends the base class and overrides one overload with `@Override`. A student who overrides neither gets one plain line in Run, from a re-entry check: "Write arraySum with int[] or ArrayList<Integer>." This Java was proved on the real judge (the `long` pair differs only in `long`, `Long` and `nextLong`):
+
+```java
+// Locked top
+import java.util.*;
+
+class Missing extends RuntimeException {}
+
+class Base {
+    private boolean inside;
+
+    long arraySum(int[] a) {
+        if (inside) throw new Missing();
+        inside = true;
+        try {
+            ArrayList<Integer> list = new ArrayList<>(a.length);
+            for (int x : a) list.add(x);
+            return arraySum(list);
+        } finally {
+            inside = false;
+        }
+    }
+
+    long arraySum(ArrayList<Integer> a) {
+        if (inside) throw new Missing();
+        inside = true;
+        try {
+            int[] arr = new int[a.size()];
+            for (int i = 0; i < arr.length; i++) arr[i] = a.get(i);
+            return arraySum(arr);
+        } finally {
+            inside = false;
+        }
+    }
+}
+
+// Starting code, as stored
+// choice: int[]
+class Solution extends Base {
+    @Override
+    long arraySum(int[] a) {
+        // Return the sum of the numbers in a.
+        return 0;
+    }
+}
+// choice: ArrayList<Integer>
+class Solution extends Base {
+    @Override
+    long arraySum(ArrayList<Integer> a) {
+        // Return the sum of the numbers in a.
+        return 0;
+    }
+}
+
+// Locked bottom
+public class Main {
+    public static void main(String[] args) {
+        Scanner in = new Scanner(System.in);
+        int n = in.nextInt();
+        int[] a = new int[n];
+        for (int i = 0; i < n; i++) a[i] = in.nextInt();
+        try {
+            System.out.println(new Solution().arraySum(a));
+        } catch (Missing e) {
+            System.err.println("Write arraySum with int[] or ArrayList<Integer>.");
+            System.exit(1);
+        }
+    }
+}
+```
+
+**What the student sees.** From 1024 px, above the editor: "Lists in your code" with two radios, `int[]` first, shown only while the editor holds one of the starting forms unchanged. Picking the other form swaps the starting code at once, with no confirm, because nothing typed is lost, and says "Starting code changed to ArrayList<Integer>." Once the student has typed, the choice is hidden and Reset asks "Start again?" with "Start again with int[]", "Start again with ArrayList<Integer>" and "Keep my code". After a reload or on another device the choice shows if the saved code still equals a starting form; nothing about it is stored. Run and Submit send only the student's code, never the marker lines. A wrong name or parameter type under `@Override` is a compile error, and the hint reads "The function must keep its name and take int[] or ArrayList<Integer>." (javac points at the student's own line and does not name the method). The problem editor says "Students choose between: int[], ArrayList<Integer>." under the Java starter and previews both forms read-only. Known limit: after Submit a student sees only "Runtime error" for the plain line; it shows in Run.
+
 **Imports.** Imports cannot be hidden, so the locked top supplies the common ones and students may add their own at the start of their code (a Java file allows more imports before the first class). C++, Java and Python accept an import twice. A JavaScript top declares nothing a student might declare again; `'use strict';` is a good top. Students see: "Common imports are already added. Add more if you need them."
 
 **Changing locked code.** The mode and the locked code are judging content, like the reference solution: a change needs Validate again, and a contest that pins the problem keeps judging with the pinned locked code until "Update students now". Starters are not judging content, so a stub edit needs no new validation.

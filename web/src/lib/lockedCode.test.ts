@@ -2,7 +2,7 @@
 // problems.Compose (V202-34), so the two cannot drift.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { LOCKED_HINT, compose, layoutDoc, lockedLabel, normalise, pointsIntoLocked, stripLocked } from './lockedCode';
+import { LOCKED_HINT, choiceHint, compose, layoutDoc, lockedLabel, normalise, pointsIntoLocked, stripLocked } from './lockedCode';
 
 interface Case {
   name: string;
@@ -65,5 +65,21 @@ describe('hints', () => {
     expect(pointsIntoLocked("locked code, line 4: error: 'twice' was not declared")).toBe(true);
     expect(pointsIntoLocked('main.cpp:3:1: error: x')).toBe(false);
     expect(LOCKED_HINT).toBe('Your code no longer matches the function the locked code calls. Keep the name and parameters from the starter.');
+  });
+});
+
+describe('the list choice hint', () => {
+  const javac = 'Main.java:2: error: method does not override or implement a method from a supertype\n    @Override\n    ^\n';
+  it('names the pair when javac says the override is wrong', () => {
+    expect(choiceHint(javac, ['int[]', 'ArrayList<Integer>'])).toBe('The function must keep its name and take int[] or ArrayList<Integer>.');
+    expect(choiceHint(javac, ['long[]', 'ArrayList<Long>'])).toBe('The function must keep its name and take long[] or ArrayList<Long>.');
+  });
+  it('stays quiet without a choice or for other errors', () => {
+    expect(choiceHint(javac, null)).toBe('');
+    expect(choiceHint('Main.java:3: error: cannot find symbol\n', ['int[]', 'ArrayList<Integer>'])).toBe('');
+    expect(choiceHint('', ['int[]', 'ArrayList<Integer>'])).toBe('');
+  });
+  it('does not replace the locked code hint', () => {
+    expect(pointsIntoLocked(javac)).toBe(false);
   });
 });

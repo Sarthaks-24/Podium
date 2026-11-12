@@ -130,3 +130,9 @@ export function starterForms(language: Language, own: Partial<Record<string, str
   const code = own[language] || STARTERS[language];
   return language === 'java21' ? splitStarter(code) : { forms: [{ name: '', code }], default: code };
 }
+
+/** The forms of a problem's Java starting code when it offers a list choice, the array form first; empty when it does not. */
+export function listChoice(own: Partial<Record<string, string>> = {}): StarterForm[] {
+  const { forms } = starterForms('java21', own);
+  return forms.length > 1 ? [...forms].sort((a, b) => Number(b.name.endsWith('[]')) - Number(a.name.endsWith('[]'))) : [];
+}

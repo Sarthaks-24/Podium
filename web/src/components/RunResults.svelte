@@ -37,7 +37,8 @@
     type RunResult,
     type Sample,
   } from '../lib/workspace';
-  import { LOCKED_HINT, pointsIntoLocked } from '../lib/lockedCode';
+  import { getContext } from 'svelte';
+  import { LIST_PAIR, LOCKED_HINT, choiceHint, pointsIntoLocked } from '../lib/lockedCode';
   import CompileOutput from './CompileOutput.svelte';
   import TestDetail from './TestDetail.svelte';
 
@@ -52,6 +53,8 @@
   let { run, language, onjump, samples = [], onruninput }: Props = $props();
 
   const head = $derived(runHeadline(run));
+  const listPair = getContext<(() => string[] | null) | undefined>(LIST_PAIR);
+  const overrideHint = $derived(choiceHint(run.compile_output, listPair?.() ?? null));
 
   /** The input of the example a result row ran, by its "Example N" label. */
   function sampleInput(label: string): string | null {
@@ -75,6 +78,7 @@
     <div class="block">
       <p class="label">Compiler output</p>
       {#if pointsIntoLocked(run.compile_output)}<p class="advice">{LOCKED_HINT}</p>{/if}
+      {#if overrideHint}<p class="advice">{overrideHint}</p>{/if}
       <CompileOutput output={run.compile_output} {language} {onjump} />
     </div>
   {/if}

@@ -8,7 +8,9 @@
   (disables both buttons while the request runs), `error` (optional: why
   the action failed, shown inside the dialog with role="alert"; a toast
   would sit under the modal backdrop, out of reach), `onconfirm` and
-  `oncancel`. Escape and Cancel both call `oncancel`. Focus starts on Cancel
+  `oncancel`. `alternates` (optional) adds more confirm buttons after the first,
+  each with its own label and action, and `cancelLabel` (default "Cancel")
+  renames the way out. Escape and the way out both call `oncancel`. Focus starts on it
   so a stray Enter never confirms, and returns to the opener when the
   dialog closes (components/Dialog).
 -->
@@ -24,11 +26,13 @@
     danger?: boolean;
     busy?: boolean;
     error?: string;
+    alternates?: readonly { label: string; onclick: () => void }[];
+    cancelLabel?: string;
     onconfirm: () => void;
     oncancel: () => void;
   }
 
-  let { open, title, body, confirmLabel, items = [], danger = false, busy = false, error = '', onconfirm, oncancel }: Props = $props();
+  let { open, title, body, confirmLabel, items = [], danger = false, busy = false, error = '', alternates = [], cancelLabel = 'Cancel', onconfirm, oncancel }: Props = $props();
 
   let cancelButton: HTMLButtonElement | undefined = $state();
   const id = `confirm-${Math.random().toString(36).slice(2, 9)}`;
@@ -50,8 +54,11 @@
     >
       {confirmLabel}
     </button>
+    {#each alternates as alt (alt.label)}
+      <button type="button" class="btn {danger ? 'btn-danger' : 'btn-primary'}" disabled={busy} onclick={alt.onclick}>{alt.label}</button>
+    {/each}
     <button type="button" class="btn btn-secondary" disabled={busy} bind:this={cancelButton} onclick={oncancel}>
-      Cancel
+      {cancelLabel}
     </button>
   </div>
 </Dialog>

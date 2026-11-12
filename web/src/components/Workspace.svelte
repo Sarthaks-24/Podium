@@ -14,9 +14,14 @@
   is left under the next one. The draft is saved every 10 s and whenever focus or the page goes, and
   integrity counts go out in batches that never hold up a submit, so a
   crash or a closed lid loses nothing and judging is never slowed.
+  On a Java function problem whose starting code has two forms (lib/starters.ts)
+  a "Lists in your code" choice shows from 1024 px while the editor holds a form
+  unchanged; picking one swaps the code at once and says so, and once the
+  student has typed Reset offers both forms. The result panels get the pair of
+  types through context (LIST_PAIR) for the hint on a wrong override.
 -->
 <script lang="ts">
-  import { onMount, tick, type Snippet } from 'svelte';
+  import { onMount, setContext, tick, type Snippet } from 'svelte';
   import { hush, polite } from '../lib/announce.svelte';
   import { ApiError, getJSON } from '../lib/api';
   import { loader } from '../lib/loader.svelte';
@@ -34,7 +39,7 @@
   import { isTypingTarget } from '../lib/shortcuts';
   import { RequestSequence } from '../lib/requestSequence';
   import { dismissToast, showToast } from '../lib/toast.svelte';
-  import { IMPORTS_HINT } from '../lib/lockedCode';
+  import { IMPORTS_HINT, LIST_PAIR } from '../lib/lockedCode';
   import { LANGUAGES, bestScore, headline, isWaiting, languageLabel, limitsText, runCompileFailed, runHeadline, type Language, type Workspace } from '../lib/workspace';
   import CodeEditor from './CodeEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -106,6 +111,9 @@
   const api = base;
   // The mirror is per account (lib/drafts.ts); the shell mounts this only when signed in.
   const draft = new Draft(api, session.user?.id ?? 0, typeof window !== 'undefined' && !media('tablet').matches);
+
+  // The result panels need the pair of list types to explain a wrong override.
+  setContext(LIST_PAIR, () => draft.pair);
 
   let ws = $state.raw<Workspace | null>(null);
   let editor: CodeEditor | undefined = $state();
@@ -293,11 +301,20 @@
     editor?.jumpTo(line, col);
   }
 
-  async function reset() {
+  async function reset(form?: string) {
     confirmReset = false;
-    await draft.reset();
+    await draft.reset(form);
     polite('Reset. The starter is back.');
     editor?.focus();
+  }
+
+  // The forms Reset offers; empty unless the language shown has a list choice.
+  const choiceForms = $derived(draft.forms);
+
+  /** Picks the other list form on untouched starting code: no confirm, nothing typed is lost. */
+  function pickForm(name: string) {
+    draft.chooseForm(name);
+    polite(`Starting code changed to ${name}.`);
   }
 
   async function restore() {
@@ -546,6 +563,8 @@
       {#if layout !== 'wide'}
         <p class="narrow">{NARROW}</p>
       {:else}
+      <!-- One grid cell for the toolbar and the choice, so the editor keeps the stretching row. -->
+      <div class="head">
       <Toolbar
         {languages}
         language={draft.pendingLanguage ?? draft.language}
@@ -560,6 +579,18 @@
         submit={submitButton}
         fullscreen={!exam?.full_screen}
       />
+      {#if draft.untouchedForm !== null}
+        <fieldset class="list-choice">
+          <legend>Lists in your code</legend>
+          {#each draft.forms as f (f.name)}
+            <label class="choice">
+              <input type="radio" name="ws-list-choice" checked={draft.untouchedForm === f.name} onchange={() => pickForm(f.name)} />
+              {f.name}
+            </label>
+          {/each}
+        </fieldset>
+      {/if}
+      </div>
       {/if}
       <div class="editor-box">
         <CodeEditor
@@ -669,11 +700,15 @@
 
 <ConfirmDialog
   open={confirmReset}
-  title="Replace your code with the starter?"
-  body={`Your ${languageLabel(draft.language)} code for this problem is replaced with the starter, and saved.`}
-  confirmLabel="Reset"
+  title={choiceForms.length > 0 ? 'Start again?' : 'Replace your code with the starter?'}
+  body={choiceForms.length > 0
+    ? 'Your Java code for this problem is replaced with the starting code and saved. Code you have not submitted cannot be brought back. Your submissions keep theirs.'
+    : `Your ${languageLabel(draft.language)} code for this problem is replaced with the starter, and saved.`}
+  confirmLabel={choiceForms.length > 0 ? `Start again with ${choiceForms[0].name}` : 'Reset'}
+  alternates={choiceForms.slice(1).map((f) => ({ label: `Start again with ${f.name}`, onclick: () => void reset(f.name) }))}
+  cancelLabel={choiceForms.length > 0 ? 'Keep my code' : 'Cancel'}
   danger
-  onconfirm={() => void reset()}
+  onconfirm={() => void reset(choiceForms[0]?.name)}
   oncancel={() => (confirmReset = false)}
 />
 
@@ -721,6 +756,37 @@
     margin-bottom: var(--space-3);
     color: var(--ink-muted);
     font-size: var(--fs-0);
+  }
+
+  .list-choice {
+    margin: 0;
+    padding: var(--space-1) 0;
+    border: 0;
+  }
+
+  .list-choice legend {
+    float: left;
+    padding: 0;
+    margin-right: var(--space-4);
+    color: var(--ink-muted);
+    font-size: var(--fs-0);
+    line-height: var(--control-h);
+  }
+
+  .choice {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-h);
+    margin-right: var(--space-4);
+    cursor: pointer;
+  }
+
+  .choice input {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--act);
   }
 
   .editor-box {
