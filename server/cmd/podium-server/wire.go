@@ -73,7 +73,7 @@ func newServices(ctx context.Context, cfg config.Server, database *sql.DB, log *
 	}
 	s.jobs = jobs.New(database, discard, func(j *jobs.Service) map[string]jobs.Kind {
 		return map[string]jobs.Kind{
-			judgeapi.KindValidate:       problems.ValidateKind{},
+			judgeapi.KindValidate:       problems.ValidateKind{Store: s.blobs, Jobs: j},
 			judgeapi.KindGenerate:       problems.GenerateKind{Store: s.blobs, Jobs: j},
 			judgeapi.KindGenerateInputs: problems.GenerateInputsKind{Store: s.blobs, Jobs: j},
 			judgeapi.KindSubmit:         submissions.SubmitKind{},

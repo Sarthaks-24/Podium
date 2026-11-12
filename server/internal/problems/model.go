@@ -3,7 +3,8 @@
 // and export; the content hash that decides whether a problem is
 // validated; and the validation gate, which runs on the real judge through
 // the jobs queue, so a problem reaches a contest only after its own
-// solutions pass on the machine that will judge it. Every write also makes
+// solutions pass on the machine that will judge it; a function problem's
+// languages are proved the same way (proof.go). Every write also makes
 // an immutable revision, so a contest can pin the version it was set with.
 // Docs: docs/AUTHORING.md for the pack format and rules, docs/API.md for
 // the routes.

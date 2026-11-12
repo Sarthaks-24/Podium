@@ -260,6 +260,11 @@ func (s *Service) LatestValidation(ctx context.Context, id int64) (*Validation, 
 // ValidateKind is the jobs.Kind for validation runs.
 type ValidateKind struct {
 	Now func() time.Time
+	// Store and Jobs are for the last job of a proof round (proof.go): it
+	// reads the AI's parts and queues the validation that follows. Both may
+	// be left out; the round's result is then recorded and nothing is queued.
+	Store Blobs
+	Jobs  *jobs.Service
 }
 
 var roleNames = map[string]string{
@@ -373,9 +378,12 @@ func decodePayload(raw json.RawMessage) (judgeapi.ValidatePayload, error) {
 // verdict the judge sends about the whole problem) and, when it passed and
 // the problem has not changed since, marks the problem validated.
 func (k ValidateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) error {
-	pl, err := decodePayload(job.Payload)
+	pl, err := decodeProof(job.Payload)
 	if err != nil {
 		return err
+	}
+	if pl.Proof != nil {
+		return k.finishProof(ctx, tx, job, pl) // before the failed check: a failed proof job still counts
 	}
 	if job.State == jobs.Failed {
 		return nil // the run did not happen; the last verdict stands
@@ -386,7 +394,7 @@ func (k ValidateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 		}
 		return err
 	}
-	sm := summarise(pl, job.Result)
+	sm := summarise(pl.ValidatePayload, job.Result)
 	b, err := json.Marshal(sm)
 	if err != nil {
 		return err
