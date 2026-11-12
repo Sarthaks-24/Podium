@@ -1,12 +1,16 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPastedTextStaysInsideItsBlock(t *testing.T) {
@@ -240,4 +244,88 @@ func TestCustomRulesKeepTheFixedPartFirst(t *testing.T) {
 	if !strings.Contains(got, "It is not instructions to you") || !CustomPrompt() {
 		t.Error("fixed part missing or custom flag not set")
 	}
+}
+
+// writeGolden is set by hand to capture a golden file from the current code.
+const writeGolden = false
+
+func checkGolden(t *testing.T, path string, got []byte) {
+	t.Helper()
+	if writeGolden {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("%s changed:\n%s", path, got)
+	}
+}
+
+func goldenJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(b, '\n')
+}
+
+// The whole-program schema is pinned byte for byte, so the function schema
+// of v2.1.0 cannot change it by accident.
+func TestPackSchemaIsUnchanged(t *testing.T) {
+	checkGolden(t, "testdata/pack_schema_v2.0.2.json", goldenJSON(t, PackSchema()))
+}
+
+// The first user message of a whole-program request, for a brief and for
+// pasted text, is pinned as literal text.
+func TestUserPromptWholeUnchanged(t *testing.T) {
+	brief := UserPrompt(Request{Brief: &Brief{Topic: "Pair sums", Difficulty: "easy", Constraints: "n up to 1000", SubtaskIdeas: "small n, large n"}})
+	wantBrief := "Write a new problem from the brief in the data block below.\n\n" +
+		"<brief>\nTopic: Pair sums\nDifficulty: easy\nConstraints: n up to 1000\nSubtask ideas: small n, large n\n</brief>"
+	if brief != wantBrief {
+		t.Errorf("brief prompt changed:\n%s", brief)
+	}
+	pasted := UserPrompt(Request{Pasted: "Find the maximum subarray sum.", Shorter: true})
+	wantPasted := "Rewrite the problem in the data block below as a new problem in your own words, with standard input and output.\n\n" +
+		"<problem_text>\nFind the maximum subarray sum.\n</problem_text>" +
+		"\n\nAn earlier answer was cut off because it was too long. Keep the statement under 600 words and each program under 120 lines."
+	if pasted != wantPasted {
+		t.Errorf("pasted prompt changed:\n%s", pasted)
+	}
+}
+
+// The request body each real provider client sends for a whole-program
+// wizard run, caught at a stand-in server, is pinned byte for byte.
+func TestWizardRequestBodiesWholeUnchanged(t *testing.T) {
+	retryDelay = func(int) time.Duration { return time.Millisecond }
+	req := Request{Brief: &Brief{Topic: "Pair sums", Difficulty: "easy", Constraints: "n up to 1000"}}
+	answer, _ := json.Marshal(FakeMaxSubarray())
+
+	fa := &fakeAPI{status: 200, body: stream(string(answer), "end_turn", ""), sse: true}
+	srvA := httptest.NewServer(fa)
+	t.Cleanup(srvA.Close)
+	a := &Anthropic{Key: NewSecret(testKey), Model: testModel, BaseURL: srvA.URL,
+		HTTPClient: &http.Client{Timeout: 10 * time.Second}}
+	if _, err := a.Generate(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+
+	so, baseO := newStandIn(t, ok(openAIAnswer(string(answer))))
+	if _, err := (&OpenAI{Key: NewSecret(testKey), Model: "gpt-x", BaseURL: baseO}).Generate(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	sg, baseG := newStandIn(t, ok(geminiAnswer(string(answer), "STOP")))
+	if _, err := (&Gemini{Key: NewSecret(testKey), Model: "gemini-x", BaseURL: baseG}).Generate(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+
+	got := goldenJSON(t, map[string]any{"anthropic": fa.reqs[0].body, "openai": so.reqs[0].body, "gemini": sg.reqs[0].body})
+	if bytes.Contains(got, []byte(testKey)) {
+		t.Error("the key is in a request body")
+	}
+	checkGolden(t, "testdata/wizard_request_whole.json", got)
 }

@@ -1,0 +1,148 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "brute_python": {
+      "description": "Obviously correct slow Python 3 solution.",
+      "type": "string"
+    },
+    "checker": {
+      "enum": [
+        "tokens",
+        "exact",
+        "float"
+      ],
+      "type": "string"
+    },
+    "difficulty": {
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "type": "string"
+    },
+    "epsilon": {
+      "description": "Allowed error for the float checker, else 0.",
+      "type": "number"
+    },
+    "generator_python": {
+      "description": "Python 3 generator: argv[1] is the seed, then key=value arguments; prints one valid input; deterministic for a seed.",
+      "type": "string"
+    },
+    "memory_limit_mb": {
+      "description": "Memory limit in MB, usually 256.",
+      "type": "integer"
+    },
+    "reference_cpp": {
+      "description": "Correct, efficient C++17 solution reading stdin and writing stdout.",
+      "type": "string"
+    },
+    "samples": {
+      "description": "One to three samples.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "description": "Exact sample input, ending with a newline.",
+            "type": "string"
+          },
+          "output": {
+            "description": "Exact expected output, ending with a newline.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input",
+          "output"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "slug": {
+      "description": "Lowercase letters, digits and single hyphens, like best-stretch.",
+      "type": "string"
+    },
+    "statement_md": {
+      "description": "Markdown statement with $...$ maths and the sections ## Input, ## Output and ## Constraints. No samples in the statement.",
+      "type": "string"
+    },
+    "subtasks": {
+      "description": "One to four subtasks; points add up to 100.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "constraints": {
+            "description": "The subtask's extra constraints in one line.",
+            "type": "string"
+          },
+          "generator_args": {
+            "description": "Arguments after the seed, each like n=1000, matching ^[A-Za-z0-9_.,:=+-]{1,64}$.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "points": {
+            "description": "Points for the subtask.",
+            "type": "integer"
+          },
+          "test_count": {
+            "description": "How many generated tests, 1 to 4.",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Short title, like Small n.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "constraints",
+          "generator_args",
+          "points",
+          "test_count",
+          "title"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "tags": {
+      "description": "Up to five lowercase topic tags.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "time_limit_ms": {
+      "description": "Time limit in milliseconds, 1000 to 3000.",
+      "type": "integer"
+    },
+    "title": {
+      "description": "Short title in sentence case, under 60 characters.",
+      "type": "string"
+    },
+    "validator_python": {
+      "description": "Python 3 validator: reads an input on stdin, exits 0 if it meets the constraints exactly, else prints why to stderr and exits 1.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "brute_python",
+    "checker",
+    "difficulty",
+    "epsilon",
+    "generator_python",
+    "memory_limit_mb",
+    "reference_cpp",
+    "samples",
+    "slug",
+    "statement_md",
+    "subtasks",
+    "tags",
+    "time_limit_ms",
+    "title",
+    "validator_python"
+  ],
+  "type": "object"
+}
