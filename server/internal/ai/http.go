@@ -483,6 +483,10 @@ type wizardRequestJSON struct {
 		Subtasks    string `json:"subtasks"`
 	} `json:"brief"`
 	Text string `json:"text"`
+	// StudentsWrite is program (the default) or function; JavaLists, for a
+	// function, is array (the default) or arraylist. Absent means the default.
+	StudentsWrite *string `json:"students_write"`
+	JavaLists     *string `json:"java_lists"`
 }
 
 // StartWizard asks the model for a problem in the background. The answer
@@ -514,6 +518,27 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose brief or paste.")
 		return
 	}
+	function := false
+	if s := body.StudentsWrite; s != nil {
+		switch *s {
+		case StudentsWriteProgram:
+		case StudentsWriteFunction:
+			function = true
+		default:
+			httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose a whole program or one function.")
+			return
+		}
+	}
+	if function {
+		req.JavaLists = JavaListsArray
+		if l := body.JavaLists; l != nil {
+			if *l != JavaListsArray && *l != JavaListsArrayList {
+				httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose arrays or ArrayList.")
+				return
+			}
+			req.JavaLists = *l
+		}
+	}
 	u := auth.UserFrom(r.Context())
 	prov, entry, ok := d.provider(w, r, body.Provider)
 	if !ok {
@@ -526,7 +551,13 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 	if d.Prompts != nil {
 		// Built once here: the retry and every provider call of this run
 		// use the same text, whatever is saved meanwhile.
-		system, err := d.Prompts.WizardSystem(r.Context())
+		var system string
+		var err error
+		if function {
+			system, err = d.Prompts.FunctionSystem(r.Context(), req.JavaLists)
+		} else {
+			system, err = d.Prompts.WizardSystem(r.Context())
+		}
 		if err != nil {
 			httpx.InternalError(d.Log, w, r, err)
 			return
@@ -538,25 +569,40 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	run := d.Wizard.start("generate", u.ID, 0, entry)
-	d.Log.Info("ai wizard started", "user_id", u.ID, "wizard_id", run.id, "mode", body.Mode, "provider", entry.Provider, "model", entry.Model)
+	d.Log.Info("ai wizard started", "user_id", u.ID, "wizard_id", run.id, "mode", body.Mode, "function", function, "provider", entry.Provider, "model", entry.Model)
 	go func() {
 		defer release()
-		d.publishWizard(u.ID, d.runGenerate(run, prov, req, u.ID, entry.Key))
+		d.publishWizard(u.ID, d.runGenerate(run, prov, req, function, u.ID, entry.Key))
 	}()
 	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"wizard_id": run.id, "server_now": time.Now().UnixMilli()})
 }
 
 // runGenerate is the background half of startWizard.
-func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, userID int64, key Secret) wizardJSON {
+// For a function run the draft is a function problem and the queued input
+// generation carries the proof spec: the model's solutions.
+func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, function bool, userID int64, key Secret) wizardJSON {
 	ctx, cancel := context.WithTimeout(context.Background(), CallTimeout)
-	pack, err := Generate(ctx, prov, req)
+	var draft problems.Draft
+	var solutions map[string]string
+	var err error
+	if function {
+		var pack *FunctionPack
+		if pack, err = GenerateFunction(ctx, prov, req); err == nil {
+			draft, solutions = ToDraftFunction(pack), pack.Solutions()
+		}
+	} else {
+		var pack *WizardPack
+		if pack, err = Generate(ctx, prov, req); err == nil {
+			draft = ToDraft(pack)
+		}
+	}
 	cancel()
 	if err != nil {
 		return d.failWizard(run, err, key)
 	}
 	ctx, cancel = context.WithTimeout(context.Background(), draftTimeout)
 	defer cancel()
-	p, err := d.Problems.CreateDraft(ctx, ToDraft(pack), userID)
+	p, err := d.Problems.CreateDraft(ctx, draft, userID)
 	var fields problems.FieldErrors
 	if errors.As(err, &fields) {
 		reasons := make([]string, 0, len(fields))
@@ -570,7 +616,13 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, userI
 		return d.failWizard(run, err, key)
 	}
 	d.Log.Info("ai draft created", "user_id", userID, "wizard_id", run.id, "problem_id", p.ID)
-	if g, err := d.Problems.RequestInputGeneration(ctx, p.ID, userID); err != nil {
+	var g *problems.InputGeneration
+	if function {
+		g, err = d.Problems.RequestInputGenerationProof(ctx, p.ID, userID, solutions)
+	} else {
+		g, err = d.Problems.RequestInputGeneration(ctx, p.ID, userID)
+	}
+	if err != nil {
 		// The draft stands; the editor offers Generate inputs.
 		d.Log.Warn("ai draft: input generation not queued", "problem_id", p.ID, "err", err)
 	} else {

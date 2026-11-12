@@ -279,15 +279,30 @@ func (g *Gemini) Edit(ctx context.Context, req EditRequest) (*EditAnswer, error)
 
 // Generate implements Provider.
 func (g *Gemini) Generate(ctx context.Context, req Request) (*WizardPack, error) {
+	text, err := g.generate(ctx, req, req.system(), PackSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodePack(text)
+}
+
+// GenerateFunction implements Provider.
+func (g *Gemini) GenerateFunction(ctx context.Context, req Request) (*FunctionPack, error) {
+	text, err := g.generate(ctx, req, req.functionSystem(), FunctionSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeFunction(text)
+}
+
+// generate sends the user prompt, and on a retry the previous answer and
+// the reasons, and returns the answer text.
+func (g *Gemini) generate(ctx context.Context, req Request, system string, schema map[string]any) (string, error) {
 	msgs := []geminiContent{{Role: "user", Parts: []geminiPart{{Text: UserPrompt(req)}}}}
 	if req.Previous != "" && len(req.Fix) > 0 {
 		msgs = append(msgs,
 			geminiContent{Role: "model", Parts: []geminiPart{{Text: req.Previous}}},
 			geminiContent{Role: "user", Parts: []geminiPart{{Text: FixPrompt(req.Fix)}}})
 	}
-	text, err := g.call(ctx, req.system(), msgs, PackSchema())
-	if err != nil {
-		return nil, err
-	}
-	return DecodePack(text)
+	return g.call(ctx, system, msgs, schema)
 }

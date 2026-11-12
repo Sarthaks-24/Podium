@@ -225,13 +225,28 @@ func (o *OpenAI) Edit(ctx context.Context, req EditRequest) (*EditAnswer, error)
 
 // Generate implements Provider.
 func (o *OpenAI) Generate(ctx context.Context, req Request) (*WizardPack, error) {
-	msgs := []openAIMessage{{Role: "user", Content: UserPrompt(req)}}
-	if req.Previous != "" && len(req.Fix) > 0 {
-		msgs = append(msgs, openAIMessage{Role: "assistant", Content: req.Previous}, openAIMessage{Role: "user", Content: FixPrompt(req.Fix)})
-	}
-	text, err := o.call(ctx, req.system(), msgs, "wizard_pack", PackSchema())
+	text, err := o.generate(ctx, req, req.system(), "wizard_pack", PackSchema())
 	if err != nil {
 		return nil, err
 	}
 	return DecodePack(text)
+}
+
+// GenerateFunction implements Provider.
+func (o *OpenAI) GenerateFunction(ctx context.Context, req Request) (*FunctionPack, error) {
+	text, err := o.generate(ctx, req, req.functionSystem(), "function_pack", FunctionSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeFunction(text)
+}
+
+// generate sends the user prompt, and on a retry the previous answer and
+// the reasons, and returns the answer text.
+func (o *OpenAI) generate(ctx context.Context, req Request, system, name string, schema map[string]any) (string, error) {
+	msgs := []openAIMessage{{Role: "user", Content: UserPrompt(req)}}
+	if req.Previous != "" && len(req.Fix) > 0 {
+		msgs = append(msgs, openAIMessage{Role: "assistant", Content: req.Previous}, openAIMessage{Role: "user", Content: FixPrompt(req.Fix)})
+	}
+	return o.call(ctx, system, msgs, name, schema)
 }

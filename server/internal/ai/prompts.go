@@ -261,6 +261,20 @@ func (p *Prompts) WizardSystem(ctx context.Context) (string, error) {
 	return BuildSystemPrompt(rules.Text, prefs.Text), nil
 }
 
+// FunctionSystem is WizardSystem for a function run: the same rules and
+// preferences with the function block, for the chosen Java list type.
+func (p *Prompts) FunctionSystem(ctx context.Context, javaLists string) (string, error) {
+	rules, err := p.Active(ctx, KindWizardRules)
+	if err != nil {
+		return "", err
+	}
+	prefs, err := p.Active(ctx, KindPreferences)
+	if err != nil {
+		return "", err
+	}
+	return BuildFunctionSystemPrompt(rules.Text, prefs.Text, javaLists), nil
+}
+
 // PackPromptInputs implements problems.PromptSource: the saved pack rules
 // ("" when the built-in text applies) and the preferences.
 func (p *Prompts) PackPromptInputs(ctx context.Context) (string, string, error) {

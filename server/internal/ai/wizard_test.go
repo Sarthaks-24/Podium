@@ -85,7 +85,15 @@ func TestFakePacksPassChecks(t *testing.T) {
 		}
 	}
 	// The pack sent to the model has the shape structured outputs need.
-	b, _ := json.Marshal(PackSchema())
+	assertStrictSchema(t, PackSchema())
+}
+
+// assertStrictSchema walks a schema sent to a model: every object lists all
+// its properties as required and allows no others, and no length or range
+// keyword appears.
+func assertStrictSchema(t *testing.T, s map[string]any) {
+	t.Helper()
+	b, _ := json.Marshal(s)
 	var walk func(v any)
 	walk = func(v any) {
 		switch m := v.(type) {
@@ -146,14 +154,21 @@ func TestCheckNamesProblems(t *testing.T) {
 
 // stub answers from a script and records the requests.
 type stub struct {
-	answers []func() (*WizardPack, error)
-	reqs    []Request
+	answers         []func() (*WizardPack, error)
+	functionAnswers []func() (*FunctionPack, error)
+	reqs            []Request
 }
 
 func (s *stub) Generate(_ context.Context, req Request) (*WizardPack, error) {
 	s.reqs = append(s.reqs, req)
 	f := s.answers[0]
 	s.answers = s.answers[1:]
+	return f()
+}
+func (s *stub) GenerateFunction(_ context.Context, req Request) (*FunctionPack, error) {
+	s.reqs = append(s.reqs, req)
+	f := s.functionAnswers[0]
+	s.functionAnswers = s.functionAnswers[1:]
 	return f()
 }
 func (s *stub) Edit(context.Context, EditRequest) (*EditAnswer, error) {

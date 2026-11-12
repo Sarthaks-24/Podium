@@ -252,15 +252,30 @@ func (a *Anthropic) call(ctx context.Context, system string, msgs []anthropicMes
 
 // Generate implements Provider.
 func (a *Anthropic) Generate(ctx context.Context, req Request) (*WizardPack, error) {
-	msgs := []anthropicMessage{anthropicTurn("user", UserPrompt(req))}
-	if req.Previous != "" && len(req.Fix) > 0 {
-		msgs = append(msgs, anthropicTurn("assistant", req.Previous), anthropicTurn("user", FixPrompt(req.Fix)))
-	}
-	text, err := a.call(ctx, req.system(), msgs, PackSchema())
+	text, err := a.generate(ctx, req, req.system(), PackSchema())
 	if err != nil {
 		return nil, err
 	}
 	return DecodePack(text)
+}
+
+// GenerateFunction implements Provider.
+func (a *Anthropic) GenerateFunction(ctx context.Context, req Request) (*FunctionPack, error) {
+	text, err := a.generate(ctx, req, req.functionSystem(), FunctionSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeFunction(text)
+}
+
+// generate sends the user prompt, and on a retry the previous answer and
+// the reasons, and returns the answer text.
+func (a *Anthropic) generate(ctx context.Context, req Request, system string, schema map[string]any) (string, error) {
+	msgs := []anthropicMessage{anthropicTurn("user", UserPrompt(req))}
+	if req.Previous != "" && len(req.Fix) > 0 {
+		msgs = append(msgs, anthropicTurn("assistant", req.Previous), anthropicTurn("user", FixPrompt(req.Fix)))
+	}
+	return a.call(ctx, system, msgs, schema)
 }
 
 // Edit implements Provider.

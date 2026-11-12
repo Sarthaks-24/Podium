@@ -273,10 +273,28 @@ func DecodePack(text string) (*WizardPack, error) {
 func Check(p *WizardPack) []string {
 	var out []string
 	add := func(format string, a ...any) { out = append(out, fmt.Sprintf(format, a...)) }
-	if n := len(p.Samples); n < 1 || n > maxSamples {
+	checkShape(add, p.Samples, p.Subtasks)
+	for _, f := range []struct{ name, src string }{
+		{"reference_cpp", p.Reference}, {"brute_python", p.Brute}, {"generator_python", p.Generator}, {"validator_python", p.Validator},
+	} {
+		if strings.TrimSpace(f.src) == "" {
+			add("%s is empty.", f.name)
+		}
+	}
+	checkHeadings(add, p.StatementMD)
+	if len(out) > 0 {
+		return out
+	}
+	return draftReasons(ToDraft(p), fieldName)
+}
+
+// checkShape adds the reasons a list of samples and subtasks is refused, for
+// a whole-program pack and a function pack alike.
+func checkShape(add func(string, ...any), samples []WizardSample, subtasks []WizardSubtask) {
+	if n := len(samples); n < 1 || n > maxSamples {
 		add("Give one to %d samples.", maxSamples)
 	}
-	for i, s := range p.Samples {
+	for i, s := range samples {
 		if strings.TrimSpace(s.Input) == "" || strings.TrimSpace(s.Output) == "" {
 			add("Sample %d needs both an input and an output.", i+1)
 		}
@@ -284,11 +302,11 @@ func Check(p *WizardPack) []string {
 			add("Sample %d is longer than 4 KB. Keep samples small.", i+1)
 		}
 	}
-	if n := len(p.Subtasks); n < 1 || n > maxWizSubtasks {
+	if n := len(subtasks); n < 1 || n > maxWizSubtasks {
 		add("Give one to %d subtasks.", maxWizSubtasks)
 	}
 	total, points := 0, 0
-	for i, st := range p.Subtasks {
+	for i, st := range subtasks {
 		if st.TestCount < 1 || st.TestCount > maxTestsPerTask {
 			add("Subtask %d: test_count must be from 1 to %d.", i+1, maxTestsPerTask)
 		}
@@ -298,32 +316,32 @@ func Check(p *WizardPack) []string {
 	if total > maxPlannedTotal {
 		add("Plan at most %d generated tests in total.", maxPlannedTotal)
 	}
-	if len(p.Subtasks) > 0 && points != 100 {
+	if len(subtasks) > 0 && points != 100 {
 		add("Subtask points add up to %d; make them add up to 100.", points)
 	}
-	for _, f := range []struct{ name, src string }{
-		{"reference_cpp", p.Reference}, {"brute_python", p.Brute}, {"generator_python", p.Generator}, {"validator_python", p.Validator},
-	} {
-		if strings.TrimSpace(f.src) == "" {
-			add("%s is empty.", f.name)
-		}
-	}
+}
+
+// checkHeadings adds a reason for each required section the statement lacks.
+func checkHeadings(add func(string, ...any), statement string) {
 	for _, h := range strings.Split(requiredHeadings, "|") {
-		if !strings.Contains(p.StatementMD, h) {
+		if !strings.Contains(statement, h) {
 			add("The statement has no %q section.", h)
 		}
 	}
-	if len(out) > 0 {
-		return out
-	}
-	if errs := problems.CheckDraft(ToDraft(p)); errs != nil {
+}
+
+// draftReasons runs the editor's field rules on a draft and names each
+// refused field with name, so the model can find what to fix.
+func draftReasons(d problems.Draft, name func(string) string) []string {
+	var out []string
+	if errs := problems.CheckDraft(d); errs != nil {
 		keys := make([]string, 0, len(errs))
 		for k := range errs {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			out = append(out, fieldName(k)+": "+errs[k])
+			out = append(out, name(k)+": "+errs[k])
 		}
 	}
 	return out
@@ -412,16 +430,22 @@ func ToDraft(p *WizardPack) problems.Draft {
 // off). A refusal or a provider failure is not retried. The pack it
 // returns passes Check.
 func Generate(ctx context.Context, p Provider, req Request) (*WizardPack, error) {
+	return generateChecked(req, func(r Request) (*WizardPack, error) { return p.Generate(ctx, r) }, Check)
+}
+
+// generateChecked is the loop of Generate and GenerateFunction: validate the
+// request, call, check the answer, and repeat once with the reasons.
+func generateChecked[T any](req Request, call func(Request) (*T, error), check func(*T) []string) (*T, error) {
 	if err := CheckRequest(req); err != nil {
 		return nil, err
 	}
-	return Repair(func(r Retry) (*WizardPack, error) {
+	return Repair(func(r Retry) (*T, error) {
 		req.Previous, req.Fix, req.Shorter = r.Previous, r.Fix, r.Shorter
-		pack, err := p.Generate(ctx, req)
+		pack, err := call(req)
 		if err != nil {
 			return nil, err
 		}
-		reasons := Check(pack)
+		reasons := check(pack)
 		if len(reasons) == 0 {
 			return pack, nil
 		}

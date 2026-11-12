@@ -2,6 +2,7 @@ package fakeai
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/Sarthaks-24/podium/internal/ai"
@@ -31,5 +32,27 @@ func TestImportRegistersTheProvider(t *testing.T) {
 	}
 	if _, err := ai.NewProvider(ai.Config{Provider: ai.ProviderFake}, false); err == nil {
 		t.Error("fake provider outside testing mode")
+	}
+}
+
+func TestFakeFunctionAnswers(t *testing.T) {
+	f := &Fake{}
+	ctx := context.Background()
+	p, err := ai.GenerateFunction(ctx, f, ai.Request{Brief: &ai.Brief{Topic: "Sum of an array"}})
+	if err != nil || p.Slug != "array-sum" || len(p.Languages) != 4 {
+		t.Fatalf("%v %v", p, err)
+	}
+	for _, v := range []string{ai.VariantJavaWrong, ai.VariantStarterBroken, ai.VariantExtraOutput, ai.VariantIgnoresFunction, ai.VariantReferenceFails} {
+		got, err := ai.GenerateFunction(ctx, f, ai.Request{Pasted: "Sum an array. variant:" + v})
+		if err != nil || got.Slug != "array-sum" || reflect.DeepEqual(got, p) {
+			t.Errorf("%s: %v %v", v, got, err)
+		}
+	}
+	// An unknown variant name falls back to the plain pack.
+	if got, err := ai.GenerateFunction(ctx, f, ai.Request{Pasted: "variant:nope"}); err != nil || !reflect.DeepEqual(got, p) {
+		t.Errorf("unknown variant: %v %v", got, err)
+	}
+	if f.Calls() != 7 {
+		t.Errorf("calls %d", f.Calls())
 	}
 }

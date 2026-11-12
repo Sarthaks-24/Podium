@@ -1156,6 +1156,17 @@ A `POST`, `PUT`, `PATCH` or `DELETE` under `/api/` that carries the session cook
 
 ### Stage F: function problems from the wizard
 
+#### Wizard request: one function
+
+`POST /api/admin/ai/wizard` takes two new optional fields. A request without them is a whole-program run exactly as before.
+
+| Field | Values | Default | Refusal |
+|---|---|---|---|
+| `students_write` | `"program"`, `"function"` | `"program"` | 400 `bad_request`: "Choose a whole program or one function." |
+| `java_lists` | `"array"`, `"arraylist"` | `"array"` | 400 `bad_request`: "Choose arrays or ArrayList." Ignored when `students_write` is `"program"`. |
+
+For a function run the AI writes a function problem: the draft has mode `function`, and the C++ reference and brute force are bare functions. The draft is saved, then input generation is queued carrying the AI's solutions for the other languages, which the chain later uses to check each language. The response and the `Wizard` object are the same as for a whole program.
+
 #### Refusals while a language is being checked
 
 While Podium proves the languages of a function problem on the judge, the problem is "being checked": a proof job, or a generate job that will queue one, is waiting or running. Each of the following is refused with `409` and the code `checking`, and nothing is changed. They are allowed again when the last proof job closes.

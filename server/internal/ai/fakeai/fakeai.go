@@ -1,5 +1,6 @@
 // Package fakeai is the testing-mode AI provider: no key, no network. It
-// answers with one of two canned packs (ai.FakePairSums, ai.FakeMaxSubarray)
+// answers with one of two canned packs (ai.FakePairSums, ai.FakeMaxSubarray),
+// or for a function run ai.FakeFunctionArraySum and its variants,
 // whose programs really work on the judge, so the whole pipeline (draft,
 // generate inputs, generate outputs, validate) can be checked end to end.
 // A brief or pasted text mentioning a subarray or a stretch gets the
@@ -13,6 +14,7 @@ package fakeai
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"sync/atomic"
 
@@ -50,6 +52,27 @@ func (f *Fake) Generate(ctx context.Context, req ai.Request) (*ai.WizardPack, er
 		return ai.FakeMaxSubarray(), nil
 	}
 	return ai.FakePairSums(), nil
+}
+
+var variantRe = regexp.MustCompile("variant:([a-z-]+)")
+
+// GenerateFunction implements ai.Provider: the array sum function problem,
+// or one of its variants when the text says "variant:<name>".
+func (f *Fake) GenerateFunction(ctx context.Context, req ai.Request) (*ai.FunctionPack, error) {
+	f.calls.Add(1)
+	if err := ctx.Err(); err != nil {
+		return nil, &ai.Error{Code: ai.CodeCanceled, Message: "The request was cancelled."}
+	}
+	text := req.Pasted
+	if req.Brief != nil {
+		text = req.Brief.Topic + " " + req.Brief.Constraints + " " + req.Brief.SubtaskIdeas
+	}
+	if m := variantRe.FindStringSubmatch(text); m != nil {
+		if p := ai.FakeFunctionVariant(m[1]); p != nil {
+			return p, nil
+		}
+	}
+	return ai.FakeFunctionArraySum(), nil
 }
 
 // EditHook lets a test choose the fake's answer to an edit. Nil means the

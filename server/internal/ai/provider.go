@@ -19,6 +19,9 @@ type Provider interface {
 	// Generate asks for a problem. A refused, cut off or unusable answer
 	// comes back as *Error.
 	Generate(ctx context.Context, req Request) (*WizardPack, error)
+	// GenerateFunction asks for a function problem: the student writes one
+	// function between locked code. Errors are as for Generate.
+	GenerateFunction(ctx context.Context, req Request) (*FunctionPack, error)
 	// Edit asks for changes to a problem's pack files. A refused, cut off
 	// or unusable answer comes back as *Error.
 	Edit(ctx context.Context, req EditRequest) (*EditAnswer, error)
@@ -57,6 +60,8 @@ type Request struct {
 	Previous string
 	Fix      []string
 	Shorter  bool
+	// JavaLists is a function run's Java list type, array or arraylist.
+	JavaLists string
 }
 
 // Error codes a caller can branch on.

@@ -5,7 +5,10 @@ package ai
 // fakeai and tests call them, so the linker leaves them out of the release
 // binary, which does not link fakeai.
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // clonePack returns a deep copy, so callers may change what they get.
 func clonePack(p WizardPack) *WizardPack {
@@ -243,4 +246,138 @@ for p in parts:
 		Tags:          []string{"dynamic programming", "arrays"},
 		Difficulty:    "easy",
 	})
+}
+
+// Names of the variants of FakeFunctionArraySum, for the cases a proof must
+// catch. The testing-mode provider picks one by "variant:<name>" in the
+// brief or the pasted text.
+const (
+	VariantJavaWrong       = "java-wrong"       // the Java solution returns a wrong answer
+	VariantStarterBroken   = "starter-broken"   // the Java starter does not compile
+	VariantExtraOutput     = "extra-output"     // the Python bottom prints an extra line
+	VariantIgnoresFunction = "ignores-function" // the Python bottom does not call the student's function
+	VariantReferenceFails  = "reference-fails"  // the C++ starter does not compile
+)
+
+// FakeFunctionArraySum is the sum of an array as a function problem, in all
+// four languages.
+func FakeFunctionArraySum() *FunctionPack {
+	p := &FunctionPack{
+		Title: "Array sum",
+		Slug:  "array-sum",
+		StatementMD: `Write a function that receives a list of $n$ integers and returns their sum.
+
+## Input
+
+The first line holds $n$. The second line holds $n$ integers separated by single spaces.
+
+## Output
+
+The sum of the integers.
+
+## Constraints
+
+- $1 \le n \le 10^5$
+- Subtask 1 (40 points): $n \le 100$
+- Subtask 2 (60 points): $n \le 10^5$, $|a_i| \le 10^9$
+
+The sum can exceed the range of a 32-bit integer.
+`,
+		Samples: []WizardSample{
+			{Input: "3\n1 2 3\n", Output: "6\n"},
+			{Input: "2\n-5 5\n", Output: "0\n"},
+		},
+		Subtasks: []WizardSubtask{
+			{Points: 40, Title: "Small n", Constraints: "n <= 100", GeneratorArgs: []string{"n=100", "v=1000"}, TestCount: 2},
+			{Points: 60, Title: "Full range", Constraints: "n <= 10^5, |a_i| <= 10^9", GeneratorArgs: []string{"n=100000", "v=1000000000"}, TestCount: 2},
+		},
+		Reference: "long long solve(std::vector<int>& a) {\n    long long s = 0;\n    for (int x : a) s += x;\n    return s;\n}\n",
+		Brute:     "long long solve(std::vector<int>& a) {\n    long long s = 0;\n    for (size_t i = 0; i < a.size(); i++) s += a[i];\n    return s;\n}\n",
+		Generator: `import random
+import sys
+
+seed = int(sys.argv[1])
+opts = dict(arg.split("=", 1) for arg in sys.argv[2:])
+n = int(opts.get("n", "10"))
+v = int(opts.get("v", "1000"))
+rng = random.Random(seed)
+print(n)
+print(" ".join(str(rng.randint(-v, v)) for _ in range(n)))
+`,
+		Validator: `import sys
+
+lines = sys.stdin.read().split("\n")
+if len(lines) != 3 or lines[2] != "":
+    sys.exit("expected two lines and a final newline")
+n = int(lines[0])
+a = lines[1].split(" ")
+if not 1 <= n <= 100000 or len(a) != n or any(abs(int(x)) > 10**9 for x in a):
+    sys.exit("bad input")
+`,
+		Checker:       "tokens",
+		TimeLimitMS:   1000,
+		MemoryLimitMB: 256,
+		Tags:          []string{"arrays"},
+		Difficulty:    "easy",
+		Languages: []FunctionLanguage{
+			{Language: "cpp17",
+				LockedTop:    "#include <bits/stdc++.h>\nusing namespace std;\n",
+				Starter:      "long long solve(vector<int>& a) {\n    return 0;\n}\n",
+				LockedBottom: "int main() {\n    int n;\n    cin >> n;\n    vector<int> a(n);\n    for (auto& x : a) cin >> x;\n    cout << solve(a) << \"\n\";\n}\n",
+				Solution:     "long long solve(vector<int>& a) {\n    long long s = 0;\n    for (int x : a) s += x;\n    return s;\n}\n"},
+			{Language: "java21",
+				LockedTop:    "import java.util.*;\n\npublic class Main {\n",
+				Starter:      "    static long solve(int[] a) {\n        return 0;\n    }\n",
+				LockedBottom: "    public static void main(String[] args) {\n        Scanner in = new Scanner(System.in);\n        int n = in.nextInt();\n        int[] a = new int[n];\n        for (int i = 0; i < n; i++) a[i] = in.nextInt();\n        System.out.println(solve(a));\n    }\n}\n",
+				Solution:     "    static long solve(int[] a) {\n        long s = 0;\n        for (int x : a) s += x;\n        return s;\n    }\n"},
+			{Language: "python3",
+				LockedTop:    "import sys\n",
+				Starter:      "def solve(a):\n    return 0\n",
+				LockedBottom: "data = sys.stdin.read().split()\nn = int(data[0])\na = [int(x) for x in data[1:1 + n]]\nprint(solve(a))\n",
+				Solution:     "def solve(a):\n    return sum(a)\n"},
+			{Language: "node22",
+				LockedTop:    "const lines = require(\"fs\").readFileSync(0, \"utf8\").split(\"\n\");\n",
+				Starter:      "function solve(a) {\n  return 0;\n}\n",
+				LockedBottom: "const n = parseInt(lines[0]);\nconst a = lines[1].split(\" \").slice(0, n).map(Number);\nconsole.log(String(solve(a)));\n",
+				Solution:     "function solve(a) {\n  return a.reduce((s, x) => s + x, 0);\n}\n"},
+		},
+	}
+	b, _ := json.Marshal(p)
+	var out FunctionPack
+	json.Unmarshal(b, &out)
+	return &out
+}
+
+// FakeFunctionVariant returns FakeFunctionArraySum with one defect, named by
+// one of the Variant constants, or nil for an unknown name.
+func FakeFunctionVariant(name string) *FunctionPack {
+	p := FakeFunctionArraySum()
+	lang := func(id string) *FunctionLanguage {
+		for i := range p.Languages {
+			if p.Languages[i].Language == id {
+				return &p.Languages[i]
+			}
+		}
+		return nil
+	}
+	switch name {
+	case VariantJavaWrong:
+		l := lang("java21")
+		l.Solution = strings.Replace(l.Solution, "s += x", "s += x + 1", 1)
+	case VariantStarterBroken:
+		l := lang("java21")
+		l.Starter = strings.Replace(l.Starter, "return 0;", "return 0", 1)
+	case VariantExtraOutput:
+		l := lang("python3")
+		l.LockedBottom += "print(\"done\")\n"
+	case VariantIgnoresFunction:
+		l := lang("python3")
+		l.LockedBottom = strings.Replace(l.LockedBottom, "print(solve(a))", "print(0)", 1)
+	case VariantReferenceFails:
+		l := lang("cpp17")
+		l.Starter = strings.Replace(l.Starter, "return 0;", "return 0", 1)
+	default:
+		return nil
+	}
+	return p
 }
