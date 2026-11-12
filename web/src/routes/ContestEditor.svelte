@@ -139,8 +139,11 @@
 
   let picked = $state<AdminContestProblem[]>([]);
   let bank = $state<ProblemSummary[]>([]);
+  let bankError = $state(false);
+  let bankLoaded = $state(false);
   let addId = $state('');
   let problemsError = $state('');
+  let letterError = $state(false);
   let problemsBusy = $state(false);
   // AI problems the server refused for a contest, and the reason to grade them as written.
   let aiLabels = $state<string[]>([]);
@@ -318,12 +321,19 @@
     await page.load();
     void restore();
     if (page.state !== 'ready') return;
+    await loadBank();
+  }
+
+  async function loadBank() {
+    bankError = false;
     try {
       const data = await getJSON<{ problems: ProblemSummary[] }>('/api/admin/problems');
       if (page.live) bank = data.problems ?? [];
     } catch {
       bank = [];
+      bankError = true;
     }
+    bankLoaded = true;
   }
 
   // Autosave.
@@ -680,13 +690,16 @@
   /** Sends the problem list; true when the server took it. On a refusal the list goes back to what is saved. */
   async function putProblems(reason: string, done: string, action?: ToastAction): Promise<boolean> {
     problemsError = '';
+    letterError = false;
     const labels = picked.map((p) => p.label.trim().toUpperCase());
     if (labels.some((l) => !/^[A-Z]{1,3}$/.test(l))) {
       problemsError = 'Each letter must be one to three capital letters.';
+      letterError = true;
       return false;
     }
     if (new Set(labels).size !== labels.length) {
       problemsError = 'Each problem needs its own letter.';
+      letterError = true;
       return false;
     }
     problemsBusy = true;
@@ -970,6 +983,8 @@
                     type="text"
                     maxlength="3"
                     bind:value={p.label}
+                    aria-invalid={letterError ? 'true' : undefined}
+                    aria-describedby={letterError ? 'problems-error' : undefined}
                     onchange={onLetterChange}
                     onkeydown={(e) => {
                       if (e.key === 'Enter') e.preventDefault();
@@ -1006,10 +1021,14 @@
             </div>
             <button type="button" class="btn btn-secondary" disabled={addId === '' || problemsBusy} title={addId === '' ? 'Choose a problem first.' : undefined} onclick={addProblem}>Add problem</button>
           </div>
-          {#if bank.length > 0 && candidates.length === 0}
+          {#if bankError}
+            <p class="field-error" role="alert">The problem bank did not load, so the picker is empty. <button type="button" class="btn btn-link btn-compact" onclick={loadBank}>Retry</button></p>
+          {:else if bankLoaded && bank.length === 0}
+            <p class="muted small">The problem bank is empty. <a href="/admin/problems">Go to the problem bank</a> to write and validate a problem first.</p>
+          {:else if candidates.length === 0}
             <p class="muted small">Every validated problem is in this contest. <a href="/admin/problems">Go to the problem bank</a> to validate more.</p>
           {/if}
-          {#if problemsError}<p class="field-error" role="alert">{problemsError}</p>{/if}
+          {#if problemsError}<p id="problems-error" class="field-error" role="alert">{problemsError}</p>{/if}
           {#if aiLabels.length > 0}
             <div class="ai-confirm" role="group" aria-label="Grade as the AI wrote it">
               <div class="field">
