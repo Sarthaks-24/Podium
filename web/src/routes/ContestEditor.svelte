@@ -143,7 +143,8 @@
   let bankLoaded = $state(false);
   let addId = $state('');
   let problemsError = $state('');
-  let letterError = $state(false);
+  /** The letters (as the save normalises them) that the last refusal names. */
+  let badLetters = $state<string[]>([]);
   let problemsBusy = $state(false);
   // AI problems the server refused for a contest, and the reason to grade them as written.
   let aiLabels = $state<string[]>([]);
@@ -326,6 +327,7 @@
 
   async function loadBank() {
     bankError = false;
+    bankLoaded = false;
     try {
       const data = await getJSON<{ problems: ProblemSummary[] }>('/api/admin/problems');
       if (page.live) bank = data.problems ?? [];
@@ -690,16 +692,16 @@
   /** Sends the problem list; true when the server took it. On a refusal the list goes back to what is saved. */
   async function putProblems(reason: string, done: string, action?: ToastAction): Promise<boolean> {
     problemsError = '';
-    letterError = false;
+    badLetters = [];
     const labels = picked.map((p) => p.label.trim().toUpperCase());
     if (labels.some((l) => !/^[A-Z]{1,3}$/.test(l))) {
       problemsError = 'Each letter must be one to three capital letters.';
-      letterError = true;
+      badLetters = labels.filter((l) => !/^[A-Z]{1,3}$/.test(l));
       return false;
     }
     if (new Set(labels).size !== labels.length) {
       problemsError = 'Each problem needs its own letter.';
-      letterError = true;
+      badLetters = labels.filter((l, i) => labels.indexOf(l) !== i || labels.lastIndexOf(l) !== i);
       return false;
     }
     problemsBusy = true;
@@ -983,8 +985,8 @@
                     type="text"
                     maxlength="3"
                     bind:value={p.label}
-                    aria-invalid={letterError ? 'true' : undefined}
-                    aria-describedby={letterError ? 'problems-error' : undefined}
+                    aria-invalid={badLetters.includes(p.label.trim().toUpperCase()) ? 'true' : undefined}
+                    aria-describedby={badLetters.includes(p.label.trim().toUpperCase()) ? 'problems-error' : undefined}
                     onchange={onLetterChange}
                     onkeydown={(e) => {
                       if (e.key === 'Enter') e.preventDefault();
@@ -1025,7 +1027,7 @@
             <p class="field-error" role="alert">The problem bank did not load, so the picker is empty. <button type="button" class="btn btn-link btn-compact" onclick={loadBank}>Retry</button></p>
           {:else if bankLoaded && bank.length === 0}
             <p class="muted small">The problem bank is empty. <a href="/admin/problems">Go to the problem bank</a> to write and validate a problem first.</p>
-          {:else if candidates.length === 0}
+          {:else if bankLoaded && candidates.length === 0}
             <p class="muted small">Every validated problem is in this contest. <a href="/admin/problems">Go to the problem bank</a> to validate more.</p>
           {/if}
           {#if problemsError}<p id="problems-error" class="field-error" role="alert">{problemsError}</p>{/if}

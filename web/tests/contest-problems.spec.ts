@@ -11,11 +11,14 @@ test('a quick Add then Move sends the second save only after the first has been 
   await mockApi(page, { who: 'organiser', phase: 'upcoming' });
   let release = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
+  let firstReleased = false;
+  const secondSawRelease: boolean[] = [];
   const puts: { problem_id: number; label: string }[][] = [];
   await page.route('**/api/admin/contests/4/problems', async (route) => {
     if (route.request().method() !== 'PUT') return route.fallback();
     puts.push(route.request().postDataJSON());
     if (puts.length === 1) await held;
+    else secondSawRelease.push(firstReleased);
     return route.fallback();
   });
   await page.goto('/admin/contests/4');
@@ -23,11 +26,11 @@ test('a quick Add then Move sends the second save only after the first has been 
   await page.getByRole('button', { name: 'Add problem' }).click();
   await page.getByRole('button', { name: 'Move Interval covering up' }).click();
 
-  // The first answer is held; the Move must still be waiting behind it.
-  await page.waitForTimeout(500);
-  expect(puts).toHaveLength(1);
+  // The first answer is held; the Move's request must arrive only after it is let go.
+  firstReleased = true;
   release();
   await expect.poll(() => puts.length).toBe(2);
+  expect(secondSawRelease).toEqual([true]);
   expect(puts[0].map((p) => p.label)).toEqual(['A', 'B']);
   expect(puts[1].map((p) => `${p.label}:${p.problem_id}`)).toEqual([`A:${puts[0][1].problem_id}`, `B:${puts[0][0].problem_id}`]);
 });
@@ -35,9 +38,13 @@ test('a quick Add then Move sends the second save only after the first has been 
 test('a failed load of the problem bank says so and Retry loads it', async ({ page }) => {
   await mockApi(page, { who: 'organiser', phase: 'upcoming' });
   let failing = true;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
   await page.route('**/api/admin/problems', async (route) => {
-    if (route.request().method() !== 'GET' || !failing) return route.fallback();
-    return apiError(route, 500, 'internal', 'Something went wrong on our side.');
+    if (route.request().method() !== 'GET') return route.fallback();
+    if (failing) return apiError(route, 500, 'internal', 'Something went wrong on our side.');
+    await held;
+    return route.fallback();
   });
   await page.goto('/admin/contests/4');
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
@@ -45,7 +52,28 @@ test('a failed load of the problem bank says so and Retry loads it', async ({ pa
   await expect(alert).toBeVisible();
   failing = false;
   await alert.getByRole('button', { name: 'Retry' }).click();
+  // While the second request is held the bank is unknown: no claim about it.
   await expect(alert).toHaveCount(0);
+  await expect(page.getByText('The problem bank is empty.')).toHaveCount(0);
+  await expect(page.getByText('Every validated problem is in this contest.')).toHaveCount(0);
+  release();
+  await expect(page.getByLabel('Add a validated problem').getByRole('option', { name: /Interval covering/ })).toHaveCount(1);
+});
+
+test('before the bank has answered the page claims nothing about it', async ({ page }) => {
+  await mockApi(page, { who: 'organiser', phase: 'upcoming' });
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route('**/api/admin/problems', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    await held;
+    return route.fallback();
+  });
+  await page.goto('/admin/contests/4');
+  await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
+  await expect(page.getByText('The problem bank is empty.')).toHaveCount(0);
+  await expect(page.getByText('Every validated problem is in this contest.')).toHaveCount(0);
+  release();
   await expect(page.getByLabel('Add a validated problem').getByRole('option', { name: /Interval covering/ })).toHaveCount(1);
 });
 
@@ -58,6 +86,58 @@ test('an empty problem bank gets a hint, not a bare picker', async ({ page }) =>
   await page.goto('/admin/contests/4');
   await expect(page.getByText('The problem bank is empty.')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Go to the problem bank' })).toBeVisible();
+});
+
+/** A bank of three validated problems, so a contest can hold three. */
+async function bankWithThree(page: Page) {
+  await page.route('**/api/admin/problems', (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const problems = [
+      [11, 'a-plus-b', 'A plus B'],
+      [12, 'interval-covering', 'Interval covering'],
+      [13, 'shortest-detour', 'Shortest detour'],
+    ].map(([id, slug, title]) => ({ id, slug, title, difficulty: 'easy', tags: [], origin: 'import', archived: false, test_count: 6, points: 100, validated: true, validated_at: 1, updated_at: 1, shown_in_practice: false }));
+    return json(route, 200, { problems });
+  });
+}
+
+async function addTwo(page: Page) {
+  for (const title of ['Interval covering', 'Shortest detour']) {
+    await page.getByLabel('Add a validated problem').selectOption({ label: `${title} (100 points)` });
+    await page.getByRole('button', { name: 'Add problem' }).click();
+    await expect(page.getByLabel(`Letter for ${title}`)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add problem' })).toBeDisabled();
+  }
+}
+
+test('only the input with the bad letter is marked, the others are not', async ({ page }) => {
+  await mockApi(page, { who: 'organiser', phase: 'upcoming' });
+  await bankWithThree(page);
+  await page.goto('/admin/contests/4');
+  await addTwo(page);
+  const [a, b, c] = ['A plus B', 'Interval covering', 'Shortest detour'].map((t) => page.getByLabel(`Letter for ${t}`));
+  await b.fill('1');
+  await b.press('Tab');
+  await expect(b).toHaveAttribute('aria-invalid', 'true');
+  await expect(b).toHaveAttribute('aria-describedby', 'problems-error');
+  for (const ok of [a, c]) {
+    await expect(ok).not.toHaveAttribute('aria-invalid', /.*/);
+    await expect(ok).not.toHaveAttribute('aria-describedby', /.*/);
+  }
+});
+
+test('two problems sharing a letter are both marked, the third is not', async ({ page }) => {
+  await mockApi(page, { who: 'organiser', phase: 'upcoming' });
+  await bankWithThree(page);
+  await page.goto('/admin/contests/4');
+  await addTwo(page);
+  const [a, b, c] = ['A plus B', 'Interval covering', 'Shortest detour'].map((t) => page.getByLabel(`Letter for ${t}`));
+  await c.fill('b');
+  await c.press('Tab');
+  await expect(page.getByText('Each problem needs its own letter.')).toBeVisible();
+  await expect(b).toHaveAttribute('aria-invalid', 'true');
+  await expect(c).toHaveAttribute('aria-invalid', 'true');
+  await expect(a).not.toHaveAttribute('aria-invalid', /.*/);
 });
 
 test('a bad problem letter is tied to its input and the input is marked invalid', async ({ page }) => {
