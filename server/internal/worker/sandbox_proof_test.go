@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Sarthaks-24/podium/internal/ai"
+	"github.com/Sarthaks-24/podium/internal/ai/fakeai"
 	"github.com/Sarthaks-24/podium/internal/problems"
 )
 
@@ -227,5 +229,112 @@ func TestProofStarterThatLoopsOrThrows(t *testing.T) {
 		res, _ := r.prove(t, c.lang, parts, functionCode[c.lang]["AC"])
 		want(t, c.name+" solution", res[problems.ProofPartSolution], problems.ProofPassed, "", 0, 6)
 		want(t, c.name+" starter", res[problems.ProofPartStarter], problems.ProofPassed, "", 0, 6)
+	}
+}
+
+// F14: a wizard round for a Java starting code with two forms, on the real
+// judge. The fake provider's canned "either" pack (the base class, both
+// starting forms, the bottom and a solution for each form) becomes a draft and
+// goes through the real server-side chain: inputs, outputs, then nine proof
+// jobs (two solution and two starting-code jobs for Java, a solution and a
+// starting-code job for Python and JavaScript, a starting-code job for C++).
+// The canned variants prove their defects are real.
+func TestProofEitherWizardRound(t *testing.T) {
+	const listForm = "ArrayList<Integer>"
+	for _, tc := range []struct {
+		name, variant string
+		// failed is the "part/form" of the one Java job that must not pass, with its reason.
+		failed, reason string
+	}{
+		{"both forms pass", "", "", ""},
+		{"the ArrayList solution is wrong", ai.VariantEitherListWrong, "solution/" + listForm, "wrong_answer"},
+		{"the ArrayList form does not compile", ai.VariantEitherFormBroken, "starter/" + listForm, "compile_error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRig(t)
+			ctx := context.Background()
+			topic := "Sum of an array"
+			if tc.variant != "" {
+				topic += " variant:" + tc.variant
+			}
+			pack, err := ai.GenerateFunction(ctx, &fakeai.Fake{}, ai.Request{Brief: &ai.Brief{Topic: topic, Difficulty: "easy"}, JavaLists: ai.JavaListsEither})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := r.bank.CreateDraft(ctx, ai.ToDraftFunction(pack), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := r.bank.RequestInputGenerationProof(ctx, p.ID, 1, pack.Solutions()); err != nil {
+				t.Fatal(err)
+			}
+			// The rig's validate kind has no queue, so the round ends without a
+			// validation: wait for the chain (inputs, outputs, proofs) to close.
+			for deadline := time.Now().Add(6 * time.Minute); ; time.Sleep(300 * time.Millisecond) {
+				open, err := problems.OpenProof(ctx, r.bank.DB, p.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !open {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("the chain did not close in 6 minutes")
+				}
+			}
+			rows, err := r.bank.DB.Query(`SELECT state, payload, summary FROM jobs WHERE kind = 'validate' AND priority = ?`, problems.ProofPriority)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			results := map[string]problems.ProofResult{}
+			for rows.Next() {
+				var state, payload, summary string
+				if err := rows.Scan(&state, &payload, &summary); err != nil {
+					t.Fatal(err)
+				}
+				var pl struct {
+					Proof struct{ Language, Part, Variant string }
+				}
+				var sm struct{ Result problems.ProofResult }
+				if json.Unmarshal([]byte(payload), &pl) != nil || json.Unmarshal([]byte(summary), &sm) != nil || state != "done" {
+					t.Fatalf("unreadable or open job (%s): %s / %s", state, payload, summary)
+				}
+				key := pl.Proof.Language + "/" + pl.Proof.Part
+				if pl.Proof.Variant != "" {
+					key += "/" + pl.Proof.Variant
+				}
+				results[key] = sm.Result
+				t.Logf("%s: %s %s failed %d of %d compiler %q", key, sm.Result.Outcome, sm.Result.Reason, sm.Result.Failed, sm.Result.Total, sm.Result.Compiler)
+			}
+			if len(results) != 9 {
+				t.Fatalf("%d proof jobs, want 9: %v", len(results), results)
+			}
+			for _, k := range []string{"java21/solution/int[]", "java21/solution/" + listForm, "java21/starter/int[]", "java21/starter/" + listForm} {
+				res, ok := results[k]
+				if !ok {
+					t.Fatalf("no job %s", k)
+				}
+				if k == "java21/"+tc.failed {
+					if res.Outcome != problems.ProofFailed || res.Reason != tc.reason {
+						t.Errorf("%s: %s %q, want failed %q", k, res.Outcome, res.Reason, tc.reason)
+					}
+				} else if res.Outcome != problems.ProofPassed {
+					t.Errorf("%s: %s %q (failed %d of %d, compiler %q)", k, res.Outcome, res.Reason, res.Failed, res.Total, res.Compiler)
+				}
+			}
+			for k, res := range results {
+				if !strings.HasPrefix(k, "java21/") && res.Outcome != problems.ProofPassed {
+					t.Errorf("%s: %s %q", k, res.Outcome, res.Reason)
+				}
+			}
+			got, err := r.bank.Get(ctx, p.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kept := got.Offers("java21"); kept != (tc.failed == "") {
+				t.Errorf("Java offered %v after the round", kept)
+			}
+		})
 	}
 }
