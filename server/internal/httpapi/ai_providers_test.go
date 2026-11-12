@@ -235,7 +235,7 @@ func TestAIKeyNeverStored(t *testing.T) {
 	if code, _ := owner.do("PUT", "/api/admin/ai/key", map[string]string{"provider": "fake"}, s.srv.URL); code != 400 {
 		t.Errorf("fake provider outside testing mode: %d", code)
 	}
-	if _, st := owner.do("GET", "/api/admin/ai/providers", nil, ""); len(st["providers"].([]any)) != 3 || st["active_provider"] != nil {
+	if _, st := owner.do("GET", "/api/admin/ai/providers", nil, ""); len(st["providers"].([]any)) != 5 || st["active_provider"] != nil {
 		t.Errorf("providers outside testing mode: %v", st)
 	}
 

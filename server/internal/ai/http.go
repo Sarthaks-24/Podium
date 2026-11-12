@@ -198,7 +198,7 @@ func wizardError(err error) *wizardErrorJSON {
 
 // providerIDs lists the providers this server offers, in the form's order.
 func (d *Handlers) providerIDs() []string {
-	ids := append([]string{}, Providers...)
+	ids := append(append([]string{}, Providers...), OtherProviders...)
 	if Known(ProviderFake, d.testing()) {
 		ids = append(ids, ProviderFake)
 	}
@@ -211,6 +211,9 @@ type providerJSON struct {
 	HasKey      bool   `json:"has_key"`
 	Model       string `json:"model"`
 	ActiveUntil *int64 `json:"active_until"`
+	// Other marks a host of the Chat Completions table; HasList says it lists its models.
+	Other   bool `json:"other"`
+	HasList bool `json:"has_list"`
 }
 
 // keyProviderJSON is a provider in KeyStatus: providerJSON plus the
@@ -246,7 +249,7 @@ func (d *Handlers) providerEntries(r *http.Request) []keyProviderJSON {
 	token := d.sessionToken(r)
 	var out []keyProviderJSON
 	for _, id := range d.providerIDs() {
-		p := keyProviderJSON{providerJSON: providerJSON{ID: id, Name: ProviderName(id)}, Models: []Model{}}
+		p := keyProviderJSON{providerJSON: providerJSON{ID: id, Name: ProviderName(id), Other: IsOther(id), HasList: HasModelList(id)}, Models: []Model{}}
 		if e, ok := d.Wizard.Keys.GetProvider(token, id); ok {
 			p.HasKey, p.Model, p.ActiveUntil = true, e.Model, httpx.Millis(e.Expires)
 			if e.Models != nil {
@@ -309,7 +312,7 @@ func noKeyMessage(provider string) string {
 func (d *Handlers) GetAIModels(w http.ResponseWriter, r *http.Request) {
 	provider := r.URL.Query().Get("provider")
 	if !Known(provider, d.testing()) {
-		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose Anthropic, OpenAI or Google Gemini as the provider.")
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", ChooseProvider)
 		return
 	}
 	token := d.sessionToken(r)
@@ -364,11 +367,11 @@ func (d *Handlers) PutAIKey(w http.ResponseWriter, r *http.Request) {
 		if req.Provider == ProviderFake {
 			httpx.WriteError(w, http.StatusBadRequest, "bad_request", "The test provider exists only in testing mode.")
 		} else {
-			httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose Anthropic, OpenAI or Google Gemini as the provider.")
+			httpx.WriteError(w, http.StatusBadRequest, "bad_request", ChooseProvider)
 		}
 		return
 	}
-	model, ok := CleanModelID(req.Model)
+	model, ok := CleanModelIDFor(req.Provider, req.Model)
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "A model id has only letters, digits and . _ - : and at most 128 characters.")
 		return

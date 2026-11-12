@@ -80,6 +80,7 @@ const (
 	CodeBadRequest       = "bad_request"
 	CodeRefused          = "refused"
 	CodeCutOff           = "cut_off"
+	CodeTooLarge         = "too_large"
 	CodeInvalidAnswer    = "invalid_answer"
 	CodeTimeout          = "timeout"
 	CodeCanceled         = "canceled"
@@ -118,6 +119,9 @@ const (
 	ProviderAnthropic = "anthropic"
 	ProviderOpenAI    = "openai"
 	ProviderGemini    = "gemini"
+	// The hosts of the Chat Completions table (chatcompat.go).
+	ProviderOpenRouter = "openrouter"
+	ProviderGroq       = "groq"
 	// ProviderFake exists only in testing mode, and only in builds that
 	// link package fakeai.
 	ProviderFake = "fake"
@@ -136,6 +140,19 @@ func HasFake() bool { return fake != nil }
 // Providers lists the real providers in the order the key form shows them.
 var Providers = []string{ProviderAnthropic, ProviderOpenAI, ProviderGemini}
 
+// OtherProviders are the Chat Completions hosts of the table in chatcompat.go,
+// shown after the three above.
+var OtherProviders = []string{ProviderOpenRouter, ProviderGroq}
+
+// IsOther reports whether p is a host of the Chat Completions table.
+func IsOther(p string) bool { _, ok := chatHostFor(p); return ok }
+
+// HasModelList reports whether p lists its models. Only a table host can lack a list.
+func HasModelList(p string) bool {
+	h, ok := chatHostFor(p)
+	return !ok || h.hasList
+}
+
 // ProviderName is the name the key form and the sentences use.
 func ProviderName(p string) string {
 	switch p {
@@ -148,12 +165,18 @@ func ProviderName(p string) string {
 	case ProviderFake:
 		return "Test provider (canned problems)"
 	}
+	if h, ok := chatHostFor(p); ok {
+		return h.name
+	}
 	return "The provider"
 }
 
 // Known reports whether p is a provider this server offers; the fake one
 // only in testing mode, in a build that has it.
 func Known(p string, testing bool) bool {
+	if IsOther(p) {
+		return true
+	}
 	switch p {
 	case ProviderAnthropic, ProviderOpenAI, ProviderGemini:
 		return true
@@ -171,15 +194,21 @@ const MaxModelID = 128
 
 var modelIDRe = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
-// CleanModelID trims a typed model id and drops Gemini's "models/" prefix.
+// CleanModelIDFor trims a typed model id and drops Gemini's "models/" prefix.
 // It reports false for an id with characters no provider uses, which
-// keeps a typed id from changing the path of the provider request.
-func CleanModelID(id string) (string, bool) {
+// keeps a typed id from changing the path of the provider request. A table
+// host writes ids such as "vendor/model" and carries the id in the request
+// body, never in a path, so it also allows a slash.
+func CleanModelIDFor(provider, id string) (string, bool) {
 	id = strings.TrimPrefix(strings.TrimSpace(id), "models/")
 	if id == "" {
 		return "", true
 	}
-	if len(id) > MaxModelID || !modelIDRe.MatchString(id) || strings.Contains(id, "..") {
+	checked := id
+	if IsOther(provider) {
+		checked = strings.ReplaceAll(id, "/", "-")
+	}
+	if len(id) > MaxModelID || !modelIDRe.MatchString(checked) || strings.Contains(id, "..") {
 		return "", false
 	}
 	return id, true
@@ -208,14 +237,17 @@ func NewProvider(c Config, testing bool) (Provider, error) {
 		return fake(), nil
 	}
 	if !Known(c.Provider, testing) {
-		return nil, &Error{Code: CodeInput, Message: "Choose Anthropic, OpenAI or Google Gemini as the provider."}
+		return nil, &Error{Code: CodeInput, Message: ChooseProvider}
 	}
-	model, ok := CleanModelID(c.Model)
+	model, ok := CleanModelIDFor(c.Provider, c.Model)
 	if !ok {
 		return nil, &Error{Code: CodeInput, Message: "A model id has only letters, digits and . _ - : and at most 128 characters."}
 	}
 	if c.Key.IsZero() {
 		return nil, &Error{Code: CodeInput, Message: "Paste the provider key."}
+	}
+	if h, ok := chatHostFor(c.Provider); ok {
+		return &ChatCompat{Host: h, Key: c.Key, Model: model, BaseURL: c.BaseURL}, nil
 	}
 	switch c.Provider {
 	case ProviderOpenAI:
@@ -225,6 +257,9 @@ func NewProvider(c Config, testing bool) (Provider, error) {
 	}
 	return &Anthropic{Key: c.Key, Model: model, BaseURL: c.BaseURL, MaxRetries: 2}, nil
 }
+
+// ChooseProvider is the refusal of a provider id this server does not offer.
+const ChooseProvider = "Choose one of the providers in the list."
 
 // needModel is the error of a Generate on a client built without
 // a model; the routes refuse earlier with 409 no_model.

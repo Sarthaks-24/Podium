@@ -65,7 +65,7 @@ func TestWizardWithFakeProvider(t *testing.T) {
 	}
 	code, st := admin.do("GET", "/api/admin/ai/key", nil, "")
 	providers, _ := st["providers"].([]any)
-	if code != 200 || st["active"] != false || st["active_until"] != nil || len(providers) != 4 || st["server_now"] == nil {
+	if code != 200 || st["active"] != false || st["active_until"] != nil || len(providers) != 6 || st["server_now"] == nil {
 		t.Fatalf("key status: %d %v", code, st)
 	}
 	var ids []string
@@ -76,7 +76,7 @@ func TestWizardWithFakeProvider(t *testing.T) {
 			t.Errorf("provider before any key: %v", p)
 		}
 	}
-	if strings.Join(ids, ",") != "anthropic,openai,gemini,fake" {
+	if strings.Join(ids, ",") != "anthropic,openai,gemini,openrouter,groq,fake" {
 		t.Errorf("providers %v", ids)
 	}
 
