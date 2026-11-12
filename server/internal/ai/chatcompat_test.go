@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Stand-ins for a Chat Completions host. No real host and no real key.
@@ -425,5 +426,38 @@ func TestChatTableRowsAreFixed(t *testing.T) {
 	}
 	if HasModelList(ProviderOpenAI) != true || !HasModelList(ProviderGroq) {
 		t.Error("HasModelList")
+	}
+}
+
+// Every call returns the provider-unavailable error when the host cannot be
+// reached or drops the answer half way, and a listing refused with 401 says so.
+func TestChatTransportFailures(t *testing.T) {
+	retryDelay = func(int) time.Duration { return time.Millisecond }
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	cut := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		io.WriteString(w, `{"choices":`)
+	}))
+	defer cut.Close()
+	for name, base := range map[string]string{"closed": dead.URL, "cut": cut.URL} {
+		c := chatClient(hostObjectRow, base, "m")
+		ctx := context.Background()
+		calls := map[string]func() error{
+			"generate": func() error { _, err := c.Generate(ctx, Request{Pasted: "x"}); return err },
+			"function": func() error { _, err := c.GenerateFunction(ctx, Request{Pasted: "x"}); return err },
+			"edit":     func() error { _, err := c.Edit(ctx, EditRequest{Instruction: "x"}); return err },
+			"fix":      func() error { _, err := c.FixLanguage(ctx, sampleFixRequest()); return err },
+		}
+		for call, f := range calls {
+			var e *Error
+			if err := f(); !errors.As(err, &e) || e.Code != CodeUnavailable {
+				t.Errorf("%s %s: %v", name, call, err)
+			}
+		}
+	}
+	_, base := newStandIn(t, scripted{401, `{}`})
+	if _, err := chatClient(hostObjectRow, base, "").ListModels(context.Background()); err == nil || !strings.Contains(err.Error(), "Objhost refused the key") {
+		t.Errorf("listing with a refused key: %v", err)
 	}
 }
