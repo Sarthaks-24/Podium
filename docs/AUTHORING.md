@@ -147,7 +147,7 @@ Rules, checked on every save and import:
 
 **Renamed functions in Python and JavaScript.** In C++ and Java a student who renames the function gets a compile error and the hint "Your code no longer matches the function the locked code calls." In Python and JavaScript there is no compile step, so the same mistake is a runtime error, and the student sees "Runtime error on test 1" with no hint (Run shows the error text, Submit does not).
 
-**AI.** The AI wizard stays whole-program: it writes whole-program problems only, and neither the wizard nor the Preferences box can ask it for a function problem. To make a function problem with AI, use "Packs from another AI" and ask for a format 4 pack, or convert a draft by hand.
+**AI.** The AI wizard can write a function problem: choose "One function, between locked code" in "Students write" (see "The AI wizard"), and Podium runs every language before offering it. For a function problem written or edited by hand, use "Check a language".
 
 ## Statement
 
@@ -360,9 +360,43 @@ A practice set is a contest that exists only so students can practise its proble
 
 ## The AI wizard
 
-"New problem with AI" on Problems asks a model to write a whole problem: statement, samples, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first: Anthropic, OpenAI or Google Gemini (`docs/OPERATIONS.md`, "AI wizard keys"). The server lists that provider's current models; choose one, or type the id of a model the list does not show. The key stays in the server's memory for 2 hours and is forgotten on sign-out. The wizard shows which provider and model wrote each draft.
+"New problem with AI" on Problems asks a model to write a whole problem (or, if you choose, a function problem; see "Students write" below): statement, samples, subtasks, a C++ reference, a Python brute force, a Python generator with its plan, a Python validator, the checker and limits. An owner or admin pastes their own provider key first: Anthropic, OpenAI or Google Gemini (`docs/OPERATIONS.md`, "AI wizard keys"). The server lists that provider's current models; choose one, or type the id of a model the list does not show. The key stays in the server's memory for 2 hours and is forgotten on sign-out. The wizard shows which provider and model wrote each draft.
 
 The three providers get the same instructions and the same answer schema, and every answer passes the same checks, so a draft from any of them is held to the same rules. Models differ in how often their first answer passes: when one keeps failing a check, try another model before rewriting the brief.
+
+### Students write
+
+Both ways of starting (a brief or pasted text) ask "Students write":
+
+- **A whole program** is the default. Each student writes a full program that reads input and prints output. Nothing about this choice has changed.
+- **One function, between locked code.** The AI also writes, for each language, the locked code before and after the student's function and the starting code the student sees. Only this choice shows "In Java, lists are": arrays (`int[]`) or ArrayList. It changes Java only. C++ uses `vector`, Python a list and JavaScript an array either way.
+
+For a function problem the AI writes:
+
+- The statement, in words that do not depend on a language: what the function receives and what it returns. The exact signature is in each language's starting code, so a language that is left out never leaves a wrong signature in the statement.
+- The reference solution and the brute force as bare C++ functions, as in any function problem (see "Function problems").
+- For each of C++17, Java 21, Python 3 and JavaScript: the locked top, the starting code, the locked bottom and a full solution of its own. The solution is used only for the check below and is not kept with the problem.
+
+#### Every language is run before it is offered
+
+When the tests and their expected outputs exist, Podium runs each language on the judge, in isolate, before the draft's languages are final. For each language it runs two things:
+
+1. The AI's own solution, joined to the locked code, on every test. It must pass every test.
+2. The untouched starting code, joined to the locked code, on the same tests. It must compile, and it must fail at least one test. If it passes every test, the locked code does not need the student's function (for example the bottom prints the answer itself), so every student answer would be accepted.
+
+A language that fails either run is removed from the problem. The problem stays. A language the AI did not write is not offered either. Four languages are seven judge jobs: the reference language only needs the starting-code run, because its solution already made the expected outputs. The wizard page shows "Checking each language" and then lists:
+
+| Word | Meaning |
+|---|---|
+| Offered | The language passed. Students can choose it. |
+| Not offered | The language was removed or never written. The line says why: "The AI's Java code failed 3 of 12 tests.", "The AI's Java code did not compile.", "The locked code passes without the student's function.", "It could not be checked." or "The AI did not write it." The failed test numbers and the compiler's first lines are under Details on the problem page. Hidden test content is never shown, only test numbers and verdicts. |
+| Not checked yet | An offered language that no check has run on. See the known limits under "Check a language". |
+
+"It could not be checked" means the judge could not run the job (an internal error, or the job failed three times). The language is removed like a failed one, but the reason does not blame the AI's code. You can try it again with "Fix <language> with AI".
+
+**If the reference language itself fails** (the AI's C++ solution fails its own tests, or could not be run), nothing is removed and nothing is deleted. The draft keeps its content, is not validated, and the wizard says so. Open it, look, and fix it or ask the AI again.
+
+After the languages are settled, the normal validation runs. A language check never validates a problem by itself: Validate still proves the reference and the brute force. While the check runs (a few minutes) the problem is "being checked"; see "Check a language" for what is refused meanwhile.
 
 ### Custom prompt
 
@@ -390,6 +424,31 @@ The model's code is never run on the server: it goes to the judge, in isolate, l
 **A contest needs a person's solution.** The tests of an AI problem come from the model's generator and their expected outputs from the model's reference, so validation cannot catch a wrong reference: they agree by construction. Every contest counts (V3-6), so a contest refuses an AI problem until a person has written a solution for it: an editor save that changes the reference or the brute force (write your own brute force; it is the independent check), followed by a validation that passes. An admin may instead use it as written by giving a reason of at least 10 characters when adding it; the reason is kept in the contest's audit log, and Setup asks for it.
 
 One AI request per admin runs at a time, for at most 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
+
+## Check a language
+
+On the problem page of a function problem, the "Languages" list in "What students write" shows each language as Offered or Not offered and, for an offered one, its last check ("Passes every test", "Not checked yet" or a failure). Two buttons use the judge:
+
+| Button | For | What it does |
+|---|---|---|
+| Fix <language> with AI (for example "Fix Java with AI") | A language that is not offered | The AI writes new locked code, starting code and a solution for that language, from the statement, the reference solution, the sample tests and the language's last failure. The language is offered only if the solution passes every test and the starting code compiles and fails at least one. Otherwise nothing changes. |
+| Check <language> (for example "Check Java") | A language that is offered | You paste a solution in that language. Podium runs it with the language's locked code on every test and tells you whether it passes. It never changes the problem, pass or fail. |
+
+- Both are for organisers, admins and the owner. Fix needs your AI key and model, like the wizard.
+- One press of Fix is one AI request. Nothing is repeated automatically, and one AI request at a time runs per person.
+- Check does not add a language. To add one by hand, write its locked code and starting code and save: a language is offered once it has locked code. Then Check it.
+- The pasted solution is used for this check and is not saved with the problem. It sits as a file on the server until the next cleanup of unused files.
+- Both buttons are off while the editor has unsaved changes, because the check runs on the saved problem.
+- While a check runs, the problem is "being checked". Validate, Generate inputs, Generate outputs and accepting an AI edit are refused with "Podium is still checking the languages of this problem." Adding the problem to a contest is refused with "The problem for label B is still being checked. Try again in a few minutes." Trying the problem outside a contest is refused with "This problem is being checked. Try again in a few minutes." A student in a contest that already holds the problem is not refused, because they are judged on the revision the contest holds.
+
+### Known limits
+
+- **A check is a moment in time.** After you edit a language's locked code or starting code, Validate proves only the reference's language. Press Check again for the language you changed.
+- **A function problem written or edited by hand is never checked automatically.** Its offered languages read "Not checked yet" until you press Check. The same happens when the wizard's chain stops before the languages are run (the generator or an output failed). Nothing blocks validation in that state.
+- **Python and JavaScript starting code is not compiled.** It is only run, so a mistake that shows only at run time appears as a failed test, not a compile error.
+- **A correct but slow solution is removed.** A solution that runs past the time limit on any test counts as failed.
+- **"Fix Java with AI" writes arrays.** It does not know whether the wizard chose arrays or ArrayList, so it always asks for `int[]`.
+- On a fix, the AI receives the statement, the reference solution, the sample tests and the failure summary. It never receives a hidden test.
 
 ## Editing a problem with AI
 
@@ -505,7 +564,7 @@ Students get the same workspace inside contests.
 
 ### Editing the prompts and the Preferences box
 
-The owner can edit the rules text of the wizard prompt and of the prompt for another AI in the Dashboard, tab AI prompts: the editor shows a diff of the edit against the active text, the fixed part and the built-in default read-only, the history with who saved each version and when, Restore this version, Reset to default and a preview of the full prompt. An admin or the owner can also fill the Preferences box (2,000 characters), style choices that are added to every AI-generated problem, in the wizard's prompt and in the prompt for another AI, always inside a block marked as the admin's choices. Neither changes the answer schema: the wizard writes whole programs that read standard input; it cannot write a function problem. To get a function problem from an AI, use the prompt for another AI, whose built-in rules teach function problems (a locked top and bottom per language, Java reading with `Scanner`, exact parameter and return types, array or list, imports in the top only), and import the pack.
+The owner can edit the rules text of the wizard prompt and of the prompt for another AI in the Dashboard, tab AI prompts: the editor shows a diff of the edit against the active text, the fixed part and the built-in default read-only, the history with who saved each version and when, Restore this version, Reset to default and a preview of the full prompt. An admin or the owner can also fill the Preferences box (2,000 characters), style choices that are added to every AI-generated problem, in the wizard's prompt and in the prompt for another AI, always inside a block marked as the admin's choices. Neither changes the answer schema. The wizard's function answer has its own schema, chosen by "Students write". The prompt for another AI also teaches function problems (a locked top and bottom per language, Java reading with `Scanner`, exact parameter and return types, array or list, imports in the top only); import the pack it returns.
 
 ## Packs from another AI
 

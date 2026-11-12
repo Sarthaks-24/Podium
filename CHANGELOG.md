@@ -52,6 +52,18 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage F: function problems from the wizard
 
+- New: the AI wizard can write a function problem. Both ways of starting (a brief or pasted text) now ask "Students write": a whole program (the default, and exactly as before) or one function, between locked code. For a function, the AI writes the statement in words that do not depend on a language, the reference solution and brute force as C++ functions, and for C++17, Java 21, Python 3 and JavaScript the locked code, the starting code and a solution. A second choice, "In Java, lists are", picks arrays (`int[]`) or ArrayList for Java.
+- Podium runs every language on the judge before it offers it. The AI's solution must pass every test, and the untouched starting code must compile and fail at least one test, so locked code that solves the problem on its own is caught. A failing language is removed and the problem stays. The wizard page and the problem page list each language as Offered or Not offered, with the reason in plain words. If the language the reference is written in fails, nothing is removed and the draft says it cannot be validated.
+- New on the problem page of a function problem: a "Languages" list with "Fix <language> with AI" for a language that is not offered and "Check <language>" for an offered one, where you paste a solution to test it. Check never changes the problem. Both work for hand-written function problems too. A pasted solution is used for the check and is not saved with the problem.
+- While Podium checks a problem's languages (a few minutes), it cannot be validated, have inputs or outputs generated, have an AI edit accepted, be added to a contest or be tried outside a contest. A student in a contest that already holds the problem is not affected. After the check, everything works again.
+- A wizard run for four languages now runs 7 more judge jobs (one per language check). Nothing changes for operators: the jobs use the same judge, queue and sandbox.
+- Known limits:
+  - A check is a moment in time. After you edit a language's locked code or starting code, Validate proves only the reference's language; press Check again.
+  - A function problem written or edited by hand is never checked automatically, so its languages read "Not checked yet" until you press Check. The same happens if the wizard's chain stops before the languages are run.
+  - Python and JavaScript starting code is not compiled, only run.
+  - A correct but slow solution is removed as too slow.
+  - "Fix Java with AI" always asks for arrays. On a fix, the AI receives the statement, the reference solution, the sample tests and the failure summary, never a hidden test.
+
 ### v2.1.0 stage K: other AI providers
 
 ### v2.1.0 stage J: judge speed and sizing

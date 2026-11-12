@@ -193,6 +193,37 @@ The wizard's schema is written once as JSON schema (`PackSchema`) and translated
 
 **Limits.** One AI request per admin at a time (a second is refused, not queued, so a double click cannot spend twice), 3 minutes per request with its retry, 20,000 characters of pasted text. Wizard runs live in memory for an hour after they end. In testing mode a `fake` provider answers with two canned packs whose programs really work on the judge, so the whole pipeline is tested without a network or a key. It lives in `internal/ai/fakeai`, which tests and builds with the tag `fakeai` (`make dev`, `make dev-test`) link; the release binary does not, so neither the provider nor its packs ship to the VM.
 
+### Language proof (function problems)
+
+A function problem is only useful if each language it offers really works: the model's locked code, starting code and solution must fit together. Podium runs every language on the judge before it is offered. This is called a proof.
+
+```
+generate_inputs --> generate --> proof round (priority 88) --> validate
+                                  one validate-kind job per solution,
+                                  one per starting code
+```
+
+- **A proof job is a validate-kind job.** Its payload is the ordinary validate payload (the reference is the language's locked top, solution and locked bottom, joined as the composed file) plus a `proof` field that only the server reads. The judge ignores fields it does not know, as it does for `ThenValidate`, so the judge protocol and the judge are unchanged. A solution job runs the problem's tests with no brute force and no validator. A starting-code job runs the same tests with the starting code in place of the solution.
+- **Where it sits in the wizard's chain.** The existing generate job, after its ordinary save, queues the round instead of Validate when its payload carries a proof spec (the wizard's function run sets it). The round's last job queues the normal validation. A whole-program draft, or any other caller, has no spec and takes the old path. Four languages are 7 jobs: the reference language needs only its starting-code job.
+- **The last job applies the result.** Each job stores a verdict summary (counts, at most 10 compiler lines, at most 60 failed tests, no output text). The job that finds no open sibling in the round, counted inside its own finish transaction, reads every summary and applies the result with an ordinary save: a language that failed or could not be checked is removed, and the normal validation is queued. Two jobs finishing together cannot both apply, because the count and the save share one write transaction. A job that fails or errors counts as finished, so the round cannot hang.
+- **Only if the problem is unchanged.** The round remembers the problem's content hash and a hash of each language's starting code (the content hash leaves starting code out). If either differs when the round ends, that result is dropped and nothing is saved: an edit made during the round wins.
+- **A proof never validates.** It sets no `validated_hash` and writes no validations row. Validate still proves the reference and the brute force, and runs after the round. A language is offered when it has locked code, so a passing proof is the only evidence about the other languages.
+- **If the reference language fails,** nothing is removed (removing it would leave a problem the editor refuses). The problem keeps its content, is not validated, and the result says why.
+- **Fix and Check use the same round.** "Fix <language> with AI" queues a solution job and a starting-code job for one language; a pass adds the language with an ordinary save. "Check <language>" queues one solution job and changes nothing.
+- **Being checked.** Validate, Generate, a contest pin, an AI edit accept and an unpinned student attempt are refused while a proof is open. A contest student is judged on the pinned revision and is not refused.
+
+Reasons for the choices:
+
+| Choice | Reason |
+|---|---|
+| Proof jobs reuse the validate kind | A new job kind or payload field would raise the judge protocol version for every judge. The judge already runs a reference against tests and reports verdicts, and ignores server-only fields. |
+| No solution is stored per language | Keeping each language's solution on the problem needs a migration. The solutions travel as blobs named by the job payloads and are collected by the normal blob cleanup. The cost is that a later edit is not proved again until someone presses Check; see "Check a language" in `docs/AUTHORING.md`. |
+| "Being checked" is derived from open jobs | A flag on the problem needs a migration and can stick when a job is lost. A query for open proof jobs (and for generate jobs that carry a proof spec) cannot disagree with the queue. |
+| The starting code must fail at least one test | A solution that passes proves the AI wrote something that works, not that the locked code needs the student. Locked bottom code that solves the problem itself would be offered and accept every student answer. Running the untouched starting code on the tests catches it. |
+| A removed language loses its parts | A language is offered exactly when it has a locked bottom, so its parts cannot be kept without offering it. Fix writes them again. |
+| The pasted solution of Check is a blob | It must reach the judge by hash like any job input, so it stays until blob cleanup. It is never on the problem, and the help text says so. |
+| The AI's code never runs on the server | Every proof job runs in isolate on the judge, like any setter's code. |
+
 **Cost on the VM.** No provider SDK and nothing at rest: no goroutine runs until a request does. All three providers stay, although each organiser uses one: not every organiser has a key at the same provider (owner, 2026-10-26, V3-7 rejected).
 
 ## Submissions and scoring

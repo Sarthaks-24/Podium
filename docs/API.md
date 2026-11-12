@@ -1165,7 +1165,7 @@ A `POST`, `PUT`, `PATCH` or `DELETE` under `/api/` that carries the session cook
 | `students_write` | `"program"`, `"function"` | `"program"` | 400 `bad_request`: "Choose a whole program or one function." |
 | `java_lists` | `"array"`, `"arraylist"` | `"array"` | 400 `bad_request`: "Choose arrays or ArrayList." Ignored when `students_write` is `"program"`. |
 
-For a function run the AI writes a function problem: the draft has mode `function`, and the C++ reference and brute force are bare functions. The draft is saved, then input generation is queued carrying the AI's solutions for the other languages, which the chain later uses to check each language. The response and the `Wizard` object are the same as for a whole program.
+For a function run the AI writes a function problem: the draft has mode `function`, and the C++ reference and brute force are bare functions. The draft is saved with every language the AI returned, then input generation is queued carrying the AI's solution for each language other than the reference's. When the outputs exist, the chain queues one proof job per language (see `GET .../proof` below) and then the normal validation. The response and the `Wizard` object are the same as for a whole program: a function run ends `draft_created` with `problem_id`, and its progress is read from `GET /api/admin/problems/{id}/proof`. The caller needs an organiser, admin or owner session and a key, as for any wizard run.
 
 #### Refusals while a language is being checked
 
@@ -1173,15 +1173,15 @@ While Podium proves the languages of a function problem on the judge, the proble
 
 | Request | Message |
 |---|---|
-| `POST /api/admin/problems/{id}/validate`, `POST /api/admin/problems/{id}/generate` and `POST /api/admin/problems/{id}/generate-inputs` | `Podium is still checking the languages of this problem.` |
+| `POST /api/admin/problems/{id}/validate`, `POST /api/admin/problems/{id}/generate`, `POST /api/admin/problems/{id}/generate-inputs` and `POST /api/admin/problems/{id}/ai-edit/{draft}/accept` (the draft stays and can be accepted after the round) | `Podium is still checking the languages of this problem.` |
 | `PUT /api/admin/contests/{id}/problems`, `POST /api/admin/contests/{id}/clone` and `PUT /api/admin/contests/{id}/problems/{label}/revision` (pinning the problem) | `The problem for label B is still being checked. Try again in a few minutes.` The label is the contest's label for the problem, here B. |
-| `POST /api/workspace/{problem}/run` and `.../submit`, and any run or submit that has no contest pin | `This problem is being checked. Try again in a few minutes.` A run or submit in a contest that pins a revision is not refused: it is judged on the pinned revision. |
+| `POST /api/workspace/{problem}/run` and `.../submit`, for an attempt that has no contest pin (an organiser trying a problem outside a contest) | `This problem is being checked. Try again in a few minutes.` A run or submit in a contest that pins a revision is not refused: it is judged on the pinned revision. |
 
-The body is the usual `{"error": {"code": "checking", "message": "..."}}`. Each check runs in the same write transaction as the action it guards.
+The body is the usual `{"error": {"code": "checking", "message": "..."}}`. Each check runs in the same write transaction as the action it guards, so a request cannot slip in between the check and the action. Plain edits of the problem (`PUT /api/admin/problems/{id}`, replacing tests) are not refused: a proof that finds the problem changed discards its result.
 
 #### Language checks
 
-Three routes, all for organisers, admins and the owner (a student gets 403, a signed-out request 401). Any organiser may use them on any problem, as with the other problem routes. `{language}` is `cpp17`, `java21`, `python3` or `node22`; any other value is 400 `bad_request`: "Choose C++17, Java 21, Python 3 or JavaScript." A request body with a field not listed here is 400 `bad_request`, and a body that is not sent as `application/json` is 415 `bad_request` "Send the request body as application/json." Hidden test data never appears in a response or in a request to a model.
+Three routes, all for organisers, admins and the owner (`organiser` level) (a student gets 403, a signed-out request 401). Any organiser may use them on any problem, as with the other problem routes. `{language}` is `cpp17`, `java21`, `python3` or `node22`; any other value is 400 `bad_request`: "Choose C++17, Java 21, Python 3 or JavaScript." A request body with a field not listed here is 400 `bad_request`, and a body that is not sent as `application/json` is 415 `bad_request` "Send the request body as application/json." Hidden test data never appears in a response or in a request to a model.
 
 **`GET /api/admin/problems/{id}/proof`** returns what is known about each language.
 

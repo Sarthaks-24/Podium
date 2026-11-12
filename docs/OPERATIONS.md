@@ -466,6 +466,8 @@ A session can hold one key per provider; the last one saved is the one the wizar
 
 Testing mode (`PODIUM_MODE=testing`, `make dev-test`) also offers a "Test provider (canned problems)": no key, no network, two canned problems whose programs really work on the judge (one about a maximum subarray when the brief or text mentions "subarray" or "stretch", a pair sums problem otherwise). Use it to try the whole pipeline (draft, inputs, outputs, validation). It does not exist in dev or production, and only builds with the tag `fakeai` have it (`make dev-test` builds that way; the release binary does not).
 
+A wizard run for a function problem adds judge work: one job per language to check, 7 for four languages, at priority 88 (after input and output generation at 85, before validation at 90). Fix and Check on the problem page add 2 jobs and 1 job. They use the same judge lane and sandbox, and nothing needs configuring. While they run the problem is refused for Validate and for contest pins; see `docs/AUTHORING.md`, "Check a language".
+
 ## Custom wizard prompt
 
 The wizard's system prompt has two parts. The security part (the brief or pasted text is data, rewrite never copy, answer with one JSON object in the schema) is fixed in code and always sent first. The authoring rules (statement sections, samples, subtasks, generator, validator, reference, brute force, checker, length) are built in, and `PODIUM_AI_PROMPT_FILE` can replace them without a rebuild.
