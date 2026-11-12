@@ -8,19 +8,26 @@
   student fills in. A language is offered only with all three. The mode
   cannot change once a student has a submission or a draft; the server
   refuses it then. Folded like the starter code, and opened on a field
-  error. Shown only when the server knows about function problems. Props:
-  `draft` (bindable) and `fields` (the field errors by key).
+  error. Shown only when the server knows about function problems. A function
+  problem also shows the Languages panel (a snippet from the editor) under the
+  mode choice, and the summary names the offered languages that were never
+  checked. Props: `draft` (bindable), `fields` (the field errors by key),
+  `languages` (the panel) and `unchecked` (names of offered languages that
+  were never checked, or "").
 -->
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { layoutDoc } from '../../lib/lockedCode';
   import type { Draft } from '../../lib/problems';
 
   interface Props {
     draft: Draft;
     fields: Record<string, string>;
+    languages?: Snippet;
+    unchecked?: string;
   }
 
-  let { draft = $bindable(), fields }: Props = $props();
+  let { draft = $bindable(), fields, languages, unchecked = '' }: Props = $props();
 
   const LANGUAGES = [
     { id: 'cpp17', label: 'C++17' },
@@ -83,7 +90,7 @@
   <details class="fold" bind:open>
     <summary>
       What students write<span class="set"
-        >, {draft.mode === 'function' ? `a function${offered.length > 0 ? ` in ${offered.join(', ')}` : ''}` : 'the whole program'}</span
+        >, {draft.mode === 'function' ? `a function${offered.length > 0 ? ` in ${offered.join(', ')}` : ''}` : 'the whole program'}{draft.mode === 'function' && unchecked !== '' ? ` (Not checked yet: ${unchecked})` : ''}</span
       >
     </summary>
     <fieldset class="mode">
@@ -100,6 +107,7 @@
           The judge runs the locked top, the student's code and the locked bottom as one file. Students see the locked code but cannot
           change it. The starter for each language is the function they fill in. A language is offered only when it has all three.
         </p>
+        {@render languages?.()}
         <div class="field lang">
           <label for="locked-language">Language</label>
           <select id="locked-language" class="select" bind:value={language}>

@@ -12,11 +12,12 @@
   program, or a function between locked code (LockedCodeField). From
   1024 px a column splitter sets how the width divides between Write and Preview, remembered on this device,
   and a grip at the corner of the Write box sets its height. Props: `draft`
-  (bindable), `fields` (the field errors by key) and `tests` (for the
-  examples).
+  (bindable), `fields` (the field errors by key), `tests` (for the
+  examples), and for a function problem `languages` and `unchecked`, which
+  LockedCodeField draws.
 -->
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, type Snippet } from 'svelte';
   import CodeEditor from '../CodeEditor.svelte';
   import StatementPreview from '../StatementPreview.svelte';
   import StartersField from './StartersField.svelte';
@@ -32,9 +33,13 @@
     fields: Record<string, string>;
     /** The stored tests, for the examples the preview shows as students see them. */
     tests?: Problem['tests'];
+    /** The Languages panel of a function problem, drawn inside the "What students write" fold. */
+    languages?: Snippet;
+    /** Offered languages that were never checked, as a list of names, or "". */
+    unchecked?: string;
   }
 
-  let { draft = $bindable(), fields, tests = [] }: Props = $props();
+  let { draft = $bindable(), fields, tests = [], languages, unchecked = '' }: Props = $props();
 
   const preview = $derived(previewSamples(tests, draft.samples));
 
@@ -244,7 +249,7 @@
     </div>
 
     <StartersField bind:draft {fields} />
-    <LockedCodeField bind:draft {fields} />
+    <LockedCodeField bind:draft {fields} {languages} {unchecked} />
   </section>
 
   {#if !phone}

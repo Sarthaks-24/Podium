@@ -10,8 +10,9 @@
   under it, and, as a data-sticky-bar, anything focused or jumped to lands
   below it (base.css). Props: `tab`, `tabs` ({ id, label, count? }),
   `ontab`, `aiDraft`, `dirty`, `fieldCount`, `saving`, `busy` (Validate is
-  disabled), `validateLabel`, `validatePrimary`, `ready` (show Add to
-  contest), `onvalidate` and `onadd`.
+  disabled), `checking` (the languages are being checked: Validate is described
+  by the banner with id proof-checking), `validateLabel`, `validatePrimary`,
+  `ready` (show Add to contest), `onvalidate` and `onadd`.
 -->
 <script lang="ts">
   import Badge from '../Badge.svelte';
@@ -29,6 +30,7 @@
     fieldCount: number;
     saving: boolean;
     busy: boolean;
+    checking: boolean;
     validateLabel: string;
     validatePrimary: boolean;
     ready: boolean;
@@ -36,7 +38,7 @@
     onadd: () => void;
   }
 
-  let { tab, tabs, ontab, aiDraft, dirty, fieldCount, saving, busy, validateLabel, validatePrimary, ready, onvalidate, onadd }: Props = $props();
+  let { tab, tabs, ontab, aiDraft, dirty, fieldCount, saving, busy, checking, validateLabel, validatePrimary, ready, onvalidate, onadd }: Props = $props();
 </script>
 
 <div class="action-bar" data-sticky-bar use:publishHeight={'--sticky-bar-h'}>
@@ -56,7 +58,7 @@
       {#if ready}
         <button type="button" class="btn btn-primary" onclick={onadd}>Add to contest</button>
       {:else}
-        <button type="button" class="btn {validatePrimary ? 'btn-primary' : 'btn-secondary'}" disabled={busy} onclick={onvalidate}>
+        <button type="button" class="btn {validatePrimary ? 'btn-primary' : 'btn-secondary'}" disabled={busy} aria-describedby={checking ? 'proof-checking' : undefined} onclick={onvalidate}>
           {validateLabel}
         </button>
       {/if}

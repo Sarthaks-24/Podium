@@ -32,6 +32,7 @@
   import CheckingSection from '../components/problem/CheckingSection.svelte';
   import AddToContestDialog from '../components/problem/AddToContestDialog.svelte';
   import AiEditPanel from '../components/problem/AiEditPanel.svelte';
+  import LanguageProofPanel from '../components/problem/LanguageProofPanel.svelte';
   import '../components/problem/editor.css';
   import { setTitle } from '../lib/head';
   import { loader } from '../lib/loader.svelte';
@@ -56,6 +57,7 @@
     type Validation,
   } from '../lib/problems';
   import { fieldErrors } from '../lib/problemFields';
+  import { CHECKING_TEXT, languageName, type ProofState } from '../lib/proof';
   import { navigate, setNavigationGuard } from '../lib/router.svelte';
   import { session } from '../lib/session.svelte';
   import { showToast } from '../lib/toast.svelte';
@@ -123,9 +125,17 @@
   let inputGenError = $state<{ message: string; problems: readonly string[] } | null>(null);
   let inputGenBusy = $state(false);
 
+  // The language checks of a function problem; null for a whole program.
+  let proof = $state<ProofState | null>(null);
+
   const genPending = $derived(generation !== null && (generation.state === 'queued' || generation.state === 'running'));
   const genSummary = $derived(genStarted ? generationSummary(generation) : null);
   const inputPending = $derived(inputGenPending(inputGen));
+  const isFunction = $derived(problem?.mode === 'function');
+  const proofChecking = $derived(isFunction && proof?.checking === true);
+  const unchecked = $derived(
+    isFunction && proof ? proof.languages.filter((l) => l.offered && l.result === 'none').map((l) => languageName(l.language)).join(', ') : '',
+  );
   const inputReport = $derived(inputGen && problem ? inputGenReport(inputGen, readPlan(problem.plan)) : null);
 
   const validating = $derived(isPending(validation));
@@ -254,6 +264,21 @@
     }
   });
 
+  // Asks while a round is open. When it ends the problem is read again (a fix may have added a language) and a queued validation is followed.
+  const proofPoll = poller<ProofState>('/proof', () => proof?.checking === true, (p) => {
+    const was = proof?.checking === true;
+    proof = p;
+    if (was && !p.checking) {
+      void refreshProblem();
+      if (p.applied?.validating && !isPending(validation)) void validationPoll.tick();
+    }
+  });
+
+  /** A refusal that says a round is open means the page missed it: read the state and watch. */
+  function noteChecking(e: unknown) {
+    if (e instanceof ApiError && e.code === 'checking') void proofPoll.tick();
+  }
+
   async function refreshProblem() {
     try {
       const p = await getJSON<Problem>(problemPath(id));
@@ -285,9 +310,14 @@
     validationPoll.schedule();
     generation = await latest<Generation>('/generation');
     genPoll.schedule();
+    await loadProof();
     if (!hasGenerator || !page.live) return;
     inputGen = await latest<InputGeneration>('/input-generation');
     inputPoll.schedule();
+  }
+
+  async function loadProof() {
+    if (problem?.mode === 'function') await proofPoll.tick();
   }
 
   onMount(() => {
@@ -304,6 +334,7 @@
       validationPoll.stop();
       genPoll.stop();
       inputPoll.stop();
+      proofPoll.stop();
       removeGuard();
     };
   });
@@ -363,6 +394,7 @@
       adopt(p, true);
       reason = '';
       showToast('Saved');
+      void loadProof();
       return true;
     } catch (e) {
       if (handleAuth(e)) return false;
@@ -404,6 +436,7 @@
     } catch (e) {
       if (handleAuth(e)) return;
       validateError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
+      noteChecking(e);
     } finally {
       requesting = false;
     }
@@ -420,6 +453,7 @@
     } catch (e) {
       if (handleAuth(e)) return;
       genError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
+      noteChecking(e);
     }
   }
 
@@ -433,6 +467,7 @@
     } catch (e) {
       if (handleAuth(e)) return;
       inputGenError = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
+      noteChecking(e);
     } finally {
       inputGenBusy = false;
     }
@@ -534,6 +569,12 @@
 
 <svelte:window onbeforeunload={onBeforeUnload} onkeydown={onKeydown} />
 
+{#snippet languagesPart()}
+  {#if problem && proof && proof.languages.length > 0}
+    <LanguageProofPanel problemId={problem.id} {proof} {dirty} onstarted={() => proofPoll.tick()} />
+  {/if}
+{/snippet}
+
 {#snippet generatorPart()}
   {#if draft && problem}
     <GeneratorPanel
@@ -589,7 +630,8 @@
       {dirty}
       fieldCount={fieldList.length}
       {saving}
-      busy={requesting || saving || validating || genPending || inputPending}
+      busy={requesting || saving || validating || genPending || inputPending || proofChecking}
+      checking={proofChecking}
       {validateLabel}
       {validatePrimary}
       {ready}
@@ -598,6 +640,11 @@
     />
 
     <div class="notes">
+      {#if proofChecking}
+        <div id="proof-checking" class="banner banner-info" role="status">
+          <p>{CHECKING_TEXT}</p>
+        </div>
+      {/if}
       <SaveErrors {saveError} {fieldList} onreveal={reveal} />
       {#if validateError}
         <div class="banner banner-error problems-list" role="alert">
@@ -646,7 +693,7 @@
 
     <form id="problem-form" class="form" novalidate onsubmit={onSubmit}>
       <div id="panel-statement" class="tab-panel" role="tabpanel" aria-labelledby="tab-statement" data-tab="statement" hidden={tab !== 'statement'}>
-        <StatementSection bind:draft {fields} tests={problem.tests} />
+        <StatementSection bind:draft {fields} tests={problem.tests} languages={isFunction ? languagesPart : undefined} {unchecked} />
       </div>
 
       <div id="panel-tests" class="tab-panel" role="tabpanel" aria-labelledby="tab-tests" data-tab="tests" hidden={tab !== 'tests'}>
