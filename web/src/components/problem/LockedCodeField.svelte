@@ -38,12 +38,33 @@
   const label = $derived(LANGUAGES.find((l) => l.id === language)?.label ?? language);
 
   // Imports most solutions need; the top holds imports only (no declarations).
-  const STANDARD_IMPORTS: Record<string, string> = {
-    cpp17: '#include <bits/stdc++.h>\nusing namespace std;\n',
-    java21: 'import java.util.*;\nimport java.io.*;\n',
-    python3: 'import sys\nimport math\n',
-    node22: "'use strict';\n",
+  const STANDARD_IMPORTS: Record<string, string[]> = {
+    cpp17: ['#include <bits/stdc++.h>', 'using namespace std;'],
+    java21: ['import java.util.*;', 'import java.io.*;'],
+    python3: ['import sys', 'import math'],
+    node22: ["'use strict';"],
   };
+
+  // Adds only the standard lines the top lacks, each after the standard line that comes before it.
+  function addStandardImports() {
+    const lines = (draft.locked_top?.[language] ?? '').split('\n');
+    if (lines.at(-1) === '') lines.pop();
+    let after = -1;
+    for (const line of STANDARD_IMPORTS[language] ?? []) {
+      const at = lines.findIndex((l) => l.trim() === line);
+      if (at >= 0) after = at;
+      else lines.splice(++after, 0, line);
+    }
+    write('locked_top', lines.length > 0 ? `${lines.join('\n')}\n` : '');
+  }
+
+  // The server names a language by its id; the page says it as the label and shows that language.
+  const named = (message: string | undefined) => LANGUAGES.find((l) => message !== undefined && message.includes(l.id));
+  const said = (message: string) => LANGUAGES.reduce((text, l) => text.replaceAll(l.id, l.label), message);
+  $effect(() => {
+    const l = named(fields.locked_bottom) ?? named(fields.locked_top);
+    if (l) language = l.id;
+  });
 
   // What a student sees, joined by the editor's own join (lib/lockedCode.ts).
   const preview = $derived.by(() => {
@@ -99,8 +120,8 @@
             aria-invalid={fields.locked_top ? 'true' : undefined}
           ></textarea>
           <p id="locked-top-help" class="field-help">Common imports or includes only, no declarations.</p>
-          <button type="button" class="btn small" onclick={() => write('locked_top', STANDARD_IMPORTS[language] ?? '')}>Add standard imports</button>
-          {#if fields.locked_top}<p id="locked-top-error" class="field-error">{fields.locked_top}</p>{/if}
+          <button type="button" class="btn small" onclick={addStandardImports}>Add standard imports</button>
+          {#if fields.locked_top}<p id="locked-top-error" class="field-error">{said(fields.locked_top)}</p>{/if}
         </div>
         <div class="field">
           <label for="locked-bottom">Locked bottom in {label}</label>
@@ -119,11 +140,14 @@
             Reads the input, calls the student's function and prints the result. In Java this holds public class Main, and the
             student writes class Solution.
           </p>
-          {#if fields.locked_bottom}<p id="locked-bottom-error" class="field-error">{fields.locked_bottom}</p>{/if}
+          {#if fields.locked_bottom}<p id="locked-bottom-error" class="field-error">{said(fields.locked_bottom)}</p>{/if}
         </div>
         <div class="field">
           <p class="preview-label" id="locked-preview-label">What students see in {label}, with the starter between the locked parts</p>
-          <pre class="preview mono" aria-labelledby="locked-preview-label" translate="no"><span class="locked">{preview.top}</span>{preview.code}<span class="locked">{preview.bottom}</span></pre>
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <div class="preview" role="region" aria-labelledby="locked-preview-label" tabindex="0">
+            <pre class="mono" translate="no"><span class="locked">{preview.top}</span>{preview.code}<span class="locked">{preview.bottom}</span></pre>
+          </div>
         </div>
       {/if}
     </fieldset>
@@ -193,6 +217,10 @@
     background: var(--surface-2);
     color: var(--ink);
     font-size: var(--fs-0);
+  }
+
+  .preview pre {
+    margin: 0;
     white-space: pre;
   }
 
