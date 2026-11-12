@@ -164,6 +164,20 @@ test('Reject forgets the draft and changes nothing', async ({ page }) => {
   expect(calls.accepted).toEqual([]);
 });
 
+test('Accept is disabled while the editor has unsaved changes, with the reason beside it', async ({ page }) => {
+  const calls = await setup(page);
+  await openPanel(page);
+  await page.getByLabel('What should change').fill('Make it harder.');
+  await page.getByRole('button', { name: 'Ask for a draft' }).click();
+  const accept = page.getByRole('button', { name: 'Accept the edit' });
+  await expect(accept).toBeEnabled();
+  await page.getByLabel('Title', { exact: true }).fill('A plus B, edited');
+  await expect(accept).toBeDisabled();
+  await expect(page.getByText('You have unsaved changes. Save or discard them first')).toBeVisible();
+  await expect(accept).toHaveAccessibleDescription(/Save or discard them first/);
+  expect(calls.accepted).toEqual([]);
+});
+
 test('a running contest refuses Accept with the server sentence and keeps the draft', async ({ page }) => {
   const calls = await setup(page, undefined, RUNNING);
   await openPanel(page);

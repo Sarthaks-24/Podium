@@ -292,7 +292,7 @@
         </details>
       {/each}
       <p class="actions">
-        <button type="button" class="btn btn-primary" disabled={deciding} onclick={accept}>Accept the edit</button>
+        <button type="button" class="btn btn-primary" disabled={deciding || dirty} aria-describedby={dirty ? 'aiedit-dirty' : undefined} onclick={accept}>Accept the edit</button>
         <button type="button" class="btn btn-secondary" disabled={deciding} onclick={reject}>Reject the edit</button>
       </p>
     </div>
