@@ -4,6 +4,7 @@
 // locked code. The fold is keyboard reachable and passes axe at phone and
 // desktop widths, light and dark.
 import AxeBuilder from '@axe-core/playwright';
+import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { AXE_TAGS } from './axe';
 import { tabTo } from './keyboard';
@@ -129,3 +130,30 @@ test('the preview of what students see is a labelled region the keyboard can rea
   await tabTo(page, preview);
   await expect(preview).toBeFocused();
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const width of [375, 768, 1024, 1440]) {
+    test(`a language error and the focusable preview hold at ${width} px, ${theme}, axe clean`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme });
+      await problems.mockApi(page);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/admin/problems/1');
+      await page.locator('summary', { hasText: 'What students write' }).click();
+      await page.getByLabel('One function, between locked code').check();
+      await page.route('**/api/admin/problems/1', async (route) => {
+        if (route.request().method() !== 'PUT') return route.fallback();
+        return problems.apiError(route, 400, 'bad_request', 'Some fields need fixing.', { fields: { locked_top: 'Add a locked top for java21. Common imports go there.' } });
+      });
+      await page.getByLabel('Locked top in C++17').fill('#include <bits/stdc++.h>\n');
+      await page.getByRole('button', { name: 'Save changes' }).click();
+      await expect(page.locator('#locked-top-error')).toBeVisible();
+      const results = await new AxeBuilder({ page }).include('.fold').withTags(AXE_TAGS).analyze();
+      expect(results.violations.map((v) => v.id)).toEqual([]);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(0);
+      const dir = process.env.PODIUM_SHOTS ?? problems.shots();
+      mkdirSync(dir, { recursive: true });
+      await page.locator('details.fold', { hasText: 'What students write' }).screenshot({ path: `${dir}locked-code-error-${width}-${theme}.png` });
+    });
+  }
+}

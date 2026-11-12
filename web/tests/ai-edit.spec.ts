@@ -379,6 +379,19 @@ const SCREENS = [
     },
   },
   {
+    name: 'ai-edit-unsaved',
+    run: async (page: Page) => {
+      await setup(page);
+      await openPanel(page);
+      await page.getByLabel('What should change').fill('Make it harder.');
+      await page.getByRole('button', { name: 'Ask for a draft' }).click();
+      await page.getByLabel('Title', { exact: true }).fill('A plus B, edited');
+      await expect(page.getByRole('button', { name: 'Accept the edit' })).toBeDisabled();
+      await page.getByRole('button', { name: 'Change key or model' }).click();
+      await expect(page.getByRole('heading', { level: 3, name: /key or model/ })).toBeVisible();
+    },
+  },
+  {
     name: 'ai-edit-refused',
     run: async (page: Page) => {
       await setup(page, undefined, RUNNING);

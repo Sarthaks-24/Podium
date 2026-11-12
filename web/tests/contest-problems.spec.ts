@@ -1,8 +1,11 @@
 // The problem list of the contest editor (v2.1.0 stage V): the save queue,
 // the problem bank picker and the letter field. Answered by the mocks of
 // mocks/contests.ts.
-import { expect, test } from '@playwright/test';
-import { apiError, json, mockApi } from './mocks/contests';
+import AxeBuilder from '@axe-core/playwright';
+import { mkdirSync } from 'node:fs';
+import { expect, test, type Page } from '@playwright/test';
+import { AXE_TAGS } from './axe';
+import { apiError, json, mockApi, shots, THEMES, WIDTHS } from './mocks/contests';
 
 test('a quick Add then Move sends the second save only after the first has been answered', async ({ page }) => {
   await mockApi(page, { who: 'organiser', phase: 'upcoming' });
@@ -68,3 +71,46 @@ test('a bad problem letter is tied to its input and the input is marked invalid'
   await expect(letter).toHaveAttribute('aria-invalid', 'true');
   await expect(letter).toHaveAccessibleDescription('Each letter must be one to three capital letters.');
 });
+
+const VIEWS = {
+  'contest-bank-error': async (page: Page) => {
+    await page.route('**/api/admin/problems', (route) => (route.request().method() === 'GET' ? apiError(route, 500, 'internal', 'Something went wrong on our side.') : route.fallback()));
+  },
+  'contest-bank-empty': async (page: Page) => {
+    await page.route('**/api/admin/problems', (route) => (route.request().method() === 'GET' ? json(route, 200, { problems: [] }) : route.fallback()));
+  },
+  'contest-letter-error': async () => {},
+} as const;
+
+for (const theme of THEMES) {
+  for (const [name, prepare] of Object.entries(VIEWS)) {
+    test(`${name} holds at every width, ${theme} theme, axe clean`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme });
+      await mockApi(page, { who: 'organiser', phase: 'upcoming' });
+      await prepare(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto('/admin/contests/4');
+      await expect(page.getByLabel('Title', { exact: true })).toHaveValue('Week 6 contest');
+      if (name === 'contest-letter-error') {
+        await page.getByLabel('Letter for A plus B').fill('1');
+        await page.getByLabel('Letter for A plus B').press('Tab');
+        await expect(page.getByLabel('Letter for A plus B')).toHaveAttribute('aria-invalid', 'true');
+      } else {
+        await expect(page.locator('#add-problem')).toBeVisible();
+        await expect(name === 'contest-bank-error' ? page.getByText('The problem bank did not load') : page.getByText('The problem bank is empty.')).toBeVisible();
+      }
+      const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+      expect(results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html}`)).toEqual([]);
+      for (const width of WIDTHS) {
+        await page.setViewportSize({ width, height: width < 768 ? 812 : 900 });
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(overflow, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(0);
+        await page.locator('#add-problem').scrollIntoViewIfNeeded();
+        const dir = process.env.PODIUM_SHOTS ?? shots();
+        mkdirSync(dir, { recursive: true });
+        await page.screenshot({ path: `${dir}${name}-${width}-${theme}.png`, fullPage: true });
+      }
+    });
+  }
+}
