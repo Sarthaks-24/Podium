@@ -1179,6 +1179,53 @@ While Podium proves the languages of a function problem on the judge, the proble
 
 The body is the usual `{"error": {"code": "checking", "message": "..."}}`. Each check runs in the same write transaction as the action it guards.
 
+#### Language checks
+
+Three routes, all for organisers, admins and the owner (a student gets 403, a signed-out request 401). Any organiser may use them on any problem, as with the other problem routes. `{language}` is `cpp17`, `java21`, `python3` or `node22`; any other value is 400 `bad_request`: "Choose C++17, Java 21, Python 3 or JavaScript." A request body with a field not listed here is 400 `bad_request`. Hidden test data never appears in a response or in a request to a model.
+
+**`GET /api/admin/problems/{id}/proof`** returns what is known about each language.
+
+```json
+{"checking": true, "progress": {"done": 2, "total": 4, "current": "java21"},
+ "languages": [{"language": "java21", "offered": false, "result": "failed", "reason": "wrong_answer",
+   "failed": 3, "total": 12, "compiler": "", "tests": [{"idx": 4, "verdict": "WA"}], "current": true, "source": "wizard"}],
+ "applied": {"kept": "reference_failed", "validating": false, "hash": "..."}, "server_now": 1792190392359}
+```
+
+- `languages` always lists the four languages in the order cpp17, java21, python3, node22, and is empty for a whole-program problem.
+- `offered` is live. `result` is `passed`, `failed`, `unchecked` (the judge could not run it) or `none` (never checked). `reason` is empty for a pass, else `compile_error`, `wrong_answer`, `runtime_error`, `time_limit`, `memory_limit`, `output_limit`, `judge_error`, `internal_error`, `no_report` or `skipped`. `compiler` holds at most 10 lines of compiler output. `tests` holds at most 60 failed tests as index and verdict only.
+- `current` is false when the result is from other content than the problem has now. `source` is `wizard`, `fix` or `check`.
+- `progress` is present only while `checking` is true; `total` is 0 until the first proof job is queued.
+- `applied` is what the newest finished round did: `kept` (`reference_failed`, `reference_unchecked`, `not_added`), `discarded` (`gone`, `changed`), `removed` (language ids), `added`, `stale`, `validating`, `error`, `hash`. It is absent when no round has finished.
+- Refusals: 404 `not_found` "There is no such problem."; 409 `deleted`.
+
+**`POST /api/admin/problems/{id}/languages/{language}/check`**, request `{"solution": "<the student's function>"}`, queues one check of an offered language. It never changes the problem, pass or fail. Response `202`:
+
+```json
+{"state": "checking", "language": "java21", "server_now": 1792190392359}
+```
+
+The pasted solution is used for this check and is not saved with the problem (it lives only as a file the job names until garbage collection). Poll `GET .../proof` until `checking` is false.
+
+| Status, code | Message |
+|---|---|
+| 400 `bad_request` | Choose C++17, Java 21, Python 3 or JavaScript. (unknown language) |
+| 400 `bad_request` | Paste a solution of at most 64 KB. (empty, blank, longer than 64 KB, or the field missing) |
+| 404 `not_found` | There is no such problem. |
+| 409 `deleted` | This problem was deleted and cannot be changed. |
+| 409 `not_function` | Only a function problem has languages to check. |
+| 409 `not_offered` | Java 21 is not offered. Write its locked code and starting code and save, or use Fix Java 21 with AI. (the language name is the one in the path) |
+| 409 `checking` | Podium is still checking the languages of this problem. |
+| 409 `not_ready` | The problem is not ready. Fix these first. (with `problems`) |
+
+**`POST /api/admin/problems/{id}/languages/{language}/ai-fix`**, request `{"provider": "<id or empty>"}` (the object may be empty; empty means the active key), asks the model to write a language that is not offered, from the statement, the reference, the public sample tests and the language's last failure. The language is added only if every test passes. The key and the one-request slot are the wizard's. Response `202`:
+
+```json
+{"state": "checking", "language": "java21", "provider": "anthropic", "model": "claude-x", "server_now": 1792190392359}
+```
+
+Refusals, in the order they are checked: 400 `bad_request` (language), 404 `not_found`, 409 `deleted`, 409 `not_function`, 409 `already_offered` "Java 21 is already offered. Use Check Java 21 to test it.", 409 `checking`, 409 `not_ready`, then 409 `no_key` "Add a key first." or `no_model`, 429 `busy` "One AI request at a time. Wait for the current one to finish.", 502 (the provider failed or declined; the message is the wizard's), 422 `invalid_answer` "The AI's Java 21 code could not be used, so nothing was changed. Press Fix again, or write the code yourself." (with `problems` listing why, after one retry), and 409 `changed` "The problem changed while the AI was working. Press Fix again." when the problem was edited during the call.
+
 ### Stage K: other AI providers
 
 ### Stage W: rewrite with AI

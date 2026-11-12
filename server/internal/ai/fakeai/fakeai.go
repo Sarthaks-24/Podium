@@ -106,3 +106,25 @@ func (f *Fake) Check(context.Context) error { return nil }
 func (f *Fake) ListModels(context.Context) ([]ai.Model, error) {
 	return []ai.Model{{ID: ai.FakeModel, Name: "Canned problems"}}, nil
 }
+
+// FixHook lets a test choose the fake's answer to a fix. Nil means the
+// canned code of the requested language.
+var FixHook func(req ai.FixRequest) (*ai.FixAnswer, error)
+
+// FixLanguage implements ai.Provider: the language's four parts from the
+// canned array sum pack.
+func (f *Fake) FixLanguage(ctx context.Context, req ai.FixRequest) (*ai.FixAnswer, error) {
+	f.calls.Add(1)
+	if err := ctx.Err(); err != nil {
+		return nil, &ai.Error{Code: ai.CodeCanceled, Message: "The request was cancelled."}
+	}
+	if FixHook != nil {
+		return FixHook(req)
+	}
+	for _, l := range ai.FakeFunctionArraySum().Languages {
+		if l.Language == req.Language {
+			return &ai.FixAnswer{LockedTop: l.LockedTop, Starter: l.Starter, LockedBottom: l.LockedBottom, Solution: l.Solution}, nil
+		}
+	}
+	return nil, &ai.Error{Code: ai.CodeInvalidAnswer, Message: "The test provider has no code for " + req.Language + "."}
+}

@@ -306,3 +306,18 @@ func (g *Gemini) generate(ctx context.Context, req Request, system string, schem
 	}
 	return g.call(ctx, system, msgs, schema)
 }
+
+// FixLanguage implements Provider.
+func (g *Gemini) FixLanguage(ctx context.Context, req FixRequest) (*FixAnswer, error) {
+	msgs := []geminiContent{{Role: "user", Parts: []geminiPart{{Text: FixUserPrompt(req)}}}}
+	if req.Previous != "" && len(req.Fix) > 0 {
+		msgs = append(msgs,
+			geminiContent{Role: "model", Parts: []geminiPart{{Text: req.Previous}}},
+			geminiContent{Role: "user", Parts: []geminiPart{{Text: FixRetryPrompt(req.Fix)}}})
+	}
+	text, err := g.call(ctx, req.fixSystem(), msgs, FixSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeFix(text)
+}

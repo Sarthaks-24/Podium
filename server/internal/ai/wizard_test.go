@@ -156,6 +156,8 @@ func TestCheckNamesProblems(t *testing.T) {
 type stub struct {
 	answers         []func() (*WizardPack, error)
 	functionAnswers []func() (*FunctionPack, error)
+	fixAnswers      []func() (*FixAnswer, error)
+	fixReqs         []FixRequest
 	reqs            []Request
 }
 

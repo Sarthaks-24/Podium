@@ -25,6 +25,10 @@ type Provider interface {
 	// Edit asks for changes to a problem's pack files. A refused, cut off
 	// or unusable answer comes back as *Error.
 	Edit(ctx context.Context, req EditRequest) (*EditAnswer, error)
+	// FixLanguage asks for one language of a function problem to be written
+	// again from the problem's statement, reference and samples. Errors are
+	// as for Generate.
+	FixLanguage(ctx context.Context, req FixRequest) (*FixAnswer, error)
 	// Check makes the cheapest call that proves the key works: a lookup
 	// of the model, or a model listing when no model is chosen yet.
 	Check(ctx context.Context) error

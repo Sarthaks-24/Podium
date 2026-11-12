@@ -412,3 +412,16 @@ func (a *Anthropic) mapError(ctx context.Context, err error) error {
 	}
 	return transportError(ctx)
 }
+
+// FixLanguage implements Provider.
+func (a *Anthropic) FixLanguage(ctx context.Context, req FixRequest) (*FixAnswer, error) {
+	msgs := []anthropicMessage{anthropicTurn("user", FixUserPrompt(req))}
+	if req.Previous != "" && len(req.Fix) > 0 {
+		msgs = append(msgs, anthropicTurn("assistant", req.Previous), anthropicTurn("user", FixRetryPrompt(req.Fix)))
+	}
+	text, err := a.call(ctx, req.fixSystem(), msgs, FixSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeFix(text)
+}

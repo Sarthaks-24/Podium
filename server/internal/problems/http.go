@@ -341,6 +341,7 @@ func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err erro
 	var langLocked *LanguageLockedError
 	var notAllowed *NotAllowedError
 	var unended *UnendedContestsError
+	var langState *LanguageStateError
 	switch {
 	case errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
@@ -348,6 +349,16 @@ func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err erro
 		httpx.WriteError(w, http.StatusConflict, "deleted", err.Error())
 	case errors.Is(err, ErrChecking):
 		httpx.WriteError(w, http.StatusConflict, "checking", err.Error())
+	case errors.Is(err, ErrNotFunction):
+		httpx.WriteError(w, http.StatusConflict, "not_function", err.Error())
+	case errors.Is(err, ErrChanged):
+		httpx.WriteError(w, http.StatusConflict, "changed", err.Error())
+	case errors.As(err, &langState):
+		code := "not_offered"
+		if langState.Offered {
+			code = "already_offered"
+		}
+		httpx.WriteError(w, http.StatusConflict, code, err.Error())
 	case errors.As(err, &notAllowed):
 		httpx.WriteError(w, http.StatusForbidden, "not_allowed", notAllowed.Message)
 	case errors.As(err, &unended):
@@ -896,4 +907,59 @@ func (d *Handlers) addRevisions(ctx context.Context, p *Problem, out *problemJSO
 	}
 	out.LiveContests = visible
 	return nil
+}
+
+// maxCheckBody bounds a language check: a 64 KB solution as JSON.
+const maxCheckBody = 128 << 10
+
+// GetProof returns the state of the problem's language checks.
+func (d *Handlers) GetProof(w http.ResponseWriter, r *http.Request) {
+	id, ok := problemID(w, r)
+	if !ok {
+		return
+	}
+	st, err := d.Problems.ProofState(r.Context(), id)
+	if err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	st.ServerNow = time.Now().UnixMilli()
+	httpx.WriteJSON(w, http.StatusOK, st)
+}
+
+// CheckLanguage queues one proof round of an offered language from a pasted
+// solution. It changes nothing on the problem, pass or fail.
+func (d *Handlers) CheckLanguage(w http.ResponseWriter, r *http.Request) {
+	id, ok := problemID(w, r)
+	if !ok {
+		return
+	}
+	lang := r.PathValue("language")
+	if ExtByLanguage[lang] == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", BadLanguageMessage)
+		return
+	}
+	var body struct {
+		Solution string `json:"solution"`
+	}
+	if !httpx.DecodeJSONLimit(w, r, &body, maxCheckBody) {
+		return
+	}
+	if strings.TrimSpace(body.Solution) == "" || len(body.Solution) > MaxSource {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Paste a solution of at most 64 KB.")
+		return
+	}
+	by := auth.UserFrom(r.Context()).ID
+	if err := d.Problems.RequestLanguageProof(r.Context(), id, by, ProofRequest{Language: lang, Solution: body.Solution}); err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	d.Log.Info("language check queued", "by", by, "problem_id", id, "language", lang)
+	httpx.WriteJSON(w, http.StatusAccepted, map[string]any{"state": "checking", "language": lang, "server_now": time.Now().UnixMilli()})
+}
+
+// WriteError answers err the way the problem routes do, for a route outside
+// this package that calls the bank (the AI fix route).
+func WriteError(log *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
+	(&Handlers{Log: log}).problemError(w, r, err)
 }

@@ -191,6 +191,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/admin/problems/{id}/generation", organiser(bank.GetGeneration))
 	mux.HandleFunc("POST /api/admin/problems/{id}/generate-inputs", organiser(bank.GenerateInputs))
 	mux.HandleFunc("GET /api/admin/problems/{id}/input-generation", organiser(bank.GetInputGeneration))
+	mux.HandleFunc("GET /api/admin/problems/{id}/proof", organiser(bank.GetProof))
+	mux.HandleFunc("POST /api/admin/problems/{id}/languages/{language}/check", organiser(bank.CheckLanguage))
 	if d.AI != nil {
 		wizard := &ai.Handlers{Wizard: d.AI, Problems: d.Problems, Prompts: prompts, Hub: d.Hub, Log: d.Log,
 			Testing: d.Mode == "testing", SessionToken: d.sessionToken}
@@ -204,6 +206,7 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("POST /api/admin/problems/{id}/ai-edit", organiser(wizard.AIEdit))
 		mux.HandleFunc("POST /api/admin/problems/{id}/ai-edit/{draft}/accept", organiser(wizard.AIEditAccept))
 		mux.HandleFunc("DELETE /api/admin/problems/{id}/ai-edit/{draft}", organiser(wizard.AIEditReject))
+		mux.HandleFunc("POST /api/admin/problems/{id}/languages/{language}/ai-fix", organiser(wizard.AIFix))
 		// Admins and the owner reach these; the role by kind (owner: the
 		// rules, admin: the preferences) is checked inside.
 		mux.HandleFunc("GET /api/admin/ai/prompts", admin(wizard.GetPrompts))

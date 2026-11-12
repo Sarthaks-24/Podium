@@ -151,6 +151,9 @@ type Applied struct {
 	// Error is an expected refusal of the save, kept as text so the job
 	// still closes.
 	Error string `json:"error,omitempty"`
+	// Hash is the content hash the round's own save produced, so a result of that
+	// round still reads as current after it removed or added a language.
+	Hash string `json:"hash,omitempty"`
 }
 
 // proofSummary is what a proof job stores as its summary.
@@ -433,13 +436,7 @@ func roundJobs(ctx context.Context, tx *sql.Tx, pl proofValidate) ([]roundJob, e
 		if err != nil {
 			return nil, err
 		}
-		var sm proofSummary
-		if json.Unmarshal([]byte(summary), &sm) != nil || sm.Result.Outcome == "" {
-			// Closed without Finish (cancelled by the problem delete): nothing ran.
-			sm.Result = ProofResult{Language: sib.Proof.Language, Part: sib.Proof.Part,
-				Outcome: ProofUnchecked, Reason: "judge_error", Verdicts: map[string]int{}}
-		}
-		out = append(out, roundJob{sib.Proof, sm.Result})
+		out = append(out, roundJob{sib.Proof, summaryOf(sib, summary).Result})
 	}
 	return out, rows.Err()
 }
@@ -566,6 +563,9 @@ func (k ValidateKind) saveApplied(ctx context.Context, tx *sql.Tx, p *Problem, n
 		app.Error = err.Error()
 		return false, nil
 	}
+	if err == nil {
+		app.Hash = p.ContentHash
+	}
 	return err == nil, err
 }
 
@@ -596,4 +596,386 @@ func proofSolutionLanguages(p *Problem) []string {
 // compiled). A draft that does not validates directly instead.
 func provesLanguages(p *Problem) bool {
 	return p.IsFunction() && (len(proofSolutionLanguages(p)) > 0 || judge.Languages[p.Reference.Language].Compile != nil)
+}
+
+// proofLanguages are the languages a function problem can offer, in the
+// order the editor lists them.
+var proofLanguages = []string{"cpp17", "java21", "python3", "node22"}
+
+// BadLanguageMessage is the sentence for a language id the routes do not know.
+const BadLanguageMessage = "Choose C++17, Java 21, Python 3 or JavaScript."
+
+const (
+	// proofStateSQL reads the closed proof jobs of a problem, newest first.
+	proofStateSQL = `SELECT payload, summary FROM jobs WHERE state IN ('done','failed') AND priority = ?
+		AND kind = 'validate' AND json_extract(payload, '$.problem_id') = ? ORDER BY id DESC LIMIT 200`
+	// openProofJobsSQL reads the open proof jobs of a problem.
+	openProofJobsSQL = `SELECT state, payload FROM jobs WHERE state IN ('queued','leased') AND priority = ?
+		AND kind = 'validate' AND json_extract(payload, '$.problem_id') = ? ORDER BY id`
+	// sampleReadBytes cuts a sample sent to a model.
+	sampleReadBytes = 4 << 10
+)
+
+// ErrNotFunction refuses a language action on a whole-program problem.
+var ErrNotFunction = errors.New("Only a function problem has languages to check.")
+
+// ErrChanged says the problem changed while the AI was working.
+var ErrChanged = errors.New("The problem changed while the AI was working. Press Fix again.")
+
+// LanguageStateError refuses an action because of whether a language is
+// offered: a check needs it offered, a fix needs it not offered.
+type LanguageStateError struct {
+	Language string
+	// Offered is true for a fix on a language that is already offered.
+	Offered bool
+}
+
+func (e *LanguageStateError) Error() string {
+	name := judge.Languages[e.Language].Name
+	if e.Offered {
+		return name + " is already offered. Use Check " + name + " to test it."
+	}
+	return name + " is not offered. Write its locked code and starting code and save, or use Fix " + name + " with AI."
+}
+
+// ProofLanguage is one language's line of the proof state.
+type ProofLanguage struct {
+	Language string `json:"language"`
+	// Offered is live: the language has a locked bottom now.
+	Offered bool `json:"offered"`
+	// Result is passed, failed, unchecked or none (never checked).
+	Result   string      `json:"result"`
+	Reason   string      `json:"reason"`
+	Failed   int         `json:"failed"`
+	Total    int         `json:"total"`
+	Compiler string      `json:"compiler"`
+	Tests    []ProofTest `json:"tests"`
+	// Current is false when the result is from other content than the problem's now.
+	Current bool `json:"current"`
+	// Source is what asked for the round: wizard, fix or check.
+	Source string `json:"source"`
+}
+
+// ProofProgress counts the jobs of the open round.
+type ProofProgress struct {
+	Done  int `json:"done"`
+	Total int `json:"total"`
+	// Current is the language of a running job, or empty.
+	Current string `json:"current"`
+}
+
+// ProofState is what the proof route returns: whether the problem is being
+// checked, how far, each language's latest result, and what the newest
+// finished round did.
+type ProofState struct {
+	Checking  bool            `json:"checking"`
+	Progress  *ProofProgress  `json:"progress,omitempty"`
+	Languages []ProofLanguage `json:"languages"`
+	Applied   *Applied        `json:"applied,omitempty"`
+	ServerNow int64           `json:"server_now"`
+}
+
+// latestProof is the newest round that touched a language.
+type latestProof struct {
+	round, source, hash string
+	// savedHash is the content hash the round's own save produced.
+	savedHash string
+	results   []ProofResult // newest first
+}
+
+// worst is the result that stands for the language: failed beats unchecked
+// beats passed, and the solution job beats the starter job on a tie.
+func (l *latestProof) worst() ProofResult {
+	rank := map[string]int{ProofPassed: 1, ProofUnchecked: 2, ProofFailed: 3}
+	var out ProofResult
+	for i := len(l.results) - 1; i >= 0; i-- {
+		if r := l.results[i]; rank[r.Outcome] > rank[out.Outcome] {
+			out = r
+		}
+	}
+	return out
+}
+
+// latestProofs reads each language's newest round of results and the newest
+// Applied record. Reading one round per language keeps an earlier round's
+// results out of a later one's.
+func latestProofs(ctx context.Context, q queryer, id int64) (map[string]*latestProof, *Applied, error) {
+	rows, err := q.QueryContext(ctx, proofStateSQL, ProofPriority, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	latest := map[string]*latestProof{}
+	saved := map[string]string{} // round to the hash its save produced
+	var applied *Applied
+	for rows.Next() {
+		var payload, summary string
+		if err := rows.Scan(&payload, &summary); err != nil {
+			return nil, nil, err
+		}
+		pl, err := decodeProof(json.RawMessage(payload))
+		if err != nil {
+			return nil, nil, err
+		}
+		if pl.Proof == nil {
+			continue
+		}
+		sm := summaryOf(pl, summary)
+		if sm.Applied != nil {
+			if applied == nil {
+				applied = sm.Applied
+			}
+			saved[pl.Proof.Round] = sm.Applied.Hash
+		}
+		l := latest[pl.Proof.Language]
+		if l == nil {
+			l = &latestProof{round: pl.Proof.Round, source: pl.Proof.Source, hash: pl.Proof.ContentHash}
+			latest[pl.Proof.Language] = l
+		}
+		if l.round == pl.Proof.Round {
+			l.results = append(l.results, sm.Result)
+		}
+	}
+	for _, l := range latest {
+		l.savedHash = saved[l.round]
+	}
+	return latest, applied, rows.Err()
+}
+
+// summaryOf reads a proof job's stored summary. A job closed without Finish
+// (cancelled by a problem delete) has none: nothing ran, so it counts as not
+// checked.
+func summaryOf(pl proofValidate, summary string) proofSummary {
+	var sm proofSummary
+	if json.Unmarshal([]byte(summary), &sm) != nil || sm.Result.Outcome == "" {
+		sm.Result = ProofResult{Language: pl.Proof.Language, Part: pl.Proof.Part,
+			Outcome: ProofUnchecked, Reason: "judge_error", Verdicts: map[string]int{}}
+	}
+	return sm
+}
+
+// ProofState returns the derived state of a problem's language checks. A
+// whole-program problem has no languages to check and lists none.
+func (s *Service) ProofState(ctx context.Context, id int64) (*ProofState, error) {
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	p, err := load(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if p.Deleted {
+		return nil, ErrDeleted
+	}
+	st := &ProofState{Languages: []ProofLanguage{}}
+	if !p.IsFunction() {
+		return st, nil
+	}
+	if st.Checking, err = OpenProof(ctx, tx, id); err != nil {
+		return nil, err
+	}
+	if st.Checking {
+		if st.Progress, err = proofProgress(ctx, tx, id); err != nil {
+			return nil, err
+		}
+	}
+	latest, applied, err := latestProofs(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	st.Applied = applied
+	for _, lang := range proofLanguages {
+		l := ProofLanguage{Language: lang, Offered: p.Offers(lang), Result: "none", Tests: []ProofTest{}}
+		if r := latest[lang]; r != nil {
+			res := r.worst()
+			l.Result, l.Reason, l.Failed, l.Total, l.Compiler = res.Outcome, res.Reason, res.Failed, res.Total, res.Compiler
+			if res.Tests != nil {
+				l.Tests = res.Tests
+			}
+			l.Current = r.hash == p.ContentHash || (r.savedHash != "" && r.savedHash == p.ContentHash)
+			l.Source = r.source
+		}
+		st.Languages = append(st.Languages, l)
+	}
+	return st, nil
+}
+
+// proofProgress counts the open round's closed and open jobs. Before the
+// chain has queued any proof job it is 0 of 0.
+func proofProgress(ctx context.Context, tx *sql.Tx, id int64) (*ProofProgress, error) {
+	rows, err := tx.QueryContext(ctx, openProofJobsSQL, ProofPriority, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	pr, round := &ProofProgress{}, ""
+	for rows.Next() {
+		var state, payload string
+		if err := rows.Scan(&state, &payload); err != nil {
+			return nil, err
+		}
+		pl, err := decodeProof(json.RawMessage(payload))
+		if err != nil {
+			return nil, err
+		}
+		if pl.Proof == nil || (round != "" && pl.Proof.Round != round) {
+			continue
+		}
+		round = pl.Proof.Round
+		pr.Total++
+		if state == "leased" && pr.Current == "" {
+			pr.Current = pl.Proof.Language
+		}
+	}
+	if err := rows.Err(); err != nil || round == "" {
+		return pr, err
+	}
+	rows.Close()
+	closed, err := roundJobs(ctx, tx, proofValidate{ValidatePayload: judgeapi.ValidatePayload{ProblemID: id}, Proof: &Proof{Round: round}})
+	pr.Done = len(closed)
+	pr.Total += len(closed)
+	return pr, err
+}
+
+// LanguageParts are the three parts of a language, as text.
+type LanguageParts struct{ Top, Starter, Bottom string }
+
+// ProofRequest asks for one proof round of one language.
+type ProofRequest struct {
+	Language string
+	// Solution is the student's middle part, composed with the locked parts.
+	Solution string
+	// Parts, when set, make this a fix: the language is not offered, the
+	// parts are its code, and they are added only if the round passes.
+	// Nil makes it a check of an offered language, which changes nothing.
+	Parts *LanguageParts
+	// WantHash, when set, is the content hash the caller read; a different
+	// one refuses the request with ErrChanged.
+	WantHash string
+}
+
+// RequestLanguageProof queues one proof round for one language, in one
+// transaction with the check that no round is open, so two presses cannot
+// both queue. The solution and a fix's parts are stored only as blobs named
+// by the jobs: no table holds their text.
+func (s *Service) RequestLanguageProof(ctx context.Context, id, userID int64, req ProofRequest) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	p, err := load(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	fix := req.Parts != nil
+	switch {
+	case p.Deleted:
+		return ErrDeleted
+	case !p.IsFunction():
+		return ErrNotFunction
+	case p.Offers(req.Language) == fix:
+		return &LanguageStateError{Language: req.Language, Offered: fix}
+	case req.WantHash != "" && p.ContentHash != req.WantHash:
+		return ErrChanged
+	}
+	if open, err := OpenProof(ctx, tx, id); err != nil {
+		return err
+	} else if open {
+		return ErrChecking
+	}
+	if probs := p.Problems(); len(probs) > 0 {
+		return &NotReadyError{probs}
+	}
+	q := s.queue()
+	sha, err := q.blobs.Put(ctx, tx, []byte(req.Solution))
+	if err != nil {
+		return err
+	}
+	spec := ProofSpec{Source: ProofSourceCheck, Language: req.Language, Solutions: map[string]string{req.Language: sha}}
+	if fix {
+		spec.Source, spec.Parts = ProofSourceFix, &ProofParts{}
+		for _, part := range []struct {
+			text string
+			sha  *string
+		}{{req.Parts.Top, &spec.Parts.Top}, {req.Parts.Starter, &spec.Parts.Starter}, {req.Parts.Bottom, &spec.Parts.Bottom}} {
+			if *part.sha, err = q.blobs.Put(ctx, tx, []byte(part.text)); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := q.enqueueProofs(ctx, tx, p, userID, spec); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// FixSnapshot is what the fix route gives the model: the statement, the
+// reference, the sample tests and the language's last failure. Hidden tests
+// are never opened.
+type FixSnapshot struct {
+	ContentHash string
+	Statement   string
+	Reference   Source
+	Samples     []SampleCase
+	// Failure is the language's latest result when it did not pass.
+	Failure *ProofResult
+}
+
+// FixSnapshot loads what the AI needs to write one language again. It
+// refuses a problem that is deleted, whole-program, already offering the
+// language, being checked or not ready.
+func (s *Service) FixSnapshot(ctx context.Context, id int64, language string) (*FixSnapshot, error) {
+	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	p, err := load(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case p.Deleted:
+		return nil, ErrDeleted
+	case !p.IsFunction():
+		return nil, ErrNotFunction
+	case p.Offers(language):
+		return nil, &LanguageStateError{Language: language, Offered: true}
+	}
+	if open, err := OpenProof(ctx, tx, id); err != nil {
+		return nil, err
+	} else if open {
+		return nil, ErrChecking
+	}
+	if probs := p.Problems(); len(probs) > 0 {
+		return nil, &NotReadyError{probs}
+	}
+	snap := &FixSnapshot{ContentHash: p.ContentHash, Statement: p.Statement, Reference: p.Reference}
+	for _, t := range p.Tests {
+		if !p.IsSample(t.Idx) {
+			continue
+		}
+		in, err := s.Blobs.Read(t.InputSHA, sampleReadBytes)
+		if err != nil {
+			return nil, err
+		}
+		out, err := s.Blobs.Read(t.OutputSHA, sampleReadBytes)
+		if err != nil {
+			return nil, err
+		}
+		snap.Samples = append(snap.Samples, SampleCase{Input: string(in), Output: string(out)})
+	}
+	latest, _, err := latestProofs(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if l := latest[language]; l != nil {
+		if res := l.worst(); res.Outcome != ProofPassed {
+			snap.Failure = &res
+		}
+	}
+	return snap, nil
 }

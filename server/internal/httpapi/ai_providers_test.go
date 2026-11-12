@@ -239,6 +239,7 @@ func TestAIKeyNeverStored(t *testing.T) {
 		t.Errorf("providers outside testing mode: %v", st)
 	}
 
+	fixID := importFunction(t, s, owner, true)
 	var keys []string
 	var stands []*standIn
 	for _, c := range cases {
@@ -325,6 +326,44 @@ func TestAIKeyNeverStored(t *testing.T) {
 		stand.mu.Unlock()
 		if len(fnPosts) != 1 || !strings.Contains(fnPosts[0], "brute_cpp") || strings.Contains(fnPosts[0], key) {
 			t.Errorf("%s: the function run's request was not the function schema, or held the key", c.provider)
+		}
+
+		// An AI fix too: its request, answer and queued round are searched for
+		// the key with everything else below. A provider that refuses the key
+		// echoes it in its body; the route must answer without it.
+		fixAnswer, _ := json.Marshal(&ai.FixAnswer{LockedTop: "import java.util.*;", Starter: "static long solve(int[] a) { return 0; }",
+			LockedBottom: "class Main {}", Solution: "static long solve(int[] a) { return 1; }"})
+		stand.mu.Lock()
+		stand.answer = string(fixAnswer)
+		before = len(stand.posts)
+		stand.mu.Unlock()
+		fix := func() (int, map[string]any) {
+			for i := 0; i < 100; i++ {
+				code, out := owner.do("POST", langPath(fixID, "java21", "ai-fix"), map[string]string{"provider": c.provider}, s.srv.URL)
+				if code != 429 {
+					return code, out
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			t.Fatal("the AI slot was never released")
+			return 0, nil
+		}
+		code, fixed := fix()
+		if code != 202 || strings.Contains(fmt.Sprint(fixed), key) {
+			t.Fatalf("%s ai-fix: %d %v", c.provider, code, fixed)
+		}
+		stand.mu.Lock()
+		fixPosts := stand.posts[before:]
+		stand.mu.Unlock()
+		if len(fixPosts) != 1 || !strings.Contains(fixPosts[0], "locked_bottom") || strings.Contains(fixPosts[0], key) {
+			t.Errorf("%s: the fix request was not the fix schema, or held the key", c.provider)
+		}
+		closeRound(t, s)
+		stand.key = key + "x"
+		code, refusedFix := fix()
+		stand.key = key
+		if code != 502 || strings.Contains(fmt.Sprint(refusedFix), key) {
+			t.Errorf("%s ai-fix with a refused key: %d %v", c.provider, code, refusedFix)
 		}
 	}
 

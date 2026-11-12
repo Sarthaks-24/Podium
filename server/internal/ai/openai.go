@@ -250,3 +250,16 @@ func (o *OpenAI) generate(ctx context.Context, req Request, system, name string,
 	}
 	return o.call(ctx, system, msgs, name, schema)
 }
+
+// FixLanguage implements Provider.
+func (o *OpenAI) FixLanguage(ctx context.Context, req FixRequest) (*FixAnswer, error) {
+	msgs := []openAIMessage{{Role: "user", Content: FixUserPrompt(req)}}
+	if req.Previous != "" && len(req.Fix) > 0 {
+		msgs = append(msgs, openAIMessage{Role: "assistant", Content: req.Previous}, openAIMessage{Role: "user", Content: FixRetryPrompt(req.Fix)})
+	}
+	text, err := o.call(ctx, req.fixSystem(), msgs, "language_fix", FixSchema())
+	if err != nil {
+		return nil, err
+	}
+	return DecodeFix(text)
+}
