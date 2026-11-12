@@ -17,8 +17,8 @@ import (
 // Stand-ins for a Chat Completions host. No real host and no real key.
 
 var (
-	hostSchemaRow = chatHost{id: "testhost", name: "Testhost", base: "https://example.invalid/v1", jsonSchema: true, hasList: true, checkPath: "/key"}
-	hostObjectRow = chatHost{id: "objhost", name: "Objhost", base: "https://example.invalid/v1", hasList: true}
+	hostSchemaRow = chatHost{id: ProviderOpenRouter, name: "Testhost", base: "https://example.invalid/v1", jsonSchema: true, hasList: true, checkPath: "/key"}
+	hostObjectRow = chatHost{id: ProviderOpenRouter, name: "Objhost", base: "https://example.invalid/v1", hasList: true}
 	hostNoList    = chatHost{id: "nolist", name: "Nolist", base: "https://example.invalid/v1"}
 )
 
@@ -459,5 +459,46 @@ func TestChatTransportFailures(t *testing.T) {
 	_, base := newStandIn(t, scripted{401, `{}`})
 	if _, err := chatClient(hostObjectRow, base, "").ListModels(context.Background()); err == nil || !strings.Contains(err.Error(), "Objhost refused the key") {
 		t.Errorf("listing with a refused key: %v", err)
+	}
+}
+
+// A model list comes from the host: an entry whose id a typed id could not be
+// is dropped, and a very long name is cut. Every client shares the rule.
+func TestListedModelsAreCheckedAndCut(t *testing.T) {
+	long := strings.Repeat("x", 200)
+	longName := strings.Repeat("é", 300)
+	bad := []string{"with space", "a/../b", long, "semi;colon"}
+	chat := `{"data":[{"id":"good/one","name":"` + longName + `","created":9},{"id":"fine","created":8}`
+	openai := `{"data":[{"id":"gpt-good","created":9}`
+	gemini := `{"models":[{"name":"models/gemini-good","displayName":"` + longName + `","supportedGenerationMethods":["generateContent"]}`
+	claude := []any{anthropicModel("claude-good", true)}
+	for i, id := range bad {
+		chat += `,{"id":"` + id + `","created":` + fmt.Sprint(i) + `}`
+		openai += `,{"id":"gpt-` + id + `","created":` + fmt.Sprint(i) + `}`
+		gemini += `,{"name":"models/gemini-` + id + `","supportedGenerationMethods":["generateContent"]}`
+		claude = append(claude, anthropicModel("claude-"+id, true))
+	}
+	chat, openai, gemini = chat+`]}`, openai+`]}`, gemini+`]}`
+	claudeList, _ := json.Marshal(map[string]any{"data": claude, "has_more": false})
+
+	_, base := newStandIn(t, ok(chat))
+	got, err := chatClient(hostObjectRow, base, "").ListModels(context.Background())
+	if err != nil || len(got) != 2 || got[0].ID != "good/one" || got[1] != (Model{ID: "fine", Name: "fine"}) || len([]rune(got[0].Name)) != 128 {
+		t.Errorf("chat host: %d models %v %v", len(got), got, err)
+	}
+	_, base = newStandIn(t, ok(openai))
+	got, err = (&OpenAI{Key: NewSecret(testKey), BaseURL: base}).ListModels(context.Background())
+	if err != nil || len(got) != 1 || got[0].ID != "gpt-good" {
+		t.Errorf("openai: %v %v", got, err)
+	}
+	_, base = newStandIn(t, ok(gemini))
+	got, err = (&Gemini{Key: NewSecret(testKey), BaseURL: base}).ListModels(context.Background())
+	if err != nil || len(got) != 1 || got[0].ID != "gemini-good" || len([]rune(got[0].Name)) != 128 {
+		t.Errorf("gemini: %d models %v", len(got), err)
+	}
+	_, a := newFakeAPI(t, 200, string(claudeList), false)
+	got, err = a.ListModels(context.Background())
+	if err != nil || len(got) != 1 || got[0].ID != "claude-good" {
+		t.Errorf("anthropic: %v %v", got, err)
 	}
 }

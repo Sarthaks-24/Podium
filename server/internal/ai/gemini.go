@@ -129,12 +129,9 @@ func (g *Gemini) ListModels(ctx context.Context) ([]Model, error) {
 		}
 		for _, m := range page.Models {
 			if geminiUsable(m) {
-				name := m.DisplayName
-				id := strings.TrimPrefix(m.Name, "models/")
-				if name == "" {
-					name = id
+				if e, ok := listedModel(ProviderGemini, m.Name, m.DisplayName); ok {
+					out = append(out, e)
 				}
-				out = append(out, Model{ID: id, Name: name})
 			}
 		}
 		if page.NextPageToken == "" || page.NextPageToken == token {

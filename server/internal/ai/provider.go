@@ -274,3 +274,24 @@ func (r Request) system() string {
 	}
 	return systemPrompt()
 }
+
+// maxModelName bounds a listed model's display name, in characters.
+const maxModelName = 128
+
+// listedModel is the picker entry for a model a provider listed, or false
+// when its id is not one a typed id could be (the same gate), so a host cannot
+// put odd or huge strings into the session's list. An empty name falls back to
+// the id, and a long one is cut on a character boundary.
+func listedModel(provider, id, name string) (Model, bool) {
+	clean, ok := CleanModelIDFor(provider, id)
+	if !ok || clean == "" {
+		return Model{}, false
+	}
+	if name == "" {
+		name = clean
+	}
+	if r := []rune(name); len(r) > maxModelName {
+		name = string(r[:maxModelName])
+	}
+	return Model{ID: clean, Name: name}, true
+}

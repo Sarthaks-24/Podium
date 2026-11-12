@@ -125,8 +125,8 @@ func (o *OpenAI) ListModels(ctx context.Context) ([]Model, error) {
 	sort.SliceStable(page.Data, func(i, j int) bool { return page.Data[i].Created > page.Data[j].Created })
 	var out []Model
 	for _, m := range page.Data {
-		if openAIUsable(m.ID) && len(out) < maxListed {
-			out = append(out, Model{ID: m.ID, Name: m.ID})
+		if e, ok := listedModel(ProviderOpenAI, m.ID, ""); ok && openAIUsable(m.ID) && len(out) < maxListed {
+			out = append(out, e)
 		}
 	}
 	return out, nil

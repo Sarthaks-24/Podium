@@ -187,11 +187,9 @@ func (c *ChatCompat) ListModels(ctx context.Context) ([]Model, error) {
 		if (m.Active != nil && !*m.Active) || !chatUsable(m.ID, m.Params) || len(out) >= maxListed {
 			continue
 		}
-		name := m.Name
-		if name == "" {
-			name = m.ID
+		if e, ok := listedModel(c.Host.id, m.ID, m.Name); ok {
+			out = append(out, e)
 		}
-		out = append(out, Model{ID: m.ID, Name: name})
 	}
 	return out, nil
 }

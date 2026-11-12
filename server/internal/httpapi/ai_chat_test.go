@@ -270,6 +270,14 @@ func TestAIChatHostsKeyNeverStored(t *testing.T) {
 		if code, acc := owner.do("POST", editPath(editID, "/"+out["draft_id"].(string)+"/accept"), nil, s.srv.URL); code != 200 || strings.Contains(fmt.Sprint(acc), key) {
 			t.Fatalf("%s accept: %d %v", c.provider, code, acc)
 		}
+		// The same edit with a refused key: the stand-in echoes the key in its 401
+		// body, and the route must answer without it (guard test, no red run).
+		stand.key = key + "x"
+		code, refusedEdit := owner.do("POST", editPath(editID, ""), map[string]any{"instruction": "Change it again.", "provider": c.provider}, s.srv.URL)
+		stand.key = key
+		if code != 502 || strings.Contains(fmt.Sprint(refusedEdit), key) {
+			t.Errorf("%s edit with a refused key: %d %v", c.provider, code, refusedEdit)
+		}
 		closeRound(t, s)
 	}
 

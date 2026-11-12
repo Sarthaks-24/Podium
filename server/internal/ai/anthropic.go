@@ -355,7 +355,9 @@ func (a *Anthropic) ListModels(ctx context.Context) ([]Model, error) {
 				return out, nil
 			}
 			if m := &page.Data[i]; anthropicUsable(m) {
-				out = append(out, Model{ID: m.ID, Name: m.DisplayName})
+				if e, ok := listedModel(ProviderAnthropic, m.ID, m.DisplayName); ok {
+					out = append(out, e)
+				}
 			}
 		}
 		if !page.HasMore || page.LastID == "" || page.LastID == after {
