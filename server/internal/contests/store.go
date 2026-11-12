@@ -204,6 +204,10 @@ type Service struct {
 	// Hub, when set, carries contest events (standings, announcements,
 	// clarifications, new end times) to the contest's connected members.
 	Hub *events.Hub
+	// Wake, when set, is called after judging is resumed, outside any
+	// transaction: the contest's queued jobs are claimable again, and a judge
+	// holding a claim should look (jobs.Service.Wake).
+	Wake func()
 	// BoardEvery is the shortest time between two recomputes of a
 	// contest's board (DefaultBoardEvery when zero).
 	BoardEvery time.Duration
@@ -930,7 +934,7 @@ func (s *Service) SetPaused(ctx context.Context, id int64, paused bool, by Actor
 	if paused {
 		action = AuditPause
 	}
-	return s.audited(ctx, id, by, action, func(tx *sql.Tx) (any, bool, error) {
+	err := s.audited(ctx, id, by, action, func(tx *sql.Tx) (any, bool, error) {
 		res, err := tx.ExecContext(ctx, "UPDATE contests SET paused = ?, updated_at = ? WHERE id = ?", paused, s.now().UnixMilli(), id)
 		if err != nil {
 			return nil, false, err
@@ -940,6 +944,10 @@ func (s *Service) SetPaused(ctx context.Context, id int64, paused bool, by Actor
 		}
 		return nil, true, nil
 	})
+	if err == nil && !paused && s.Wake != nil {
+		s.Wake()
+	}
+	return err
 }
 
 // extension returns a student's own extra time.

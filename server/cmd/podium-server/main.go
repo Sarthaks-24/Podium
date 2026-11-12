@@ -157,7 +157,7 @@ func run(envFile string) error {
 	defer cancelBase()
 	srv := apiServer(cfg.Listen, svc.handler(cfg, provider), base)
 	srv.RegisterOnShutdown(cancelBase)
-	judgeSrv := judgeServer(cfg.JudgeListen, judgeserver.New(judgeserver.Deps{Log: log, Jobs: svc.jobs, Blobs: svc.blobs, Token: cfg.JudgeToken}))
+	judgeSrv := newJudgeServer(cfg.JudgeListen, judgeserver.Deps{Log: log, Jobs: svc.jobs, Blobs: svc.blobs, Token: cfg.JudgeToken})
 	errc := make(chan error, 2)
 	go func() {
 		log.Info("listening", "addr", cfg.Listen, "base_url", cfg.BaseURL)
@@ -212,6 +212,18 @@ func apiServer(addr string, h http.Handler, base context.Context) *http.Server {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    64 << 10,
 	}
+}
+
+// newJudgeServer is the judge API's own server. Its claims may be held up to
+// 20 s, so shutdown cancels the context they watch (d.Stop) as it begins:
+// held claims answer at once and do not use up the time Shutdown gives the
+// student API, as base does for the event streams.
+func newJudgeServer(addr string, d judgeserver.Deps) *http.Server {
+	stop, cancel := context.WithCancel(context.Background())
+	d.Stop = stop
+	srv := judgeServer(addr, judgeserver.New(d))
+	srv.RegisterOnShutdown(cancel)
+	return srv
 }
 
 // judgeServer is the judge API's own listener.

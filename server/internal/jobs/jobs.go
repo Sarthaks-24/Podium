@@ -140,6 +140,10 @@ type Service struct {
 	// whose author's contest time is over then queues like any other. The
 	// zero value is on.
 	EndOrderOff bool
+	// LookEvery is how often a held claim looks at the queue again when no
+	// wake arrived; zero means 2 s. MaxHeld caps held claims; zero means 64.
+	LookEvery time.Duration
+	MaxHeld   int
 	// done remembers recently closed jobs for Stats, as a ring of
 	// finishedRing entries; doneNext is the next slot to overwrite.
 	done     []finishedJob
@@ -148,6 +152,11 @@ type Service struct {
 	// not it got any: the console's "judge last seen". In memory
 	// only; zero until the first claim after a start.
 	lastClaim atomic.Int64
+	// wakeCh is closed by Wake and replaced on the next look; held counts
+	// claims waiting in ClaimWait.
+	wakeMu sync.Mutex
+	wakeCh chan struct{}
+	held   atomic.Int32
 }
 
 // New returns the queue. kinds builds the kind handlers from the queue
@@ -188,7 +197,8 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-// Enqueue adds a job inside tx and returns its id.
+// Enqueue adds a job inside tx and returns its id. It does not signal held
+// claims: the caller calls Wake after tx commits.
 func (s *Service) Enqueue(ctx context.Context, tx *sql.Tx, kind string, priority int, payload any, createdBy int64) (int64, error) {
 	if _, ok := s.Kinds[kind]; !ok {
 		return 0, fmt.Errorf("enqueue: unknown job kind %q", kind)
@@ -597,6 +607,9 @@ func (s *Service) Report(ctx context.Context, r judgeapi.Report) error {
 	s.recordFinished(job, now)
 	s.dropUploads(r.JobID)
 	s.changed(r.JobID, kindName, contestID, true)
+	// A closed job frees the setter gate and may have queued the next step
+	// of its chain (outputs, then validation).
+	s.Wake()
 	return nil
 }
 
@@ -808,6 +821,9 @@ func (s *Service) Sweep(ctx context.Context) (requeued, failed int64, err error)
 	s.dropUploads(ids...)
 	for _, t := range touched {
 		s.changed(t[0].(int64), t[1].(string), t[2].(int64), t[3].(bool))
+	}
+	if requeued+failed > 0 {
+		s.Wake()
 	}
 	return requeued, failed, nil
 }

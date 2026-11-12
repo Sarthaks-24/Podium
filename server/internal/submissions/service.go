@@ -584,6 +584,7 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err := tx.Commit(); err != nil {
 		return nil, false, err
 	}
+	s.Jobs.Wake()
 	v, err = s.GetWith(ctx, id, r.Scope.View)
 	return v, false, err
 }
@@ -873,6 +874,7 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.Jobs.Wake()
 	return s.GetRunWith(ctx, id, r.Scope.View)
 }
 

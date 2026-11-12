@@ -24,6 +24,7 @@ func TestServerRefusesAnotherProtocol(t *testing.T) {
 	for _, body := range []string{
 		`{"kinds":["validate"],"worker":"old","version":"v1.0.0","isolate":"2.7"}`,
 		`{"kinds":["validate"],"worker":"v110","version":"v1.1.0","isolate":"2.7","protocol":2}`,
+		`{"kinds":["validate"],"worker":"v202","version":"v2.0.2","isolate":"2.7","protocol":3}`,
 		`{"kinds":["validate"],"worker":"new","version":"v9","isolate":"2.7","protocol":99}`,
 	} {
 		req, _ := http.NewRequest("POST", r.w.Client.BaseURL+"/api/judge/claim", strings.NewReader(body))
@@ -35,7 +36,7 @@ func TestServerRefusesAnotherProtocol(t *testing.T) {
 		}
 		b, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusUpgradeRequired || !strings.Contains(string(b), "judge protocol 3 needed, this judge speaks") ||
+		if resp.StatusCode != http.StatusUpgradeRequired || !strings.Contains(string(b), "judge protocol 4 needed, this judge speaks") ||
 			!strings.Contains(string(b), "install the same release on both") {
 			t.Errorf("%s: %d %s", body, resp.StatusCode, b)
 		}
@@ -55,7 +56,7 @@ func TestJudgeStopsOnProtocolMismatch(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUpgradeRequired)
-		io.WriteString(w, `{"error":{"code":"protocol","message":"judge protocol 3 needed, this judge speaks 2: install the same release on both"}}`)
+		io.WriteString(w, `{"error":{"code":"protocol","message":"judge protocol 4 needed, this judge speaks 3: install the same release on both"}}`)
 	}))
 	defer srv.Close()
 	var logs bytes.Buffer
@@ -66,7 +67,7 @@ func TestJudgeStopsOnProtocolMismatch(t *testing.T) {
 	select {
 	case err := <-done:
 		var pe *ProtocolError
-		if !errors.As(err, &pe) || pe.Message != "judge protocol 3 needed, this judge speaks 2: install the same release on both" {
+		if !errors.As(err, &pe) || pe.Message != "judge protocol 4 needed, this judge speaks 3: install the same release on both" {
 			t.Errorf("drain returned %v", err)
 		}
 	case <-time.After(10 * time.Second):
@@ -177,5 +178,45 @@ func TestJudgeStopsAfterRepeatedTokenRefusals(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "wrong") {
 		t.Error("the token reached the log")
+	}
+}
+
+// A judge of this release against a server of the one before (protocol 3):
+// that server decodes a claim strictly and refuses wait_s with a 400, so the
+// judge stops with the install-both message instead of looping.
+func TestNewJudgeStopsOnAProtocol3Server(t *testing.T) {
+	var claims atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims.Add(1)
+		var v3 struct {
+			Kinds     []string `json:"kinds"`
+			Worker    string   `json:"worker"`
+			Version   string   `json:"version"`
+			Isolate   string   `json:"isolate"`
+			Protocol  int      `json:"protocol,omitempty"`
+			Toolchain string   `json:"toolchain,omitempty"`
+		}
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&v3); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, `{"error":{"code":"bad_request","message":"The body is not valid JSON for this route."}}`)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	w := &Worker{Client: &Client{BaseURL: srv.URL, Token: "t", HTTP: srv.Client()}, Lanes: 2,
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	done := make(chan error, 1)
+	go func() { done <- w.Drain(context.Background(), context.Background()) }()
+	select {
+	case err := <-done:
+		var pe *ProtocolError
+		if !errors.As(err, &pe) || !strings.Contains(pe.Message, "install the same release on both") {
+			t.Errorf("drain returned %v, want a protocol error", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the judge kept running against a protocol 3 server")
 	}
 }

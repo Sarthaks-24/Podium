@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/contests"
+	"github.com/Sarthaks-24/podium/internal/jobs/jobstest"
+	"github.com/Sarthaks-24/podium/internal/judgeapi"
 )
 
 type sse struct{ typ, data string }
@@ -577,6 +579,28 @@ func TestPausedContestWaitsAtClaim(t *testing.T) {
 	owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/resume", id), nil, s.srv.URL)
 	if n := s.judgeAll(); n != 1 {
 		t.Errorf("judged %d jobs after resume", n)
+	}
+}
+
+// Resuming a paused contest releases a judge that is holding a claim.
+func TestResumingAContestWakesAHeldClaim(t *testing.T) {
+	s := newSite(t)
+	s.contests.Wake = s.subs.Jobs.Wake
+	owner := s.signedIn("owner@college.edu", "Owner")
+	pa := s.importProblem(owner, "plus-a")
+	start := time.Now().Add(time.Hour).Truncate(time.Minute)
+	id := s.createContest(owner, "pw", start, map[string]int64{"A": pa}, nil)
+	asha := s.signedIn("asha@college.edu", "Asha")
+	s.at(start, 1)
+	asha.do("POST", "/api/contests/pw/start", map[string]any{"accept_honour": true}, s.srv.URL)
+	owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/pause", id), nil, s.srv.URL)
+	if code, _ := asha.do("POST", "/api/contests/pw/problems/A/submit", map[string]any{"language": "cpp17", "source": "correct"}, s.srv.URL); code != 202 {
+		t.Fatalf("submit while paused %d", code)
+	}
+	answer := jobstest.Hold(t, s.subs.Jobs, judgeapi.KindSubmit)
+	owner.do("POST", fmt.Sprintf("/api/admin/contests/%d/resume", id), nil, s.srv.URL)
+	if answer(100*time.Millisecond) == nil {
+		t.Error("resuming the contest did not wake the held claim")
 	}
 }
 

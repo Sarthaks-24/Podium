@@ -761,6 +761,15 @@ Configuration files are never overwritten: add a new variable with `sudoedit` be
 
 - **Rollback.** The previous server refuses a database that records 0016, so rolling back means restoring the backup taken just before the upgrade.
 
+### Judge protocol 4 (v2.1.0): held claims
+
+The judge now asks the server to hold an empty claim for up to 20 seconds, so a job starts the moment it is queued instead of up to 3 seconds later. This raises the judge protocol from 3 to 4.
+
+- **Install the server and the judge together.** `install.sh upgrade` does, from one release. A mixed pair does not work, in either direction, and says so: a v2.1.0 judge against an older server stops with "claim: the server answered 400, so it runs an older release than this judge (protocol 4): install the same release on both", and an older judge against a v2.1.0 server stops with "judge protocol 4 needed, this judge speaks 3: install the same release on both". Both appear in `journalctl -u podium-judge`, and the judge exits with status 3, which its unit does not restart.
+- **Timeouts.** The judge listener's read timeout is 60 s, its write timeout 5 min and its idle timeout 120 s; the judge's own HTTP client waits 5 min. All are well above the 20 s hold. The judge listener is not behind Caddy, and an SSH tunnel to a remote judge (see "Judge API listener") carries a 20 s hold without change.
+- **Stopping.** `systemctl stop podium-server` ends held claims at once (they answer "no job") and does not use up the 10 s the web server gets to finish requests. Stopping the judge cuts a held claim one second after the stop, so a drain is not slowed; a job that was being handed out in that second is requeued when its 60 s lease runs out, as after a crash.
+- **If it misbehaves,** nothing needs configuring: a held claim also looks at the queue every 2 seconds, so the worst case is what polling cost before. At most 64 claims are held at once; any more are answered "no job" at once and the judge waits its normal 2 to 3 seconds.
+
 ## Upgrading to v2.0.2
 
 v2.0.2 adds migrations 0013, 0014 and 0015 (above). Steps, in this order:

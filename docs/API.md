@@ -1003,13 +1003,14 @@ Used only by `podium-judge work`. It is served on its own listener, `PODIUM_JUDG
 
 ### `POST /api/judge/claim` (judge)
 
-Request: `{"kinds":["run","submit","generate","generate_inputs","validate"],"worker":"vm-1","version":"v2.0.0","isolate":"2.2.1","protocol":3,"toolchain":"<sha256>"}`. `worker`, `version` and `isolate` are logged and stored with the job. `protocol` left out means 1. `toolchain` is the hash the toolchain report returned; the server stores nothing.
+Request: `{"kinds":["run","submit","generate","generate_inputs","validate"],"worker":"vm-1","version":"v2.0.0","isolate":"2.2.1","protocol":4,"toolchain":"<sha256>","wait_s":20}`. `worker`, `version` and `isolate` are logged and stored with the job. `protocol` left out means 1. `toolchain` is the hash the toolchain report returned; the server stores nothing.
 
 | Status | Body |
 |---|---|
 | 204 | no queued job of those kinds (unknown kinds are ignored) |
 | 200 | `{"job_id":41,"kind":"validate","lease":"<secret>","lease_seconds":60,"payload":{...}}` |
-| 426 `protocol` | "judge protocol 3 needed, this judge speaks 2: install the same release on both". The judge stops with exit status 3, which `podium-judge.service` does not restart. Five `401` answers in a row stop it with exit status 4 |
+| 426 `protocol` | "judge protocol 4 needed, this judge speaks 3: install the same release on both". The judge stops with exit status 3, which `podium-judge.service` does not restart. Five `401` answers in a row stop it with exit status 4 |
+| 400 `bad_request` | a body with an unknown field, or `wait_s` outside 0 to 20 |
 
 The next job is the queued one with the lowest priority number, then the oldest, except that:
 
@@ -1234,6 +1235,8 @@ Refusals, in the order they are checked: 400 `bad_request` (language), 404 `not_
 ### Stage H: bring back a version
 
 ### Stage J: judge protocol
+
+**Protocol 4 (v2.1.0): `wait_s`.** The claim request may carry `wait_s`, a whole number of seconds from 0 to 20 (left out means 0, the answer at once of protocol 3). When nothing is claimable the server holds the request and answers when a job becomes claimable or the wait ends; the answers are the same as for a claim without it: `200` with the job, or `204` for no job (also when the wait ends, when the server begins to shut down, and when 64 claims are already held). A job queued, a job closed, a lease requeued and a contest resumed each wake held claims; a held claim also looks again every 2 s. A lease starts when the claim is answered, not when it was sent. A `wait_s` below 0 or above 20 is `400 bad_request`. Protocol 4 also changes the order in which queued Runs are claimed after a contest ends: a Run whose author's contest time (the close plus their extension) is over is claimed only when no other job is claimable, and a practice Run is queued at priority 60; nothing in the request or response changes for it.
 
 ## Static files
 

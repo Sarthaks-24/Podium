@@ -940,7 +940,11 @@ func (s *Service) RequestLanguageProof(ctx context.Context, id, userID int64, re
 	if _, err := q.enqueueProofs(ctx, tx, p, userID, spec); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.Jobs.Wake()
+	return nil
 }
 
 // FixSnapshot is what the fix route gives the model: the statement, the

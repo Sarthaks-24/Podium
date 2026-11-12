@@ -6,6 +6,7 @@
 package judgeserver
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Sarthaks-24/podium/internal/httpx"
 	"github.com/Sarthaks-24/podium/internal/jobs"
@@ -36,6 +38,9 @@ type Deps struct {
 	Blobs problems.Blobs
 	// Token is the shared worker token (PODIUM_JUDGE_TOKEN).
 	Token string
+	// Stop, when set, is cancelled when shutdown begins: held claims then
+	// answer at once.
+	Stop context.Context
 }
 
 // New returns the judge worker API. It is served on
@@ -102,8 +107,15 @@ func (d Deps) claim(w http.ResponseWriter, r *http.Request) {
 	if !d.protocolOK(w, req.Protocol) {
 		return
 	}
-	c, err := d.Jobs.Claim(r.Context(), req)
+	if req.WaitS < 0 || req.WaitS > judgeapi.MaxClaimWait {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", fmt.Sprintf("wait_s must be from 0 to %d.", judgeapi.MaxClaimWait))
+		return
+	}
+	c, err := d.Jobs.ClaimWait(r.Context(), d.Stop, req, time.Duration(req.WaitS)*time.Second)
 	if err != nil {
+		if r.Context().Err() != nil {
+			return // the judge hung up while its claim was held
+		}
 		d.Log.Error("claim failed", "err", err)
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "The server could not hand out a job.")
 		return

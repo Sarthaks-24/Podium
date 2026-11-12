@@ -70,6 +70,8 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage J: judge speed and sizing
 
+- Changed: a job starts at once. The judge asks the server to hold an empty claim for up to 20 seconds and the server answers the moment a job is queued, closed, requeued or a paused contest resumes, instead of the judge asking again every 2 to 3 seconds. A held claim still looks at the queue every 2 seconds, so a missed signal costs what polling cost before. Judge protocol 4: install the server and the judge together (`install.sh upgrade` does); a mixed pair stops with "install the same release on both". Stopping the server ends held claims at once; stopping the judge ends a held claim a second after the stop.
+- Known limit: if the judge is stopped in the instant its claim is being answered, that one job is requeued after its 60 second lease, as after a crash.
 - Changed: at a contest's end, graded submissions are judged before the Runs of students whose own contest time is over (the close plus their extension, read when a lane takes a job). Before, Runs took about every other turn while the last submissions waited. A student still inside an extension keeps the old order. Practice Runs queue behind graded work. No Run is cancelled: each still finishes with its result, a little later, and the student can press Run again as soon as it does. `PODIUM_QUEUE_END_ORDER=off` brings the old order back (default `on`).
 
 ### v2.1.0 stage P: server measurement

@@ -194,6 +194,7 @@ func (s *Service) Rejudge(ctx context.Context, r RejudgeRequest) (int, error) {
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	s.Jobs.Wake()
 	return queued, nil
 }
 
