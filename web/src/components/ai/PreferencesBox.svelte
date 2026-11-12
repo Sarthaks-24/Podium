@@ -104,8 +104,9 @@
     <div class="actions">
       <button type="submit" class="btn btn-secondary" disabled={busy || !changed || draft.trim() === ''}>Save preferences</button>
       <button type="button" class="btn btn-secondary" disabled={busy || data.active.text === ''} onclick={() => (confirming = true)}>Reset to default</button>
-      {#if stale}<button type="button" class="btn btn-secondary" onclick={reload}>Reload</button>{/if}
+      {#if stale}<button type="button" class="btn btn-secondary" aria-describedby="prefs-reload-help" onclick={reload}>Reload</button>{/if}
     </div>
+    {#if stale}<p id="prefs-reload-help" class="field-help">Reload shows the newer text and replaces what you typed.</p>{/if}
   </form>
 </section>
 

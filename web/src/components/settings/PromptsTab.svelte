@@ -50,7 +50,10 @@
 {#if status === 'loading'}
   <PageState kind="loading" message="Loading the AI prompts" />
 {:else if status === 'error'}
-  <PageState kind="error" message={error} onretry={() => void load()} />
+  <PageState kind="error" message={error} onretry={() => {
+      status = 'loading';
+      void load();
+    }} />
 {:else}
   {#if preferences}<PreferencesBox data={preferences} onchange={replace} onreload={load} />{/if}
   {#each rules as k (k.kind)}

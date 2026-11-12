@@ -230,6 +230,38 @@ test('a save from a stale editor says so and Reload keeps the draft against the 
   await expect(editor.getByText('Version 11, active')).toBeVisible();
 });
 
+test('a stale Preferences save says that Reload replaces what was typed', async ({ page }) => {
+  await setup(page, 'admin', { staleOnce: true });
+  await openTab(page);
+  const box = page.getByRole('region', { name: 'Preferences' });
+  await box.getByLabel('Preferences', { exact: true }).fill('My own preferences.');
+  await box.getByRole('button', { name: 'Save preferences' }).click();
+  const reload = box.getByRole('button', { name: 'Reload' });
+  await expect(reload).toHaveAccessibleDescription('Reload shows the newer text and replaces what you typed.');
+  await reload.click();
+  await expect(box.getByLabel('Preferences', { exact: true })).toHaveValue('A newer text from another tab.');
+});
+
+test('Try again on a failed tab shows that it is loading and keeps the retry from being pressed twice', async ({ page }) => {
+  await setup(page, 'admin');
+  let calls = 0;
+  await page.route(
+    (url) => url.pathname === '/api/admin/ai/prompts',
+    async (route) => {
+      calls++;
+      if (calls === 1) return apiError(route, 500, 'internal', 'The prompts did not load.');
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return route.fallback();
+    },
+  );
+  await page.goto('/admin/dashboard?tab=prompts');
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  await expect(page.getByText('Loading the AI prompts')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Preferences', level: 2 })).toBeVisible();
+  expect(calls).toBe(2);
+});
+
 test('the tab is in the address and keyboard reachable', async ({ page }) => {
   await setup(page, 'admin');
   await page.goto('/admin/dashboard');
