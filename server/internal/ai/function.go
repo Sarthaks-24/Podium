@@ -20,6 +20,7 @@ const (
 	StudentsWriteFunction = "function"
 	JavaListsArray        = "array"
 	JavaListsArrayList    = "arraylist"
+	JavaListsEither       = "either"
 )
 
 // functionLanguages are the languages a function pack may carry.
@@ -44,6 +45,11 @@ type FunctionPack struct {
 	Tags          []string           `json:"tags"`
 	Difficulty    string             `json:"difficulty"`
 	Languages     []FunctionLanguage `json:"languages"`
+	// JavaSolutionArrayList is the Java solution written with an ArrayList. It
+	// is set only in a run where students may use either list type, whose
+	// Java starting code then holds both forms and whose Java Solution is the
+	// array one. Nil in every other run.
+	JavaSolutionArrayList *string `json:"java_solution_arraylist,omitempty"`
 }
 
 // FunctionLanguage is one language's four parts.
@@ -75,12 +81,34 @@ func FunctionSchema() map[string]any {
 	return object(props)
 }
 
+// FunctionSchemaFor is FunctionSchema for a run with the given Java lists
+// choice. Only "either" differs: it adds java_solution_arraylist, the Java
+// solution written with an ArrayList, next to the language entries.
+func FunctionSchemaFor(javaLists string) map[string]any {
+	s := FunctionSchema()
+	if javaLists != JavaListsEither {
+		return s
+	}
+	props := s["properties"].(map[string]any)
+	props["java_solution_arraylist"] = str("The Java solution function written for the ArrayList form of the starter; the java21 entry's solution is the array form.")
+	return object(props)
+}
+
 // DecodeFunction parses a model's JSON answer strictly: an unknown key, a
 // missing key, a wrong type and a cut-off answer are each refused.
-func DecodeFunction(text string) (*FunctionPack, error) {
+func DecodeFunction(text string) (*FunctionPack, error) { return DecodeFunctionFor(text, "") }
+
+// DecodeFunctionFor is DecodeFunction for a run with the given Java lists
+// choice: an "either" answer must carry java_solution_arraylist and any other
+// answer must not.
+func DecodeFunctionFor(text, javaLists string) (*FunctionPack, error) {
 	var p FunctionPack
-	if err := decodeStrict(text, FunctionSchema(), &p); err != nil {
+	if err := decodeStrict(text, FunctionSchemaFor(javaLists), &p); err != nil {
 		return nil, err
+	}
+	if p.JavaSolutionArrayList != nil && javaLists != JavaListsEither {
+		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.",
+			Reasons: []string{"The answer was not in the format Podium asked for: java_solution_arraylist was not asked for."}, answer: text}
 	}
 	return &p, nil
 }
@@ -154,6 +182,7 @@ func CheckFunction(p *FunctionPack) []string {
 		}
 	}
 	checkLanguages(add, p.Languages)
+	checkJavaForms(add, p)
 	checkHeadings(add, p.StatementMD)
 	if len(out) > 0 {
 		return out
@@ -203,6 +232,37 @@ func checkLanguages(add func(string, ...any), langs []FunctionLanguage) {
 	}
 }
 
+// checkJavaForms checks the Java starting code against the run's Java lists
+// choice. In an "either" run it must hold both forms and the pack must carry a
+// second solution; in any other run it must hold one form.
+func checkJavaForms(add func(string, ...any), p *FunctionPack) {
+	for _, l := range p.Languages {
+		if l.Language != "java21" || strings.TrimSpace(l.Starter) == "" {
+			continue
+		}
+		c, err := problems.SplitStarter(l.Starter)
+		if p.JavaSolutionArrayList == nil {
+			if err == nil && len(c.Forms) > 1 {
+				add("java21: starter has choice lines, but this run asked for one list type. Write one form with no // choice line.")
+			}
+			continue
+		}
+		if err != nil || len(c.Forms) != 2 {
+			msg := "java21: starter must hold both forms, one under a line // choice: int[] and one under a line // choice: ArrayList<Integer>."
+			if err != nil {
+				msg += " " + err.Error()
+			}
+			add("%s", msg)
+		}
+		switch sol := *p.JavaSolutionArrayList; {
+		case strings.TrimSpace(sol) == "":
+			add("java21: java_solution_arraylist is empty. Write the solution for the ArrayList form.")
+		case len(sol) > problems.MaxSource:
+			add("java21: java_solution_arraylist is longer than 64 KB.")
+		}
+	}
+}
+
 // ToDraftFunction turns a function pack into a problem draft. The solutions
 // are not part of it: Solutions hands them to the proof.
 func ToDraftFunction(p *FunctionPack) problems.Draft {
@@ -222,24 +282,41 @@ func ToDraftFunction(p *FunctionPack) problems.Draft {
 }
 
 // Solutions returns the solution function of each language except the
-// reference language (cpp17), by language id.
+// reference language (cpp17), by language id. In an "either" run the Java
+// ArrayList solution is also there, under problems.ProofJavaArrayListKey.
 func (p *FunctionPack) Solutions() map[string]string {
 	out := map[string]string{}
 	for _, l := range p.Languages {
 		if l.Language != "cpp17" {
 			out[l.Language] = l.Solution
 		}
+		if l.Language == "java21" && p.JavaSolutionArrayList != nil {
+			out[problems.ProofJavaArrayListKey] = *p.JavaSolutionArrayList
+		}
 	}
 	return out
 }
+
+// javaEitherRules is the Java instruction of an "either" run: the student may
+// use an array or an ArrayList. The pattern is the one proved on the real
+// judge (worker/sandbox_choice_test.go); the proof of each wizard run still
+// decides whether Java is offered.
+const javaEitherRules = "In Java, the student may write the function with an array (`int[]`) or with an `ArrayList<Integer>`. Use `long[]` with `ArrayList<Long>` instead if the function works on long values. Write the java21 entry in exactly this pattern:\n" +
+	"  - locked_top: the imports, then `class Missing extends RuntimeException {}`, then `class Base` with a private boolean field `inside` and two overloads of the function, one taking the array and one taking the ArrayList. Each overload throws `new Missing()` if `inside` is set, sets `inside`, converts its argument to the other form inside a try block, returns the call of the other overload, and clears `inside` in the finally block.\n" +
+	"  - starter: two forms, each introduced by a line that is exactly `// choice: int[]` or exactly `// choice: ArrayList<Integer>`. Nothing but optional shared lines comes before the first of those lines. Each form is `class Solution extends Base` holding one method with `@Override` and the overload for its type, with a placeholder body that compiles.\n" +
+	"  - locked_bottom: `public class Main` that reads the input into an array, calls the array overload on `new Solution()` inside a try block, prints the result and nothing else, and in `catch (Missing e)` prints the line `Write solve with int[] or ArrayList<Integer>.` to System.err, with the function's own name, and exits with status 1.\n" +
+	"  - solution: the full `class Solution extends Base` that overrides the array overload. java_solution_arraylist: the full `class Solution extends Base` that overrides the ArrayList overload instead. Both must be correct."
 
 // functionRules is the code-only part of a function request's system prompt.
 // The owner-editable rules above it describe whole programs; this block says
 // what changes.
 func functionRules(javaLists string) string {
 	java := "In Java, any list the function receives or returns is an array, such as `int[]`."
-	if javaLists == JavaListsArrayList {
+	switch javaLists {
+	case JavaListsArrayList:
 		java = "In Java, any list the function receives or returns is an `ArrayList`, such as `ArrayList<Integer>`."
+	case JavaListsEither:
+		java = javaEitherRules
 	}
 	return `This request is for a function problem: the student writes one function between locked code, not a whole program. These rules take precedence over the rules above where they differ.
 - statement_md describes the function in language-neutral words: what it receives and what it returns. Keep the sections "## Input", "## Output" and "## Constraints", which describe the input the locked code reads. The statement never names a signature.
@@ -340,6 +417,10 @@ func CheckFixAnswer(a *FixAnswer) []string {
 			out = append(out, part.name+" is longer than "+part.limit+".")
 		}
 	}
+	// A fix writes one form with arrays: a choice would be saved without a proof.
+	if c, err := problems.SplitStarter(a.Starter); err != nil || len(c.Forms) > 1 {
+		out = append(out, "starter: write one form with arrays and no // choice line.")
+	}
 	return out
 }
 
@@ -358,6 +439,9 @@ func FailureText(r *problems.ProofResult) string {
 		fmt.Fprintf(&b, "This language could not be checked (%s), so nothing is known about its code.", r.Reason)
 	default:
 		fmt.Fprintf(&b, "The last check failed: %s.", r.Reason)
+	}
+	if r.Variant != "" {
+		fmt.Fprintf(&b, " This was the %s form.", r.Variant)
 	}
 	if r.Failed > 0 {
 		fmt.Fprintf(&b, " %d of %d tests failed", r.Failed, r.Total)

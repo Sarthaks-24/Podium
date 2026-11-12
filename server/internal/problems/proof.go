@@ -73,6 +73,9 @@ type Proof struct {
 	Source   string `json:"source"`
 	Language string `json:"language"`
 	Part     string `json:"part"`
+	// Variant is the form of a Java starting code with two forms that this
+	// job proves, such as "ArrayList<Integer>"; empty everywhere else.
+	Variant string `json:"variant,omitempty"`
 	// ContentHash is the problem's hash when the round was queued, and
 	// StarterSHA the SHA-256 of the language's starting code then: the
 	// content hash leaves out starting code, so it is checked on its own.
@@ -88,6 +91,11 @@ type ProofParts struct {
 	Starter string `json:"starter"`
 	Bottom  string `json:"bottom"`
 }
+
+// ProofJavaArrayListKey is the key in ProofSpec.Solutions of the Java solution
+// written with an ArrayList, used when the starting code holds two forms; the
+// key "java21" then holds the solution written with an array.
+const ProofJavaArrayListKey = "java21/arraylist"
 
 // ProofSpec says what a round proves. Solutions maps a language to the blob
 // hash of its bare solution text. For a wizard round it covers every offered
@@ -128,6 +136,8 @@ type ProofResult struct {
 	Language string `json:"language"`
 	Part     string `json:"part"`
 	Outcome  string `json:"outcome"`
+	// Variant is the form the job proved, empty for a language with one form.
+	Variant string `json:"variant,omitempty"`
 	// Reason is one of judge_error, internal_error, no_report, compile_error,
 	// wrong_answer, runtime_error, time_limit, memory_limit, output_limit,
 	// skipped, ignores_function or deleted; empty for a pass.
@@ -239,13 +249,13 @@ func (q queue) enqueueProofs(ctx context.Context, tx *sql.Tx, p *Problem, by int
 		langs = []string{spec.Language}
 	}
 	n := 0
-	enqueue := func(lang, part, source string) error {
+	enqueue := func(lang, part, variant, source string) error {
 		sha, err := q.blobs.Put(ctx, tx, []byte(source))
 		if err != nil {
 			return err
 		}
 		pl := proofValidate{ValidatePayload: base, Proof: &Proof{
-			Round: round, Source: spec.Source, Language: lang, Part: part,
+			Round: round, Source: spec.Source, Language: lang, Part: part, Variant: variant,
 			ContentHash: p.ContentHash, StarterSHA: SHA([]byte(p.Starters[lang])), By: by, Parts: spec.Parts,
 		}}
 		pl.Programs.Reference = judgeapi.Program{Language: lang, SourceSHA: sha}
@@ -272,31 +282,57 @@ func (q queue) enqueueProofs(ctx context.Context, tx *sql.Tx, p *Problem, by int
 				return 0, err
 			}
 		}
+		// A wizard round proves each form of a two-form starting code on its own.
+		var shared string
+		forms := []Form{{Code: starter}}
+		if two, ok := twoForms(lang, starter); ok && spec.Source == ProofSourceWizard {
+			shared, forms = two.Shared, two.Forms
+		}
 		if spec.Source != ProofSourceWizard || lang != p.Reference.Language {
-			sha, ok := spec.Solutions[lang]
-			if !ok {
-				return 0, fmt.Errorf("proof: no solution for %s", lang)
-			}
-			solution, err := read(sha, MaxSource)
-			if err != nil {
-				return 0, err
-			}
-			if err := enqueue(lang, ProofPartSolution, Compose(top, solution, bottom).Source); err != nil {
-				return 0, err
+			for _, f := range forms {
+				key := lang
+				if strings.HasPrefix(f.Name, "ArrayList<") {
+					key = ProofJavaArrayListKey
+				}
+				sha, ok := spec.Solutions[key]
+				if !ok && key == lang {
+					return 0, fmt.Errorf("proof: no solution for %s", lang)
+				} else if !ok {
+					return 0, fmt.Errorf("proof: no ArrayList solution for %s", lang)
+				}
+				solution, err := read(sha, MaxSource)
+				if err != nil {
+					return 0, err
+				}
+				if err := enqueue(lang, ProofPartSolution, f.Name, Compose(top, solution, bottom).Source); err != nil {
+					return 0, err
+				}
 			}
 		}
 		if spec.Source != ProofSourceCheck {
-			if err := enqueue(lang, ProofPartStarter, Compose(top, starter, bottom).Source); err != nil {
-				return 0, err
+			for _, f := range forms {
+				if err := enqueue(lang, ProofPartStarter, f.Name, Compose(top, shared+f.Code, bottom).Source); err != nil {
+					return 0, err
+				}
 			}
 		}
 	}
 	return n, nil
 }
 
+// twoForms splits a Java starting code that holds an array form and an
+// ArrayList form. Any other language or starting code is not one.
+func twoForms(lang, starter string) (Choices, bool) {
+	if lang != "java21" {
+		return Choices{}, false
+	}
+	c, err := SplitStarter(starter)
+	return c, err == nil && len(c.Forms) == 2
+}
+
 // classify turns a closed proof job into its result.
 func classify(pl proofValidate, job *jobs.Job) ProofResult {
-	res := ProofResult{Language: pl.Proof.Language, Part: pl.Proof.Part, Verdicts: map[string]int{}}
+	res := ProofResult{Language: pl.Proof.Language, Part: pl.Proof.Part, Variant: pl.Proof.Variant, Verdicts: map[string]int{}}
 	unchecked := func(reason string) ProofResult {
 		res.Outcome, res.Reason = ProofUnchecked, reason
 		return res
@@ -637,7 +673,9 @@ type ProofLanguage struct {
 	// Offered is live: the language has a locked bottom now.
 	Offered bool `json:"offered"`
 	// Result is passed, failed, unchecked or none (never checked).
-	Result   string      `json:"result"`
+	Result string `json:"result"`
+	// Variant names the form of the worst job when the language has two.
+	Variant  string      `json:"variant"`
 	Reason   string      `json:"reason"`
 	Failed   int         `json:"failed"`
 	Total    int         `json:"total"`
@@ -783,7 +821,7 @@ func (s *Service) ProofState(ctx context.Context, id int64) (*ProofState, error)
 		l := ProofLanguage{Language: lang, Offered: p.Offers(lang), Result: "none", Tests: []ProofTest{}}
 		if r := latest[lang]; r != nil {
 			res := r.worst()
-			l.Result, l.Reason, l.Failed, l.Total, l.Compiler = res.Outcome, res.Reason, res.Failed, res.Total, res.Compiler
+			l.Result, l.Variant, l.Reason, l.Failed, l.Total, l.Compiler = res.Outcome, res.Variant, res.Reason, res.Failed, res.Total, res.Compiler
 			if res.Tests != nil {
 				l.Tests = res.Tests
 			}

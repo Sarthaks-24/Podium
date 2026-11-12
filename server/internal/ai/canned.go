@@ -381,3 +381,138 @@ func FakeFunctionVariant(name string) *FunctionPack {
 	}
 	return p
 }
+
+// Names of the variants of FakeFunctionEither, for the cases an "either"
+// proof must catch. The testing-mode provider picks one by "variant:<name>"
+// in the brief or the pasted text of an "either" run.
+const (
+	VariantEitherListWrong  = "either-list-wrong"  // the ArrayList solution returns a wrong answer
+	VariantEitherFormBroken = "either-form-broken" // the ArrayList starting form does not compile
+)
+
+// javaEitherTop is the locked top of a Java function problem whose students
+// may use an array or an ArrayList: a base class with both overloads, each
+// converting its argument and calling the other, and a re-entry check that
+// throws Missing when the student overrode neither.
+const javaEitherTop = `import java.util.*;
+
+class Missing extends RuntimeException {}
+
+class Base {
+    private boolean inside;
+
+    long solve(int[] a) {
+        if (inside) throw new Missing();
+        inside = true;
+        try {
+            ArrayList<Integer> list = new ArrayList<>(a.length);
+            for (int x : a) list.add(x);
+            return solve(list);
+        } finally {
+            inside = false;
+        }
+    }
+
+    long solve(ArrayList<Integer> a) {
+        if (inside) throw new Missing();
+        inside = true;
+        try {
+            int[] arr = new int[a.size()];
+            for (int i = 0; i < arr.length; i++) arr[i] = a.get(i);
+            return solve(arr);
+        } finally {
+            inside = false;
+        }
+    }
+}
+`
+
+const javaEitherBottom = `public class Main {
+    public static void main(String[] args) {
+        Scanner in = new Scanner(System.in);
+        int n = in.nextInt();
+        int[] a = new int[n];
+        for (int i = 0; i < n; i++) a[i] = in.nextInt();
+        try {
+            System.out.println(new Solution().solve(a));
+        } catch (Missing e) {
+            System.err.println("Write solve with int[] or ArrayList<Integer>.");
+            System.exit(1);
+        }
+    }
+}
+`
+
+const javaEitherStarter = `// choice: int[]
+class Solution extends Base {
+    @Override
+    long solve(int[] a) {
+        // Return the sum of the numbers in a.
+        return 0;
+    }
+}
+// choice: ArrayList<Integer>
+class Solution extends Base {
+    @Override
+    long solve(ArrayList<Integer> a) {
+        // Return the sum of the numbers in a.
+        return 0;
+    }
+}
+`
+
+const javaEitherSolutionArray = `class Solution extends Base {
+    @Override
+    long solve(int[] a) {
+        long s = 0;
+        for (int x : a) s += x;
+        return s;
+    }
+}
+`
+
+const javaEitherSolutionList = `class Solution extends Base {
+    @Override
+    long solve(ArrayList<Integer> a) {
+        long s = 0;
+        for (int x : a) s += x;
+        return s;
+    }
+}
+`
+
+// FakeFunctionEither is FakeFunctionArraySum for a run where students may use
+// an array or an ArrayList in Java: the Java entry holds the base class, a
+// starting code with both forms, the bottom and a solution for each form.
+func FakeFunctionEither() *FunctionPack {
+	p := FakeFunctionArraySum()
+	for i := range p.Languages {
+		if l := &p.Languages[i]; l.Language == "java21" {
+			l.LockedTop, l.Starter, l.LockedBottom, l.Solution = javaEitherTop, javaEitherStarter, javaEitherBottom, javaEitherSolutionArray
+		}
+	}
+	list := javaEitherSolutionList
+	p.JavaSolutionArrayList = &list
+	return p
+}
+
+// FakeFunctionEitherVariant returns FakeFunctionEither with one defect, named
+// by one of the VariantEither constants, or nil for an unknown name.
+func FakeFunctionEitherVariant(name string) *FunctionPack {
+	p := FakeFunctionEither()
+	switch name {
+	case VariantEitherListWrong:
+		list := strings.Replace(*p.JavaSolutionArrayList, "s += x", "s += x + 1", 1)
+		p.JavaSolutionArrayList = &list
+	case VariantEitherFormBroken:
+		for i := range p.Languages {
+			if l := &p.Languages[i]; l.Language == "java21" {
+				i := strings.LastIndex(l.Starter, "return 0;")
+				l.Starter = l.Starter[:i] + "return 0" + l.Starter[i+len("return 0;"):]
+			}
+		}
+	default:
+		return nil
+	}
+	return p
+}

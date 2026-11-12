@@ -288,11 +288,11 @@ func (g *Gemini) Generate(ctx context.Context, req Request) (*WizardPack, error)
 
 // GenerateFunction implements Provider.
 func (g *Gemini) GenerateFunction(ctx context.Context, req Request) (*FunctionPack, error) {
-	text, err := g.generate(ctx, req, req.functionSystem(), FunctionSchema())
+	text, err := g.generate(ctx, req, req.functionSystem(), FunctionSchemaFor(req.JavaLists))
 	if err != nil {
 		return nil, err
 	}
-	return DecodeFunction(text)
+	return DecodeFunctionFor(text, req.JavaLists)
 }
 
 // generate sends the user prompt, and on a retry the previous answer and

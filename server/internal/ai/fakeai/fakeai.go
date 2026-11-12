@@ -67,10 +67,18 @@ func (f *Fake) GenerateFunction(ctx context.Context, req ai.Request) (*ai.Functi
 	if req.Brief != nil {
 		text = req.Brief.Topic + " " + req.Brief.Constraints + " " + req.Brief.SubtaskIdeas
 	}
+	either := req.JavaLists == ai.JavaListsEither
 	if m := variantRe.FindStringSubmatch(text); m != nil {
-		if p := ai.FakeFunctionVariant(m[1]); p != nil {
+		variant := ai.FakeFunctionVariant
+		if either {
+			variant = ai.FakeFunctionEitherVariant
+		}
+		if p := variant(m[1]); p != nil {
 			return p, nil
 		}
+	}
+	if either {
+		return ai.FakeFunctionEither(), nil
 	}
 	return ai.FakeFunctionArraySum(), nil
 }

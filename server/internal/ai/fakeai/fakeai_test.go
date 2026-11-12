@@ -56,3 +56,26 @@ func TestFakeFunctionAnswers(t *testing.T) {
 		t.Errorf("calls %d", f.Calls())
 	}
 }
+
+func TestFakeEitherAnswers(t *testing.T) {
+	f := &Fake{}
+	ctx := context.Background()
+	p, err := ai.GenerateFunction(ctx, f, ai.Request{Brief: &ai.Brief{Topic: "Sum of an array"}, JavaLists: ai.JavaListsEither})
+	if err != nil || p.JavaSolutionArrayList == nil || !reflect.DeepEqual(p, ai.FakeFunctionEither()) {
+		t.Fatalf("%v %v", p, err)
+	}
+	for _, v := range []string{ai.VariantEitherListWrong, ai.VariantEitherFormBroken} {
+		got, err := ai.GenerateFunction(ctx, f, ai.Request{Pasted: "Sum an array. variant:" + v, JavaLists: ai.JavaListsEither})
+		if err != nil || got.JavaSolutionArrayList == nil || reflect.DeepEqual(got, p) {
+			t.Errorf("%s: %v %v", v, got, err)
+		}
+	}
+	// A variant of the plain pack is not an either pack, and the other two
+	// choices still get the plain pack.
+	for _, lists := range []string{"", ai.JavaListsArray, ai.JavaListsArrayList} {
+		got, err := ai.GenerateFunction(ctx, f, ai.Request{Pasted: "Sum an array.", JavaLists: lists})
+		if err != nil || got.JavaSolutionArrayList != nil {
+			t.Errorf("%q: %v %v", lists, got, err)
+		}
+	}
+}

@@ -261,11 +261,11 @@ func (a *Anthropic) Generate(ctx context.Context, req Request) (*WizardPack, err
 
 // GenerateFunction implements Provider.
 func (a *Anthropic) GenerateFunction(ctx context.Context, req Request) (*FunctionPack, error) {
-	text, err := a.generate(ctx, req, req.functionSystem(), FunctionSchema())
+	text, err := a.generate(ctx, req, req.functionSystem(), FunctionSchemaFor(req.JavaLists))
 	if err != nil {
 		return nil, err
 	}
-	return DecodeFunction(text)
+	return DecodeFunctionFor(text, req.JavaLists)
 }
 
 // generate sends the user prompt, and on a retry the previous answer and

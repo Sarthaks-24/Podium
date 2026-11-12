@@ -234,11 +234,11 @@ func (o *OpenAI) Generate(ctx context.Context, req Request) (*WizardPack, error)
 
 // GenerateFunction implements Provider.
 func (o *OpenAI) GenerateFunction(ctx context.Context, req Request) (*FunctionPack, error) {
-	text, err := o.generate(ctx, req, req.functionSystem(), "function_pack", FunctionSchema())
+	text, err := o.generate(ctx, req, req.functionSystem(), "function_pack", FunctionSchemaFor(req.JavaLists))
 	if err != nil {
 		return nil, err
 	}
-	return DecodeFunction(text)
+	return DecodeFunctionFor(text, req.JavaLists)
 }
 
 // generate sends the user prompt, and on a retry the previous answer and

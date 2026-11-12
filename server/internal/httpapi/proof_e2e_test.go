@@ -24,7 +24,7 @@ import (
 // proofJob is the part of a validate payload this test reads.
 type proofJob struct {
 	judgeapi.ValidatePayload
-	Proof *struct{ Round, Language, Part string } `json:"proof"`
+	Proof *struct{ Round, Language, Part, Variant string } `json:"proof"`
 }
 
 // playJudge claims jobs through the judge API until none is waiting and
@@ -90,7 +90,11 @@ func playJudge(t *testing.T, s *site, how map[string]string, onFirstProof, onVal
 					first = false
 					onFirstProof()
 				}
-				rep = proofReportFor(c, pl, how[pl.Proof.Language+"/"+pl.Proof.Part])
+				key := pl.Proof.Language + "/" + pl.Proof.Part
+				if pl.Proof.Variant != "" {
+					key += "/" + pl.Proof.Variant
+				}
+				rep = proofReportFor(c, pl, how[key])
 			} else {
 				onValidation()
 				rep.Compile = []judgeapi.CompileResult{{Role: judgeapi.RoleReference, Verdict: "OK"}}
@@ -142,11 +146,18 @@ func TestWizardFunctionRunEndToEnd(t *testing.T) {
 		how           map[string]string
 		removed       string
 		reason        string
+		// either asks for the Java choice "either": nine jobs, two forms saved.
+		either bool
+		// form is the Java form the state names when Java was removed.
+		form string
 	}{
-		{"every language passes", "", nil, "", ""},
-		{"a wrong Java solution", ai.VariantJavaWrong, map[string]string{"java21/solution": "wa"}, "java21", "wrong_answer"},
-		{"a Java starting code that does not compile", ai.VariantStarterBroken, map[string]string{"java21/starter": "ce"}, "java21", "compile_error"},
-		{"a Python bottom that ignores the function", ai.VariantIgnoresFunction, map[string]string{"python3/starter": "accepted"}, "python3", "ignores_function"},
+		{"every language passes", "", nil, "", "", false, ""},
+		{"a wrong Java solution", ai.VariantJavaWrong, map[string]string{"java21/solution": "wa"}, "java21", "wrong_answer", false, ""},
+		{"a Java starting code that does not compile", ai.VariantStarterBroken, map[string]string{"java21/starter": "ce"}, "java21", "compile_error", false, ""},
+		{"a Python bottom that ignores the function", ai.VariantIgnoresFunction, map[string]string{"python3/starter": "accepted"}, "python3", "ignores_function", false, ""},
+		{"either: every form passes", "", nil, "", "", true, ""},
+		{"either: a wrong ArrayList solution", ai.VariantEitherListWrong, map[string]string{"java21/solution/ArrayList<Integer>": "wa"}, "java21", "wrong_answer", true, "ArrayList<Integer>"},
+		{"either: an ArrayList form that does not compile", ai.VariantEitherFormBroken, map[string]string{"java21/starter/ArrayList<Integer>": "ce"}, "java21", "compile_error", true, "ArrayList<Integer>"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newSiteMode(t, "testing")
@@ -154,12 +165,16 @@ func TestWizardFunctionRunEndToEnd(t *testing.T) {
 			if code, out := org.do("PUT", "/api/admin/ai/key", map[string]string{"provider": "fake", "key": "ignored"}, s.srv.URL); code != 200 {
 				t.Fatalf("fake key: %d %v", code, out)
 			}
+			lists, jobs := "array", float64(7)
+			if tc.either {
+				lists, jobs = "either", 9
+			}
 			topic := "Sum of an array"
 			if tc.variant != "" {
 				topic += " variant:" + tc.variant
 			}
 			code, started := org.do("POST", "/api/admin/ai/wizard", map[string]any{"mode": "brief",
-				"brief": map[string]any{"topic": topic, "difficulty": "easy"}, "students_write": "function"}, s.srv.URL)
+				"brief": map[string]any{"topic": topic, "difficulty": "easy"}, "students_write": "function", "java_lists": lists}, s.srv.URL)
 			if code != 202 {
 				t.Fatalf("wizard: %d %v", code, started)
 			}
@@ -183,7 +198,7 @@ func TestWizardFunctionRunEndToEnd(t *testing.T) {
 				sawRound = true
 				code, body := org.do("POST", "/api/admin/problems/"+pid+"/validate", nil, s.srv.URL)
 				errIs2(t, "validate mid-round", code, body, 409, "checking", "Podium is still checking the languages of this problem.")
-				if _, st := org.do("GET", proofPath(id), nil, ""); st["checking"] != true || st["progress"].(map[string]any)["total"] != float64(7) {
+				if _, st := org.do("GET", proofPath(id), nil, ""); st["checking"] != true || st["progress"].(map[string]any)["total"] != jobs {
 					t.Errorf("proof state mid-round: %v", st)
 				}
 			}, func() {
@@ -232,8 +247,17 @@ func TestWizardFunctionRunEndToEnd(t *testing.T) {
 					if tc.reason == "wrong_answer" && (l["failed"] != l["total"] || l["total"].(float64) == 0) {
 						t.Errorf("counts: %v", l)
 					}
+					if l["variant"] != tc.form {
+						t.Errorf("%s: names the form %v, want %q", lang, l["variant"], tc.form)
+					}
 				} else if l["result"] != "passed" || l["offered"] != true {
 					t.Errorf("%s: %v, want passed and offered", lang, l)
+				}
+			}
+			if tc.either && tc.removed == "" {
+				starter, _ := p["starters"].(map[string]any)["java21"].(string)
+				if c, err := problems.SplitStarter(starter); err != nil || len(c.Forms) != 2 || c.Forms[0].Name != "int[]" || c.Forms[1].Name != "ArrayList<Integer>" {
+					t.Errorf("the saved Java starting code: %+v %v %q", c, err, starter)
 				}
 			}
 			applied, _ := st["applied"].(map[string]any)

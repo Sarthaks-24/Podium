@@ -245,6 +245,15 @@ func (s *Service) requestInputGeneration(ctx context.Context, id, userID int64, 
 			if spec.Solutions[lang], err = q.blobs.Put(ctx, tx, []byte(text)); err != nil {
 				return nil, err
 			}
+			if _, two := twoForms(lang, p.Starters[lang]); two {
+				text, ok := solutions[ProofJavaArrayListKey]
+				if !ok {
+					return nil, &NotReadyError{[]string{"Add a Java solution that uses ArrayList: the starting code has two forms."}}
+				}
+				if spec.Solutions[ProofJavaArrayListKey], err = q.blobs.Put(ctx, tx, []byte(text)); err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
 	if err := q.enqueueInputGeneration(ctx, tx, p, userID, spec); err != nil {

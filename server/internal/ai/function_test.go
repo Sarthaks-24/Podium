@@ -67,7 +67,11 @@ func TestFunctionSchemaIsStrict(t *testing.T) {
 	var want []string
 	rt := reflect.TypeOf(FunctionPack{})
 	for i := 0; i < rt.NumField(); i++ {
-		want = append(want, strings.Split(rt.Field(i).Tag.Get("json"), ",")[0])
+		tag := rt.Field(i).Tag.Get("json")
+		if strings.HasSuffix(tag, ",omitempty") { // java_solution_arraylist: only the "either" schema has it
+			continue
+		}
+		want = append(want, strings.Split(tag, ",")[0])
 	}
 	if len(props) != len(want) {
 		t.Errorf("schema has %d properties, the type %d", len(props), len(want))
@@ -303,7 +307,11 @@ type sentRequest struct {
 func sendFunctionRequests(t *testing.T, req Request) map[string]sentRequest {
 	t.Helper()
 	retryDelay = func(int) time.Duration { return time.Millisecond }
-	answer := fnAnswer(FakeFunctionArraySum())
+	pack := FakeFunctionArraySum()
+	if req.JavaLists == JavaListsEither {
+		pack = FakeFunctionEither()
+	}
+	answer := fnAnswer(pack)
 	out := map[string]sentRequest{}
 	text := func(v any) string { b, _ := json.Marshal(v); return string(b) }
 

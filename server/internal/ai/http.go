@@ -484,7 +484,7 @@ type wizardRequestJSON struct {
 	} `json:"brief"`
 	Text string `json:"text"`
 	// StudentsWrite is program (the default) or function; JavaLists, for a
-	// function, is array (the default) or arraylist. Absent means the default.
+	// function, is array (the default), arraylist or either. Absent means the default.
 	StudentsWrite *string `json:"students_write"`
 	JavaLists     *string `json:"java_lists"`
 }
@@ -532,8 +532,8 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 	if function {
 		req.JavaLists = JavaListsArray
 		if l := body.JavaLists; l != nil {
-			if *l != JavaListsArray && *l != JavaListsArrayList {
-				httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose arrays or ArrayList.")
+			if *l != JavaListsArray && *l != JavaListsArrayList && *l != JavaListsEither {
+				httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose arrays, ArrayList or either.")
 				return
 			}
 			req.JavaLists = *l

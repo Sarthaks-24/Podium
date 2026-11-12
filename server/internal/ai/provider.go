@@ -64,7 +64,7 @@ type Request struct {
 	Previous string
 	Fix      []string
 	Shorter  bool
-	// JavaLists is a function run's Java list type, array or arraylist.
+	// JavaLists is a function run's Java list choice: array, arraylist or either.
 	JavaLists string
 }
 
