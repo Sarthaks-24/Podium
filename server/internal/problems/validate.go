@@ -88,6 +88,11 @@ func (s *Service) RequestValidation(ctx context.Context, id, userID int64) (*Val
 	if p.Deleted {
 		return nil, ErrDeleted
 	}
+	if open, err := OpenProof(ctx, tx, id); err != nil {
+		return nil, err
+	} else if open {
+		return nil, ErrChecking
+	}
 	if probs := p.Problems(); len(probs) > 0 {
 		return nil, &NotReadyError{probs}
 	}

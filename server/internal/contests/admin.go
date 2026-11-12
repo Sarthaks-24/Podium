@@ -137,6 +137,9 @@ func (s *Service) cloneProblems(ctx context.Context, tx *sql.Tx, cloneID int64, 
 		if deleted {
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s was deleted. Remove it from the contest.", p.Label)}
 		}
+		if err := refuseChecking(ctx, tx, p.ProblemID, p.Label); err != nil {
+			return nil, err
+		}
 		if validated.String != hash {
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is not validated. Validate it before adding it to a contest.", p.Label)}
 		}

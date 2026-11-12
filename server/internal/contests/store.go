@@ -38,6 +38,15 @@ func (f FieldErrors) Error() string {
 	return strings.Join(parts, " ")
 }
 
+// CheckingError refuses a pin of a problem whose languages Podium is still
+// proving on the judge (409 checking). Label is the contest's label for it,
+// never the problem's title.
+type CheckingError struct{ Label string }
+
+func (e *CheckingError) Error() string {
+	return fmt.Sprintf("The problem for label %s is still being checked. Try again in a few minutes.", e.Label)
+}
+
 // DefaultHonour is the honour code shown when a contest has none of its
 // own; the owner may change it per contest.
 const DefaultHonour = `This contest counts. By starting you agree to these rules:
@@ -514,6 +523,20 @@ func (s *Service) GetBySlug(ctx context.Context, slug string) (*Contest, error) 
 // refuseAIDraft is a FieldErrors refusal when the problem's tags carry the AI
 // draft tag, and an error when they cannot be read, so the guard never fails
 // open. Both SetProblems and the pin update use it.
+// refuseChecking refuses a pin while a proof of the problem is open. It runs
+// in the pinning transaction, so a proof round cannot be queued between the
+// check and the pin.
+func refuseChecking(ctx context.Context, tx *sql.Tx, problemID int64, label string) error {
+	open, err := problems.OpenProof(ctx, tx, problemID)
+	if err != nil {
+		return err
+	}
+	if open {
+		return &CheckingError{Label: label}
+	}
+	return nil
+}
+
 func refuseAIDraft(tags string, problemID int64, label string) error {
 	var tagList []string
 	if err := json.Unmarshal([]byte(tags), &tagList); err != nil {
@@ -715,6 +738,9 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		}
 		if deleted {
 			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s was deleted. Remove it from the contest.", ch.Label)}
+		}
+		if err := refuseChecking(ctx, tx, ch.ProblemID, ch.Label); err != nil {
+			return nil, err
 		}
 		// The message names the label the organiser chose, never the
 		// problem's title, so ids cannot be used to list the bank.

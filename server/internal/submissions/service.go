@@ -55,6 +55,10 @@ var (
 	// ErrProblemDeleted refuses a submit, run or rejudge on a deleted
 	// problem, and the workspace of one outside a contest (409 deleted).
 	ErrProblemDeleted = errors.New("This problem was deleted. Your earlier submissions are still listed.")
+	// ErrChecking refuses a submit or run outside a contest pin while Podium
+	// is still proving the languages of the problem (409 checking). A pinned
+	// student is judged on the pinned revision and is not refused.
+	ErrChecking = errors.New("This problem is being checked. Try again in a few minutes.")
 )
 
 // InputError is a request the student can fix (400).
@@ -464,6 +468,9 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err := checkUnchanged(ctx, tx, p); err != nil {
 		return nil, false, err
 	}
+	if err := checkNotBeingChecked(ctx, tx, p.ID, r.Scope.RevisionID); err != nil {
+		return nil, false, err
+	}
 	if r.ClientKey != "" {
 		var id int64
 		err := tx.QueryRowContext(ctx, `SELECT id FROM submissions WHERE user_id = ? AND problem_id = ? AND coalesce(contest_id, 0) = ?
@@ -668,6 +675,23 @@ func checkUnchanged(ctx context.Context, tx *sql.Tx, p *problems.Problem) error 
 	return nil
 }
 
+// checkNotBeingChecked refuses, inside the write transaction, a student with
+// no contest pin while a proof of the problem is open, so the attempt cannot
+// be queued between a proof round being queued and its result being applied.
+func checkNotBeingChecked(ctx context.Context, tx *sql.Tx, problemID, revisionID int64) error {
+	if revisionID > 0 {
+		return nil
+	}
+	open, err := problems.OpenProof(ctx, tx, problemID)
+	if err != nil {
+		return err
+	}
+	if open {
+		return ErrChecking
+	}
+	return nil
+}
+
 // problemForJudging loads a problem that can be judged: tests, samples
 // and subtasks fit together and every test has its expected output.
 // (Contests also require validation; organisers may try an unvalidated
@@ -759,6 +783,9 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 		return nil, err
 	}
 	if err := checkUnchanged(ctx, tx, p); err != nil {
+		return nil, err
+	}
+	if err := checkNotBeingChecked(ctx, tx, p.ID, r.Scope.RevisionID); err != nil {
 		return nil, err
 	}
 	var pending int

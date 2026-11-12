@@ -195,6 +195,9 @@ func (s *Service) applyPin(ctx context.Context, c *Contest, cp ContestProblem, l
 	if err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags FROM problems WHERE id = ?", cp.ProblemID).Scan(&hash, &validated, &tags); err != nil {
 		return nil, err
 	}
+	if err := refuseChecking(ctx, tx, cp.ProblemID, label); err != nil {
+		return nil, err
+	}
 	if err := refuseAIDraft(tags, cp.ProblemID, label); err != nil {
 		return nil, err
 	}

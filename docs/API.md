@@ -1156,6 +1156,18 @@ A `POST`, `PUT`, `PATCH` or `DELETE` under `/api/` that carries the session cook
 
 ### Stage F: function problems from the wizard
 
+#### Refusals while a language is being checked
+
+While Podium proves the languages of a function problem on the judge, the problem is "being checked": a proof job, or a generate job that will queue one, is waiting or running. Each of the following is refused with `409` and the code `checking`, and nothing is changed. They are allowed again when the last proof job closes.
+
+| Request | Message |
+|---|---|
+| `POST /api/admin/problems/{id}/validate`, `POST /api/admin/problems/{id}/generate` and `POST /api/admin/problems/{id}/generate-inputs` | `Podium is still checking the languages of this problem.` |
+| `PUT /api/admin/contests/{id}/problems`, `POST /api/admin/contests/{id}/clone` and `PUT /api/admin/contests/{id}/problems/{label}/revision` (pinning the problem) | `The problem for label B is still being checked. Try again in a few minutes.` The label is the contest's label for the problem, here B. |
+| `POST /api/workspace/{problem}/run` and `.../submit`, and any run or submit that has no contest pin | `This problem is being checked. Try again in a few minutes.` A run or submit in a contest that pins a revision is not refused: it is judged on the pinned revision. |
+
+The body is the usual `{"error": {"code": "checking", "message": "..."}}`. Each check runs in the same write transaction as the action it guards.
+
 ### Stage K: other AI providers
 
 ### Stage W: rewrite with AI

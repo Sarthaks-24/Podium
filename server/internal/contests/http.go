@@ -104,10 +104,13 @@ func (d *Handlers) internalError(w http.ResponseWriter, r *http.Request, err err
 func (d *Handlers) contestError(w http.ResponseWriter, r *http.Request, err error) {
 	var fields FieldErrors
 	var aiErr *AIProblemError
+	var checking *CheckingError
 	var taken *SlugTakenError
 	switch {
 	case errors.As(err, &aiErr):
 		httpx.WriteJSON(w, http.StatusConflict, map[string]httpx.APIError{"error": {Code: "ai_unconfirmed", Message: aiErr.Error(), Problems: aiErr.Labels}})
+	case errors.As(err, &checking):
+		httpx.WriteError(w, http.StatusConflict, "checking", checking.Error())
 	case errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such contest, or it is not open to you.")
 	case errors.As(err, &taken):

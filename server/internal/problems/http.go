@@ -346,6 +346,8 @@ func (d *Handlers) problemError(w http.ResponseWriter, r *http.Request, err erro
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
 	case errors.Is(err, ErrDeleted):
 		httpx.WriteError(w, http.StatusConflict, "deleted", err.Error())
+	case errors.Is(err, ErrChecking):
+		httpx.WriteError(w, http.StatusConflict, "checking", err.Error())
 	case errors.As(err, &notAllowed):
 		httpx.WriteError(w, http.StatusForbidden, "not_allowed", notAllowed.Message)
 	case errors.As(err, &unended):
