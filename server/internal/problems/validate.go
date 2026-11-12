@@ -136,14 +136,9 @@ func (q queue) enqueueValidation(ctx context.Context, tx *sql.Tx, p *Problem, us
 	case !errors.Is(err, sql.ErrNoRows):
 		return false, err
 	}
-	points := 0
-	for _, st := range p.Subtasks {
-		points += st.Points
-	}
-	payload := judgeapi.ValidatePayload{Points: points,
-		ProblemID: p.ID, ContentHash: p.ContentHash,
-		TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
-		Checker: judgeapi.Checker{Type: p.Checker, Epsilon: p.Epsilon},
+	payload, err := q.payloadBase(ctx, tx, p)
+	if err != nil {
+		return false, err
 	}
 	// The reference and brute force are a function problem's student part
 	// and are judged composed; the validator is a whole program.
@@ -172,14 +167,6 @@ func (q queue) enqueueValidation(ctx context.Context, tx *sql.Tx, p *Problem, us
 		}
 		*opt.dest = &prog
 	}
-	if p.Checker == CheckerCustom {
-		if payload.Checker.SourceSHA, err = q.blobs.Put(ctx, tx, []byte(p.CheckerSource)); err != nil {
-			return false, err
-		}
-	}
-	for _, t := range p.Tests {
-		payload.Tests = append(payload.Tests, judgeapi.Test{Idx: t.Idx, Sample: p.IsSample(t.Idx), InputSHA: t.InputSHA, OutputSHA: t.OutputSHA})
-	}
 	jobID, err := q.jobs.Enqueue(ctx, tx, judgeapi.KindValidate, ValidatePriority, payload, userID)
 	if err != nil {
 		return false, err
@@ -189,6 +176,31 @@ func (q queue) enqueueValidation(ctx context.Context, tx *sql.Tx, p *Problem, us
 		return false, err
 	}
 	return true, nil
+}
+
+// payloadBase is the part of a validate payload every run of p shares: the
+// limits, the checker (a custom one stored as a blob) and the full test
+// list. The caller adds the programs.
+func (q queue) payloadBase(ctx context.Context, tx *sql.Tx, p *Problem) (judgeapi.ValidatePayload, error) {
+	points := 0
+	for _, st := range p.Subtasks {
+		points += st.Points
+	}
+	payload := judgeapi.ValidatePayload{Points: points,
+		ProblemID: p.ID, ContentHash: p.ContentHash,
+		TimeLimitMS: p.TimeLimitMS, MemoryLimitMB: p.MemoryLimitMB,
+		Checker: judgeapi.Checker{Type: p.Checker, Epsilon: p.Epsilon},
+	}
+	if p.Checker == CheckerCustom {
+		var err error
+		if payload.Checker.SourceSHA, err = q.blobs.Put(ctx, tx, []byte(p.CheckerSource)); err != nil {
+			return payload, err
+		}
+	}
+	for _, t := range p.Tests {
+		payload.Tests = append(payload.Tests, judgeapi.Test{Idx: t.Idx, Sample: p.IsSample(t.Idx), InputSHA: t.InputSHA, OutputSHA: t.OutputSHA})
+	}
+	return payload, nil
 }
 
 // nullUser stores a missing user as NULL.
