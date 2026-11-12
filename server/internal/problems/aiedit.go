@@ -278,6 +278,13 @@ func (s *Service) AcceptEdit(ctx context.Context, id int64, baseHash string, fil
 	if err != nil {
 		return nil, err
 	}
+	// A proof that finds a changed problem drops its result and queues no
+	// validation, so an edit waits for the round: the draft stays for later.
+	if open, err := OpenProof(ctx, tx, id); err != nil {
+		return nil, err
+	} else if open {
+		return nil, ErrChecking
+	}
 	if curSnap.Hash != baseHash {
 		return nil, ErrEditStale
 	}

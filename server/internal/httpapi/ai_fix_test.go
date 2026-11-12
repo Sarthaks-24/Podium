@@ -394,3 +394,41 @@ func TestAIFixSendsOnlySamples(t *testing.T) {
 		})
 	}
 }
+
+// Accepting an AI edit while a proof is open is refused, so the proof does not
+// find a changed problem and discard its result with no validation queued. The
+// draft stays, and accepting works once the round has closed.
+func TestAIEditAcceptIsRefusedWhileAProofIsOpen(t *testing.T) {
+	s := newSiteMode(t, "testing")
+	org := s.testSignIn("ta@college.edu", "organiser")
+	if code, out := org.do("PUT", "/api/admin/ai/key", map[string]string{"provider": "fake", "key": "ignored"}, s.srv.URL); code != 200 {
+		t.Fatalf("fake key: %d %v", code, out)
+	}
+	id := importFunction(t, s, org, false)
+	_, out := org.do("POST", editPath(id, ""), map[string]any{"instruction": "Add a note."}, s.srv.URL)
+	draft, _ := out["draft_id"].(string)
+	if draft == "" {
+		t.Fatalf("no draft: %v", out)
+	}
+	if code, body := org.do("POST", langPath(id, "cpp17", "check"), map[string]string{"solution": "x"}, s.srv.URL); code != 202 {
+		t.Fatalf("check: %d %v", code, body)
+	}
+	revs := revisions(t, s, id)
+	_, before := org.do("GET", fmt.Sprintf("/api/admin/problems/%d", id), nil, "")
+
+	code, body := org.do("POST", editPath(id, "/"+draft+"/accept"), nil, s.srv.URL)
+	errIs2(t, "accept during a proof", code, body, 409, "checking", "Podium is still checking the languages of this problem.")
+	_, after := org.do("GET", fmt.Sprintf("/api/admin/problems/%d", id), nil, "")
+	if revisions(t, s, id) != revs || fmt.Sprint(before) != fmt.Sprint(after) {
+		t.Error("the refused accept changed the problem")
+	}
+
+	closeRound(t, s)
+	code, acc := org.do("POST", editPath(id, "/"+draft+"/accept"), nil, s.srv.URL)
+	if code != 200 || acc["validation_queued"] != true {
+		t.Fatalf("accept after the round: %d %v", code, acc)
+	}
+	if revisions(t, s, id) != revs+1 {
+		t.Errorf("%d revisions, want %d", revisions(t, s, id), revs+1)
+	}
+}

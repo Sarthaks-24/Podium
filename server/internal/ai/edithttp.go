@@ -295,6 +295,8 @@ func (d *Handlers) editProblemError(w http.ResponseWriter, r *http.Request, err 
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
 	case errors.Is(err, problems.ErrDeleted):
 		httpx.WriteError(w, http.StatusConflict, "deleted", err.Error())
+	case errors.Is(err, problems.ErrChecking):
+		httpx.WriteError(w, http.StatusConflict, "checking", err.Error())
 	case errors.Is(err, problems.ErrEditStale):
 		httpx.WriteError(w, http.StatusConflict, "changed", err.Error())
 	case errors.As(err, &live):
