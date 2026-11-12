@@ -8,13 +8,15 @@
     last backup, refreshed every 5 s while shown.
   - Sign-in (SignInTab): account help for one address (end sessions,
     disable or enable; resetting a Google link is for owners).
+  - Staying signed in (KeepSignedIn, owners only): who stays signed in on
+    a device, role by role, and for how long.
   - Audit (AuditTab): the site's history of changes, filterable.
   - AI prompts (PromptsTab): the admin Preferences box; the owner also
     edits the rules of both AI prompts there.
   - Organisation (OrganisationTab, owners only): the details the public
     pages show.
   The tab is in the address (?tab=live, ?tab=sign-in, ?tab=audit,
-  ?tab=organisation; People when
+  ?tab=staying-signed-in (owners only), ?tab=organisation; People when
   none), so a link can open a tab and a reload keeps it. One request (GET
   /api/admin/people) loads them all, and again after each change to the
   list. The shell lets only admins and owners in; a 403 later (the role
@@ -30,6 +32,7 @@
   import OrganisationTab from '../components/settings/OrganisationTab.svelte';
   import PromptsTab from '../components/settings/PromptsTab.svelte';
   import PeopleTab from '../components/settings/PeopleTab.svelte';
+  import KeepSignedIn from '../components/settings/KeepSignedIn.svelte';
   import SignInTab from '../components/settings/SignInTab.svelte';
   import { UNEXPECTED_MESSAGE, getJSON } from '../lib/api';
   import { setTitle } from '../lib/head';
@@ -40,12 +43,13 @@
   import { forbiddenText, routeTitle } from '../lib/routing';
   import { session } from '../lib/session.svelte';
 
-  type Tab = 'people' | 'live' | 'sign-in' | 'audit' | 'prompts' | 'organisation';
+  type Tab = 'people' | 'live' | 'sign-in' | 'staying-signed-in' | 'audit' | 'prompts' | 'organisation';
   const isOwner = $derived(session.user?.role === 'owner');
   const tabs = $derived<{ id: Tab; label: string }[]>([
     { id: 'people', label: 'People' },
     { id: 'live', label: 'Live' },
     { id: 'sign-in', label: 'Sign-in' },
+    ...(isOwner ? [{ id: 'staying-signed-in' as Tab, label: 'Staying signed in' }] : []),
     { id: 'audit', label: 'Audit' },
     { id: 'prompts', label: 'AI prompts' },
     ...(isOwner ? [{ id: 'organisation' as Tab, label: 'Organisation' }] : []),
@@ -125,6 +129,11 @@
     <div id="settings-panel-sign-in" role="tabpanel" aria-labelledby="settings-tab-sign-in" hidden={tab !== 'sign-in'}>
       <SignInTab bind:open={signInOpen} bind:disabled bind:people owner={isOwner} onforbidden={forbid} />
     </div>
+    {#if isOwner}
+      <div id="settings-panel-staying-signed-in" role="tabpanel" aria-labelledby="settings-tab-staying-signed-in" hidden={tab !== 'staying-signed-in'}>
+        <KeepSignedIn onforbidden={forbid} />
+      </div>
+    {/if}
     <div id="settings-panel-audit" role="tabpanel" aria-labelledby="settings-tab-audit" hidden={tab !== 'audit'}>
       <AuditTab active={tab === 'audit'} />
     </div>

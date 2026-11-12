@@ -197,9 +197,37 @@ for (const theme of THEMES) {
       await expect(page.getByRole('checkbox', { name: 'Keep me signed in on this device' })).toHaveCount(0);
     });
 
+    test('Dashboard: the owner has the Staying signed in tab right after Sign-in, and Sign-in does not hold the section', async ({ page }) => {
+      await screens.mockApi(page, 'owner');
+      await page.goto('/admin/dashboard');
+      await expect(page.getByRole('tab', { name: 'Organisation' })).toBeVisible();
+      const names = await page.getByRole('tab').allTextContents();
+      expect(names.map((n) => n.trim())).toEqual(['People', 'Live', 'Sign-in', 'Staying signed in', 'Audit', 'AI prompts', 'Organisation']);
+      await page.getByRole('tab', { name: 'Sign-in' }).click();
+      await expect(page.getByRole('region', { name: 'Account help' })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Staying signed in' })).toHaveCount(0);
+      await page.getByRole('tab', { name: 'Staying signed in' }).click();
+      await expect(page).toHaveURL('/admin/dashboard?tab=staying-signed-in');
+      await expect(page.getByRole('region', { name: 'Staying signed in' })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Account help' })).toBeHidden();
+    });
+
+    test('Dashboard: the Staying signed in tab is reached by keyboard', async ({ page }) => {
+      await screens.mockApi(page, 'owner');
+      await page.goto('/admin/dashboard');
+      await expect(page.getByRole('tab', { name: 'Organisation' })).toBeVisible();
+      // Tabs are one stop; the arrow keys move along them: People, Live, Sign-in, Staying signed in.
+      await tabTo(page, page.getByRole('tab', { name: 'People' }));
+      for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+      await expect(page.getByRole('tab', { name: 'Staying signed in' })).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('region', { name: 'Staying signed in' })).toBeVisible();
+      await tabTo(page, page.getByRole('region', { name: 'Staying signed in' }).getByRole('radio', { name: 'Nobody' }).first());
+    });
+
     test('Dashboard: the owner sees every role on Nobody, and the days are not used', async ({ page }) => {
       await screens.mockApi(page, 'owner');
-      await page.goto('/admin/dashboard?tab=sign-in');
+      await page.goto('/admin/dashboard?tab=staying-signed-in');
       const section = page.getByRole('region', { name: 'Staying signed in' });
       await expect(section).toBeVisible();
       for (const role of ['Students', 'Organisers', 'Admins', 'Owner']) {
@@ -218,7 +246,7 @@ for (const theme of THEMES) {
 
     test('Dashboard: choosing roles shows the warnings and saves the whole setting', async ({ page }) => {
       const state = await screens.mockApi(page, 'owner');
-      await page.goto('/admin/dashboard?tab=sign-in');
+      await page.goto('/admin/dashboard?tab=staying-signed-in');
       const section = page.getByRole('region', { name: 'Staying signed in' });
       await section.getByRole('group', { name: 'Students', exact: true }).getByRole('radio', { name: 'Each person chooses' }).check();
       await expect(section.getByRole('radio', { name: 'Only when they sign out' })).toBeEnabled();
@@ -241,7 +269,7 @@ for (const theme of THEMES) {
 
     test('Dashboard: a wrong number of days says what to fix and saves nothing', async ({ page }) => {
       const state = await screens.mockApi(page, 'owner');
-      await page.goto('/admin/dashboard?tab=sign-in');
+      await page.goto('/admin/dashboard?tab=staying-signed-in');
       const section = page.getByRole('region', { name: 'Staying signed in' });
       await section.getByRole('group', { name: 'Students', exact: true }).getByRole('radio', { name: 'Everyone' }).check();
       const days = section.getByLabel('days without use', { exact: true });
@@ -262,7 +290,7 @@ for (const theme of THEMES) {
       state.keep.remembered = { students: 40, organisers: 0, admins: 0, owner: 2 };
       state.keep.youRemembered = true;
       state.keep.signedOutByPut = 42;
-      await page.goto('/admin/dashboard?tab=sign-in');
+      await page.goto('/admin/dashboard?tab=staying-signed-in');
       const section = page.getByRole('region', { name: 'Staying signed in' });
       await section.getByRole('group', { name: 'Students', exact: true }).getByRole('radio', { name: 'Nobody' }).check();
       await section.getByRole('group', { name: 'Owner', exact: true }).getByRole('radio', { name: 'Nobody' }).check();
@@ -285,7 +313,7 @@ for (const theme of THEMES) {
 
     test('Dashboard: the setting is set by keyboard alone', async ({ page }) => {
       const state = await screens.mockApi(page, 'owner');
-      await page.goto('/admin/dashboard?tab=sign-in');
+      await page.goto('/admin/dashboard?tab=staying-signed-in');
       const section = page.getByRole('region', { name: 'Staying signed in' });
       const students = section.getByRole('group', { name: 'Students', exact: true });
       await tabTo(page, students.getByRole('radio', { name: 'Nobody' }));
@@ -303,6 +331,11 @@ for (const theme of THEMES) {
 
     test('Dashboard: an admin does not see the section, and a failed load offers a retry', async ({ page }) => {
       await screens.mockApi(page, 'admin');
+      await page.goto('/admin/dashboard?tab=staying-signed-in');
+      // An admin has no such tab; the address falls back to People like any unknown tab.
+      await expect(page.getByRole('tab', { name: 'Staying signed in' })).toHaveCount(0);
+      await expect(page.getByRole('tab', { name: 'People' })).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByRole('region', { name: 'Staying signed in' })).toHaveCount(0);
       await page.goto('/admin/dashboard?tab=sign-in');
       await expect(page.getByRole('region', { name: 'Account help' })).toBeVisible();
       await expect(page.getByRole('region', { name: 'Staying signed in' })).toHaveCount(0);
@@ -312,7 +345,7 @@ for (const theme of THEMES) {
       await page.route('**/api/admin/keep-signed-in', (route) =>
         fail ? route.fulfill({ status: 500, json: { error: { code: 'server', message: 'Something went wrong. Try again in a minute.' } } }) : route.fallback(),
       );
-      await page.goto('/admin/dashboard?tab=sign-in');
+      await page.goto('/admin/dashboard?tab=staying-signed-in');
       const section = page.getByRole('region', { name: 'Staying signed in' });
       await expect(section.getByRole('alert')).toContainText('Something went wrong');
       fail = false;

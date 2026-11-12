@@ -364,14 +364,14 @@ test('the Audit tab lists and filters the site changes, for owners and admins (O
   await expect(page.getByRole('tabpanel', { name: 'Audit' }).getByRole('listitem')).toHaveCount(3);
 });
 
-test('the Sign-in and Organisation tabs at 1440 px are under 1,000 px tall, and one tab shows at a time', async ({ page }) => {
+test('the Sign-in, Staying signed in and Organisation tabs at 1440 px are under 1,000 px tall, and one tab shows at a time', async ({ page }) => {
   await mockApi(page, 'owner');
   // A short window, so the page's height is its content's, not the window's (the page fills at least the window).
   await page.setViewportSize({ width: 1440, height: 400 });
   await page.goto('/admin/dashboard');
   await expect(page.getByRole('table').first()).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
-  for (const [name, path] of [['People', '/admin/dashboard'], ['Sign-in', '/admin/dashboard?tab=sign-in'], ['Organisation', '/admin/dashboard?tab=organisation']] as const) {
+  for (const [name, path] of [['People', '/admin/dashboard'], ['Sign-in', '/admin/dashboard?tab=sign-in'], ['Staying signed in', '/admin/dashboard?tab=staying-signed-in'], ['Organisation', '/admin/dashboard?tab=organisation']] as const) {
     await page.getByRole('tab', { name }).click();
     await expect(page).toHaveURL(path);
     await expect(page.getByRole('tabpanel')).toHaveCount(1);
