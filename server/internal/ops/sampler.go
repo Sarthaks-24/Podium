@@ -2,9 +2,7 @@ package ops
 
 import (
 	"bytes"
-	"errors"
 	"io"
-	"io/fs"
 	"log/slog"
 	"math"
 	"os"
@@ -165,20 +163,15 @@ func (s *sampler) readGroup(g *group, secs float64) {
 			g.prevUsec = usec // after a counter that went backwards too
 		}
 	}
-	if !g.noPeak {
-		v, err := s.number(g.peakPath)
-		if err == nil {
-			g.peakMB = v >> 20
-			return
-		}
-		g.noPeak = errors.Is(err, fs.ErrNotExist) && g.cpuReadable
-
+	if !g.cpuReadable {
+		g.prevUsec = -1 // the next good reading starts again, as after a restart
 	}
-	if g.noPeak {
-		if v, err := s.number(g.curPath); err == nil {
-			g.maxCur = max(g.maxCur, v)
-			g.peakMB = g.maxCur >> 20
-		}
+	// memory.peak, or for this tick only memory.current when it is not there.
+	if v, err := s.number(g.peakPath); err == nil {
+		g.peakMB = v >> 20
+	} else if v, err := s.number(g.curPath); err == nil {
+		g.maxCur = max(g.maxCur, v)
+		g.peakMB = g.maxCur >> 20
 	}
 }
 

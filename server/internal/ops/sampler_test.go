@@ -274,7 +274,7 @@ func TestSamplerIsOffWithoutTheFiles(t *testing.T) {
 	if n := goroutinesSettle(base); n > base {
 		t.Errorf("%d goroutines, started with %d", n, base)
 	}
-	if f.reads > 7 { // the one probe: three cpu.stat, three memory files and /proc/stat
+	if f.reads > 10 { // the one probe: three cpu.stat, up to six memory files and /proc/stat
 		t.Errorf("an off sampler kept reading: %d reads", f.reads)
 	}
 }
@@ -317,5 +317,46 @@ func BenchmarkSamplerTick(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		now = now.Add(10 * time.Second)
 		s.tick(now)
+	}
+}
+
+// A group whose cpu file is unreadable for some ticks does not get the
+// whole gap's CPU divided by one interval when it comes back.
+func TestSamplerForgetsTheCounterAfterAGap(t *testing.T) {
+	f := newFakeTree(t)
+	fillAll(f, 1_000_000, 0, 0)
+	f.stat(1000, 0)
+	s := f.sampler()
+	s.tick(time.Unix(0, 0))
+	os.Remove(filepath.Join(f.root, filepath.FromSlash(serverGroup), "cpu.stat"))
+	s.tick(time.Unix(10, 0))
+	s.tick(time.Unix(20, 0))
+	f.cpu(serverGroup, 21_000_000) // 20 s of CPU over the gap
+	s.tick(time.Unix(30, 0))
+	f.cpu(serverGroup, 26_000_000)
+	s.tick(time.Unix(40, 0))
+	lines := f.logBuf.lines()
+	if len(lines) != 4 || lines[2]["server_cpu_pct"] != float64(-1) || lines[3]["server_cpu_pct"] != float64(50) {
+		t.Errorf("server_cpu_pct after the gap: %v, want -1 then 50", lines)
+	}
+}
+
+// A memory.peak that is missing for one tick makes that tick use
+// memory.current; the next tick uses memory.peak again.
+func TestSamplerPeakFallbackIsPerTick(t *testing.T) {
+	f := newFakeTree(t)
+	fillAll(f, 0, 0, 0)
+	f.put(serverGroup, "memory.current", "10485760\n") // 10 MiB
+	f.stat(10, 0)
+	s := f.sampler()
+	s.tick(time.Unix(0, 0))
+	peak := filepath.Join(f.root, filepath.FromSlash(serverGroup), "memory.peak")
+	os.Remove(peak)
+	s.tick(time.Unix(10, 0))
+	f.put(serverGroup, "memory.peak", "104857600\n")
+	s.tick(time.Unix(20, 0))
+	lines := f.logBuf.lines()
+	if len(lines) != 2 || lines[0]["server_mem_peak_mb"] != float64(10) || lines[1]["server_mem_peak_mb"] != float64(100) {
+		t.Errorf("peaks = %v, want 10 then 100", lines)
 	}
 }

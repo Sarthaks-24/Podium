@@ -43,6 +43,32 @@ var writePragmas = []string{"wal_checkpoint", "optimize", "incremental_vacuum", 
 // word. Leading whitespace and comments are skipped, and a WITH is followed
 // to the statement after its common table expressions.
 func writeKind(query string) string {
+	k := firstKind(query)
+	if k == "" && strings.IndexByte(query, ';') >= 0 && textAfterSemicolon(query) {
+		return "statements"
+	}
+	return k
+}
+
+// textAfterSemicolon reports whether anything but whitespace and comments
+// follows a semicolon outside quotes and parentheses: a second statement,
+// which is not looked at and so counts as a write.
+func textAfterSemicolon(q string) bool {
+	for i := skipSpace(q, 0); i < len(q); i = skipSpace(q, i) {
+		switch q[i] {
+		case '\x27', '"', '`', '[':
+			i = skipQuoted(q, i)
+		case ';':
+			return skipSpace(q, i+1) < len(q)
+		default:
+			i++
+		}
+	}
+	return false
+}
+
+// firstKind is writeKind for the first statement of query.
+func firstKind(query string) string {
 	i := skipSpace(query, 0)
 	if i >= len(query) {
 		return ""
@@ -76,8 +102,8 @@ func withKind(q string, i int) string {
 			i++
 		case c == '\'' || c == '"' || c == '`' || c == '[':
 			i = skipQuoted(q, i)
-		case isLetter(c):
-			w, end := word(q, i)
+		case isLetter(c) || c >= '0' && c <= '9' || c == '$':
+			w, end := ident(q, i)
 			if depth == 0 {
 				switch {
 				case strings.EqualFold(w, "SELECT"), strings.EqualFold(w, "VALUES"):
@@ -136,6 +162,15 @@ func inFold(set []string, name string) bool {
 }
 
 func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' }
+
+// ident returns the whole identifier or number at i: letters, digits, _ and $.
+func ident(q string, i int) (string, int) {
+	j := i
+	for j < len(q) && (isLetter(q[j]) || q[j] >= '0' && q[j] <= '9' || q[j] == '$') {
+		j++
+	}
+	return q[i:j], j
+}
 
 // word returns the run of letters at i and the index after it.
 func word(q string, i int) (string, int) {

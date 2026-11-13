@@ -29,6 +29,10 @@ func addStudent(t testing.TB, r *svcRig, id int, name string) {
 	}
 }
 
+// This proves one thing: splice() of a standingsJSON equals a whole
+// json.Encoder encode of the same value, for the corpus below. It does not
+// test how standingsOut fills the fields.
+//
 // The spliced body equals today's, byte for byte, for every board variant
 // and viewer the handler has: full and frozen boards, a student seeing
 // their own row, an organiser, an organiser's student view, an empty board,
@@ -56,6 +60,9 @@ func TestSplicedStandingsEqualTodays(t *testing.T) {
 	few := r.contest(t, func(e *Edit) { e.Title = "Week 2" })
 	seedBoard(t, r, few, 3, 1)
 	few.Problems = few.Problems[:2]
+	if _, err := r.svc.DB.Exec("INSERT INTO contest_starts (contest_id, user_id, started_at, honour_accepted_at) VALUES (?, 2000, ?, ?)", few.ID, t0.UnixMilli(), t0.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := 0
 	for name, contest := range map[string]*Contest{"empty": empty, "ties and extension": c, "two problems": few} {
@@ -63,7 +70,7 @@ func TestSplicedStandingsEqualTodays(t *testing.T) {
 			*r.now = at(int(now))
 			for _, variant := range []string{VariantFull, VariantFrozen} {
 				for _, student := range []bool{false, true} {
-					for _, me := range []int64{0, 1, 2, 1001, 2000} {
+					for _, me := range []int64{0, 1, 2, 1001, 2000, 999999} {
 						o, err := h.standingsOut(ctx, contest, variant, me, student)
 						if err != nil {
 							t.Fatal(err)
@@ -76,6 +83,17 @@ func TestSplicedStandingsEqualTodays(t *testing.T) {
 							t.Fatalf("%s at %d min, %s, student view %v, me %d:\n got %s\nwant %s", name, now, variant, student, me, got, want)
 						}
 						cases++
+						// final with submissions still judging, which standingsOut
+						// never builds but the field order and values must survive.
+						o.Final, o.JudgingRemaining = true, 7
+						if got, _ := o.splice(); !bytes.Equal(got, today(t, o)) {
+							t.Fatalf("%s: final with judging remaining differs", name)
+						}
+						// A board with no labels at all encodes them as null.
+						nl := &standingsJSON{Variant: variant, Version: 3, Rows: []Row{}, Me: me, ServerNow: 5, board: &Standings{Variant: variant}}
+						if got, ok := nl.splice(); !ok || !bytes.Equal(got, today(t, nl)) {
+							t.Fatalf("nil labels differ: %s", got)
+						}
 					}
 				}
 			}
