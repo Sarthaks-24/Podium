@@ -56,6 +56,9 @@ type Runner struct {
 	// the header off for this runner.
 	OnPCHFault func(output string)
 	pchFault   sync.Once
+	// pchGood is when the header last passed the judge's own probe, in
+	// Unix nanoseconds (pchBroken).
+	pchGood atomic.Int64
 
 	memOnce sync.Once
 	memMu   sync.Mutex
@@ -198,7 +201,7 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		// is reported only when the compile without it does not fail.
 		faultOutput := res.Output
 		prog, res, err = r.compile(ctx, box, lang, lang.Compile, lang.Dirs, source, outDir)
-		if err == nil && res.Verdict != CompileError {
+		if err == nil && res.Verdict != CompileError && r.pchBroken(ctx, box) {
 			// Confirmed: a header broken mid-contest must not cost every
 			// later compile a second run.
 			r.SetPCH("")
@@ -209,6 +212,27 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		return prog, res, err
 	}
 	return prog, res, err
+}
+
+// pchProbeEvery is how long a passed probe of the header is trusted.
+const pchProbeEvery = time.Minute
+
+// pchBroken compiles the judge's own probe program with the header and
+// reports whether that failed. The student's source decides nothing: a
+// program can see whether the header directory is in its box, fail with
+// the fault text when it is and compile cleanly in the retry. A pass is
+// remembered for pchProbeEvery, so repeating that costs no further probes.
+// A probe that fails for another reason (a timeout under load) also turns
+// the header off, which only gives up the speed-up until the next start.
+func (r *Runner) pchBroken(ctx context.Context, box int) bool {
+	if time.Since(time.Unix(0, r.pchGood.Load())) < pchProbeEvery {
+		return false
+	}
+	if _, _, err := r.ProbePCH(ctx, box); err != nil {
+		return true
+	}
+	r.pchGood.Store(time.Now().UnixNano())
+	return false
 }
 
 func (r *Runner) compile(ctx context.Context, box int, lang Language, args, dirs []string, source []byte, outDir string) (prog Program, res CompileResult, err error) {

@@ -273,6 +273,24 @@ func TestAnUnusableHeaderFallsBackToANormalCompile(t *testing.T) {
 			t.Errorf("the fault hook ran %d times for the student's own error", faults)
 		}
 	})
+	// The header directory is in the box only for the compile that uses it,
+	// so a program can fail with the fault text there and compile cleanly
+	// in the retry. That must not switch a good header off for everyone.
+	t.Run("a student who fakes the fault leaves the header on", func(t *testing.T) {
+		r, dir := pchRunner(t)
+		faults := 0
+		r.OnPCHFault = func(string) { faults++ }
+		src := "#if __has_include(\"" + dir + "/bits/stdc++.h.gch\")\n#error while reading precompiled header\n#endif\n" + noInclude
+		if v, out, _ := run(t, r, src); v != judge.OK || out != "7\n" {
+			t.Fatalf("the faking program: %s %q", v, out)
+		}
+		if got := r.PCH(); got != dir {
+			t.Errorf("the header was switched off by a student's program: PCH is %q, want %q", got, dir)
+		}
+		if faults != 0 {
+			t.Errorf("the fault hook ran %d times for a good header", faults)
+		}
+	})
 }
 
 // selftest's line for the header: PASS for a good one, FAIL with the reason
