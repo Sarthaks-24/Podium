@@ -7,7 +7,9 @@ import { expect, test } from '@playwright/test';
 import { AXE_TAGS } from './axe';
 import { mockApi, settle, THEMES, WIDTHS } from './mocks/contests';
 
-const OUT = '../../../../../cache/v2.0.2/shots/fix2/';
+// Inside the repository from any checkout, as the other specs do: a fixed
+// number of ../ climbed out of E:\Podium when run from the main checkout.
+const OUT = process.env.PODIUM_SHOTS ?? '../../cache/v2.0.2/shots/fix2/';
 
 for (const phase of ['after', 'practice'] as const) {
   for (const theme of THEMES) {
