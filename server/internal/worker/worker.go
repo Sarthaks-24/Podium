@@ -51,6 +51,9 @@ type Worker struct {
 	// AuthRetries is how many refused tokens in a row a lane accepts
 	// before the worker stops (DefaultAuthRetries when zero).
 	AuthRetries int
+	// AsyncReports batches a job's test results and sends them while the
+	// next test runs (PODIUM_JUDGE_ASYNC_REPORTS, J6). Off by default.
+	AsyncReports bool
 
 	// handle replaces the job dispatch in tests; nil runs the real kinds.
 	handle func(ctx context.Context, box int, c *judgeapi.Claim) error

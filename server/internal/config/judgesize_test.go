@@ -70,3 +70,22 @@ func TestBoxRangeKeepsClearOfTheSelftestBox(t *testing.T) {
 		}
 	}
 }
+
+// J6: batched reports are off unless asked for, and a bad value names the
+// variable without echoing the value.
+func TestJudgeAsyncReportsSetting(t *testing.T) {
+	tok := strings.Repeat("j", 40)
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{{"", false}, {"off", false}, {"on", true}} {
+		c, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_ASYNC_REPORTS": tc.value}))
+		if err != nil || c.AsyncReports != tc.want {
+			t.Errorf("PODIUM_JUDGE_ASYNC_REPORTS=%q: %v, %v; want %v", tc.value, c.AsyncReports, err, tc.want)
+		}
+	}
+	_, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_ASYNC_REPORTS": "maybe"}))
+	if err == nil || !strings.Contains(err.Error(), "PODIUM_JUDGE_ASYNC_REPORTS must be on or off") || strings.Contains(err.Error(), "maybe") {
+		t.Errorf("a bad value: %v", err)
+	}
+}

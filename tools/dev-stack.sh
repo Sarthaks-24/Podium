@@ -58,6 +58,7 @@ sleep 1
 "${pin[@]}" runuser -u judge -- env -i PATH=/usr/bin:/bin PODIUM_MODE=testing \
   PODIUM_SERVER_URL="http://$judge_listen" PODIUM_LOG_LEVEL="$level" \
   PODIUM_JUDGE_CACHE_DIR="$state/judge/cache" PODIUM_JUDGE_LANES=2 PODIUM_JUDGE_MEMORY_BUDGET_MB=1024 \
+  PODIUM_JUDGE_ASYNC_REPORTS="${PODIUM_JUDGE_ASYNC_REPORTS:-off}" PODIUM_JUDGE_PCH="${PODIUM_JUDGE_PCH:-off}" \
   "$state/podium-judge" work &
 printf '\npodium testing stack: server on %s, judge API on %s, state in %s\n' "$listen" "$judge_listen" "$state"
 printf 'Open %s and sign in with any email. Ctrl+C stops everything.\n\n' "$base_url"

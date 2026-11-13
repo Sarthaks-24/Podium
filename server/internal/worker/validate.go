@@ -37,6 +37,11 @@ type reporter struct {
 	lost bool
 	// tm is the job's timing; see jobTiming for what is shared.
 	tm jobTiming
+	// async batches test results into reports sent while the next test
+	// runs; nil sends each result before the next test (see asyncQueue).
+	async *asyncQueue
+	// beat is the heartbeat interval; zero means heartbeatEvery.
+	beat time.Duration
 }
 
 // send delivers a report, retrying a server that is briefly unavailable
@@ -71,7 +76,11 @@ func (r *reporter) send(ctx context.Context, rep judgeapi.Report) error {
 }
 
 func (r *reporter) heartbeat(ctx context.Context) {
-	t := time.NewTicker(heartbeatEvery)
+	every := r.beat
+	if every == 0 {
+		every = heartbeatEvery
+	}
+	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
 		select {

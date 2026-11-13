@@ -18,7 +18,7 @@ type jobTiming struct {
 	lane           int
 	subject        int64 // the submission or run row the job judges
 
-	started        time.Time
+	started time.Time
 	// Compiles of the program and the checker: how many, how many came from
 	// the cache, and the time spent in them.
 	compiles, compilesCached int

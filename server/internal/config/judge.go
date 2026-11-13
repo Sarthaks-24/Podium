@@ -23,6 +23,7 @@ var JudgeVars = []Var{
 	{Name: "PODIUM_JUDGE_BOX_BASE", Default: "0"},
 	{Name: "PODIUM_JUDGE_CACHE_DIR", Default: "/var/cache/podium-judge"},
 	{Name: "PODIUM_JUDGE_BLOB_CACHE_MB", Default: "2048"},
+	{Name: "PODIUM_JUDGE_ASYNC_REPORTS", Default: "off"},
 	{Name: "PODIUM_LOG_LEVEL", Default: "info"},
 }
 
@@ -51,6 +52,9 @@ type Judge struct {
 	// BlobCacheMB caps the downloaded files in CacheDir/blobs; the least
 	// recently used ones no running job holds are removed above it.
 	BlobCacheMB int
+	// AsyncReports is PODIUM_JUDGE_ASYNC_REPORTS: true batches a job's test
+	// results and sends them while the next test runs (J6). Default false.
+	AsyncReports bool
 	// LogLevel is the minimum level written to the JSON log.
 	LogLevel slog.Level
 }
@@ -97,6 +101,7 @@ func LoadWorker(get Getenv) (Judge, error) {
 	}
 	c.CacheDir = r.str("PODIUM_JUDGE_CACHE_DIR")
 	c.BlobCacheMB = r.int("PODIUM_JUDGE_BLOB_CACHE_MB", 64, 1<<20)
+	c.AsyncReports = r.onOff("PODIUM_JUDGE_ASYNC_REPORTS")
 	c.LogLevel = r.level("PODIUM_LOG_LEVEL")
 	return c, r.p.err()
 }

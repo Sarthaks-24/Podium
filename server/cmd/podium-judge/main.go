@@ -210,6 +210,11 @@ func work() error {
 		Version:   version,
 		Isolate:   isolateVersion(ctx, cfg.IsolatePath),
 		Toolchain: toolchain,
+
+		AsyncReports: cfg.AsyncReports,
+	}
+	if cfg.AsyncReports {
+		log.Warn("PODIUM_JUDGE_ASYNC_REPORTS is on: test results are batched while the next test runs")
 	}
 	if err := w.Drain(stopCtx, ctx); err != nil {
 		return err
