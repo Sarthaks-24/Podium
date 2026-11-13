@@ -18,7 +18,7 @@ sudo ./install.sh
 | Step | What it does |
 |---|---|
 | `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq. Every apt signing key (NodeSource, isolate, Caddy) must have the fingerprint written into `install.sh`, or the key is removed and the install stops before apt can trust it. If a repository rotates its key, check the new fingerprint on that project's own site before changing it in `add_repo`. |
-| `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes at 1100 MB through `isolate.slice`; enables `isolate.service`; makes the tuning below survive a reboot; runs `isolate-check-environment` |
+| `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes through `isolate.slice` (1100 MB as the base, which the judge's pre-start step raises on a bigger machine, see "Judge sizing"); enables `isolate.service`; makes the tuning below survive a reboot; runs `isolate-check-environment` |
 | `testlib` | `testlib.h` (release 0.9.41) into `/usr/local/include` for custom checkers. Downloaded from GitHub at a pinned commit and refused unless its SHA-256 matches the one in the script. Skipped when the installed file already matches. |
 | `users` | system users `podium`, `judge` and `podium-backup` (Litestream and the heartbeat, in group podium; D116); adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
 | `dirs` | `/var/lib/podium` and `/var/lib/podium/tests` (podium, 750), `/var/lib/podium/db` (podium, group podium, 2770, so Litestream can write; the database files are 660), `/var/cache/podium-judge` (judge, 750), `/etc/podium`; creates `server.env` and `judge.env` from the examples if missing (root, 600), with the absolute VM paths for the database and tests |
@@ -268,6 +268,58 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 | `PODIUM_JUDGE_CACHE_DIR` | optional | optional | optional | `/var/cache/podium-judge` | Downloaded tests and sources, per-job work files and compiled programs (see "Judge cache"). |
 | `PODIUM_JUDGE_BLOB_CACHE_MB` | optional | optional | optional | `2048` | Cap on `blobs/` in the cache directory, in MB, 64 to 1048576. Above it the least recently used files no running job holds are removed after each job. Keep it above the largest problem's tests (every test of a problem is fetched to validate it). |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | As above. |
+
+### Judge sizing
+
+The judge sizes itself to its machine. The same function, `Size(vCPUs, memory)` in `server/internal/sizing`, is asked twice: by the root pre-start step of `podium-judge.service` (`reset-boxes`, which runs `podium-judge size`) and by the worker when it starts. The pre-start step resets that many boxes and sets two caps for this boot with `systemctl set-property --runtime`: the memory cap of `isolate.slice` (all sandboxes together) and the memory cap of the `podium-judge` unit. Runtime properties disappear at reboot and the step sets them again at every start. The worker then checks the cap it finds on the slice and refuses to start, naming both numbers, if the slice allows less than its budget needs.
+
+| Setting | Rule |
+|---|---|
+| Lanes | one per vCPU, at most 16 (on Google Cloud E2 a vCPU is one hyperthread; the calibration was done with two lanes on two hyperthreads, so one lane per vCPU keeps timing as calibrated) |
+| Memory budget | half the memory less 196 MB, at least 1,024 MB and at most 4,096 MB. Under about 2,950 MB of memory the machine cannot hold the largest single run (1,280 MB), so it keeps 1,024 MB. |
+| Sandbox cap | the budget plus 76 MB, for box files and runtime overhead the budget does not count |
+| Judge unit cap | 128 MB per lane |
+
+Sandboxes get just under half the memory. The rest is for the server, Litestream, Caddy, the operating system, the tmpfs the boxes live on and the judge unit. The machine's memory is read from `/proc/meminfo` and rounded up to the next 512 MB, so a VM sold as 8 GB that shows 7.7 GiB counts as 8 GB.
+
+Memory budget and sandbox cap by memory (the lanes do not change them):
+
+| Memory | Budget | Sandbox cap |
+|---|---|---|
+| 2 GB | 1,024 MB | 1,100 MB |
+| 4 GB | 1,852 MB | 1,928 MB |
+| 8 GB | 3,900 MB | 3,976 MB |
+| 16 GB | 4,096 MB | 4,172 MB |
+
+Lanes and judge unit cap by vCPUs (memory does not change them):
+
+| vCPUs | Lanes | Judge unit cap |
+|---|---|---|
+| 1 | 1 | 128 MB |
+| 2 | 2 | 256 MB |
+| 4 | 4 | 512 MB |
+| 8 | 8 | 1,024 MB |
+
+A 2 GB machine with 2 vCPUs is exactly today's judge: two lanes, a 1,024 MB budget, a 1,100 MB slice and a 256 MB unit. The files in `deploy/` keep those values as the base (`isolate.slice.d/podium.conf`, `MemoryMax=256M`), and the pre-start step overrides them on a bigger machine. A Java run on a problem with the largest memory limit (1,024 MB) is given 1,280 MB, more than a 2 GB machine's 1,100 MB slice, so on that machine such a run can still be killed for memory; a machine with 4 GB or more holds it.
+
+**What never follows the machine.** The lock that lets one g++, javac or java run at a time, each language's time factor and memory overhead, the compile limits, the wall-time formula and a problem's own limits are the same on every machine. A resize must not change the conditions a verdict is judged under; only the number of lanes and the memory they share change.
+
+**Values set by hand win.** A `judge.env` made from an older example has `PODIUM_JUDGE_LANES=2` in it, which pins two lanes whatever the machine; empty the value to let the judge follow the vCPUs. `PODIUM_JUDGE_LANES` and `PODIUM_JUDGE_MEMORY_BUDGET_MB` replace the formula for that one number (the caps follow the budget and the lane count). The judge refuses to start, naming the variable, the value and the limit, when a lane count is above the machine's vCPUs or a budget is above half the memory less 196 MB. If the cap on the slice is lower than the budget plus 76 MB (for example the pre-start step could not set it), the worker refuses to start with "the sandbox slice allows N MB but this judge needs M MB".
+
+**The start line.** `journalctl -u podium-judge -n 50 | grep "starting podium-judge"` shows what the judge chose: `lanes`, `budget_mb`, `sandbox_cap_mb` (the cap it found on the slice, or `none` or `unknown`), `vcpus`, `memory_mb` (rounded as above) and `cpu_model`. `podium-judge size` prints the numbers for the settings in its own environment (the pre-start step runs it with `judge.env` loaded) and changes nothing.
+
+**After a resize**: stop the VM, change the machine type, start it, read the start line, then run `podium-judge calibrate` with the judge stopped and compare with the table below. A resized E2 machine can come back on a different CPU model, which shows in `cpu_model` and in the timings. If the numbers are not close to the table, the time limits calibrated for production no longer apply to that machine; do not run a graded contest on it until you have looked.
+
+Calibration of the production machine (Google Cloud `e2-standard-2`, 2 vCPU, 8 GB, Intel Xeon at 2.20 GHz, two lanes; measured with `podium-judge calibrate`, 2026-11-08):
+
+| Language | Compile wall (ms) | Hello CPU (ms) | Hello whole step (ms) | Sort 1e6 CPU (ms) | Sort peak memory (MB) |
+|---|---|---|---|---|---|
+| C++17 | 134 | 2 | 25 | 245 | 5 |
+| Java 21 | 736 | 52 | 71 | 697 | 43 |
+| Python 3 | 49 | 31 | 55 | 1218 | 110 |
+| JavaScript (Node 22) | none | 58 | 80 | 682 | 129 |
+
+The 8 GB budget of 3,900 MB and the larger sizes are not measured under load on a real machine yet; the numbers above come from the formula.
 
 ### Litestream (`/etc/podium/litestream.env`)
 
