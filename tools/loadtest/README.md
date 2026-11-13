@@ -126,7 +126,7 @@ server/bin/linux/loadreplay -base http://127.0.0.1:18080 -rounds 2 -minutes 3 -b
 
 `-rounds` sets how much work there is, `-minutes` and `-burst` how it is spread; the same flags give the same list at the same moments. The contest closes `-tail` before the end, so the last requests are practice: submissions that are not graded and Runs of students whose time is over (J0 puts those behind graded work). `-list` prints the list without a server; `-only id,id` sends a few programs for checking one.
 
-For the comparison, a run is a directory with three files: `verdicts.jsonl` (the replay), `judge.log` (the judge's JSON log lines, from `journalctl -u podium-judge -o cat`, or the stack's log file; other lines are ignored) and optionally `sampler.log` (JSON lines with a cumulative `slice_oom_kills`). The timing line of a job joins to its request by `kind` and `subject_id`. Run the A/A pair first, then three runs of each arm:
+For the comparison, a run is a directory with three files: `verdicts.jsonl` (the replay), `judge.log` (the judge's JSON log lines, from `journalctl -u podium-judge -o cat`, or the stack's log file; other lines are ignored) and optionally `sampler.log` (JSON lines with a cumulative `slice_oom_kills`). The timing line of a job joins to its request by `kind` and `subject_id`; a repeated key in `judge.log`, an unparsable line in `verdicts.jsonl` or an arm with no runs stops the comparison with exit status 2. `loadreplay` refuses an `-out` directory that already holds files, so use a new directory for every run. Run the A/A pair first, then three runs of each arm:
 
 ```sh
 server/bin/linux/loadcompare -change j5 -aa aa1,aa2 -base off1,off2,off3 -test on1,on2,on3

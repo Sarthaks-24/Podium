@@ -24,8 +24,9 @@ const (
 	// in whole milliseconds and a Run in 10 ms steps).
 	cpuNoiseFloor = 0.10
 	cpuSlackMS    = 20
-	// J5 and J6 must beat the A/A noise by this factor as well as the
-	// threshold, so a lucky pair cannot ship a change.
+	// J5 must beat the A/A noise by this factor as well as the threshold, so
+	// a lucky pair cannot ship a change. J6 does not use it: it only checks
+	// that the jobs are no slower, and reports the share of report time.
 	noiseFactor = 2.0
 )
 
@@ -437,19 +438,19 @@ func J1(base, test, aa []*Run) []Result {
 		}
 	}
 
+	var kills int64
+	sampled := true
+	for _, r := range test {
+		kills += r.OOMKills
+		sampled = sampled && r.HasSampler
+	}
 	switch {
-	case !test[0].HasSampler:
-		out = append(out, Result{Name: oom, Skip: true, Detail: "no sampler lines: not checked here (an out-of-memory kill still shows as a moved verdict)"})
+	case kills > 0:
+		out = append(out, fail(oom, "%d kills in the test runs", kills))
+	case !sampled:
+		out = append(out, Result{Name: oom, Skip: true, Detail: "a test run has no sampler lines: not checked here (an out-of-memory kill still shows as a moved verdict)"})
 	default:
-		var kills int64
-		for _, r := range test {
-			kills += r.OOMKills
-		}
-		if kills > 0 {
-			out = append(out, fail(oom, "%d kills in the test runs", kills))
-		} else {
-			out = append(out, pass(oom, "none in the test runs"))
-		}
+		out = append(out, pass(oom, "none in the test runs"))
 	}
 	return out
 }

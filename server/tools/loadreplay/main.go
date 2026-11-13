@@ -63,6 +63,9 @@ func main() {
 	if *tail >= total {
 		fatal(fmt.Errorf("-tail must be shorter than the replay"))
 	}
+	if err := checkOutDir(*out); err != nil {
+		fatal(err)
+	}
 	d := &Driver{Base: strings.TrimRight(*base, "/"), Origin: *origin, Students: *students, Poll: 250 * time.Millisecond, Timeout: *timeout, Tail: *tail}
 	recs, err := d.Replay(context.Background(), c, items, offsets, firstBurst, total)
 	if err != nil {
@@ -150,4 +153,28 @@ func summarize(w io.Writer, recs []Record) (bad int) {
 	}
 	fmt.Fprintf(w, "%d of %d requests had an unexpected verdict\n", bad, len(recs))
 	return bad
+}
+
+// checkOutDir refuses an output directory that already holds files: writing
+// there would overwrite an earlier run. A directory that does not exist yet
+// is fine.
+func checkOutDir(dir string) error {
+	fi, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("-out %s is not a directory", dir)
+	}
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	if len(ents) > 0 {
+		return fmt.Errorf("-out %s already holds files; use a new directory", dir)
+	}
+	return nil
 }

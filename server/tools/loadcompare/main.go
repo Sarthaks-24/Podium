@@ -46,8 +46,15 @@ func main() {
 			os.Exit(2)
 		}
 	}
-	if *aa == "" {
+	if err := checkArms(b, t); err != nil {
+		fmt.Fprintln(os.Stderr, "loadcompare:", err)
+		os.Exit(2)
+	}
+	switch {
+	case *aa == "":
 		fmt.Println("note: no A/A pair given, so noise is taken as zero and only the floors apply")
+	case len(n) == 1:
+		fmt.Println("note: the A/A set holds one run, so its spread is zero, as with no A/A pair")
 	}
 	rs, err := Change(*change, b, t, n)
 	if err != nil {
@@ -97,47 +104,60 @@ func loadRuns(list string) ([]*Run, error) {
 // error; a missing sampler file is not.
 func loadRun(dir string) (*Run, error) {
 	r := &Run{Name: filepath.Base(dir), Timing: map[string]Timing{}}
+	badLines := 0
 	err := eachLine(filepath.Join(dir, "verdicts.jsonl"), func(b []byte) {
 		var rec Record
 		if json.Unmarshal(b, &rec) == nil {
 			r.Records = append(r.Records, rec)
+		} else {
+			badLines++
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
+	if badLines > 0 {
+		return nil, fmt.Errorf("%s: %d lines of verdicts.jsonl do not parse", dir, badLines)
+	}
 	if len(r.Records) == 0 {
 		return nil, fmt.Errorf("%s: no records in verdicts.jsonl", dir)
 	}
+	var dup string
 	err = eachLine(filepath.Join(dir, "judge.log"), func(b []byte) {
 		var line struct {
 			Msg string `json:"msg"`
 			Timing
 		}
 		if json.Unmarshal(b, &line) == nil && line.Msg == "job timing" {
-			r.Timing[timingKey(line.Kind, line.SubjectID)] = line.Timing
+			key := timingKey(line.Kind, line.SubjectID)
+			if _, seen := r.Timing[key]; seen && dup == "" {
+				dup = key
+			}
+			r.Timing[key] = line.Timing
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
-	var first, last int64 = -1, 0
+	if dup != "" {
+		return nil, fmt.Errorf("%s: judge.log has two job timing lines for %s", dir, dup)
+	}
+	// The counter is cumulative but restarts with the service, so only the
+	// rises between samples count.
+	var prev int64
 	if err := eachLine(filepath.Join(dir, "sampler.log"), func(b []byte) {
 		var s struct {
 			Kills *int64 `json:"slice_oom_kills"`
 		}
 		if json.Unmarshal(b, &s) == nil && s.Kills != nil {
-			if first < 0 {
-				first = *s.Kills
+			if r.HasSampler && *s.Kills > prev {
+				r.OOMKills += *s.Kills - prev
 			}
-			last = *s.Kills
+			prev = *s.Kills
 			r.HasSampler = true
 		}
 	}); err != nil && !os.IsNotExist(err) {
 		return nil, err
-	}
-	if r.HasSampler {
-		r.OOMKills = last - first
 	}
 	return r, nil
 }
@@ -160,4 +180,16 @@ func eachLine(path string, f func([]byte)) error {
 		f(b)
 	}
 	return sc.Err()
+}
+
+// checkArms refuses an arm with no runs, which would otherwise pass vacuously
+// or panic.
+func checkArms(base, test []*Run) error {
+	if len(base) == 0 {
+		return fmt.Errorf("-base names no run directory")
+	}
+	if len(test) == 0 {
+		return fmt.Errorf("-test names no run directory")
+	}
+	return nil
 }

@@ -429,3 +429,22 @@ func TestDriverSendsUniqueSources(t *testing.T) {
 		t.Errorf("%d distinct sources for 3 requests", len(seen))
 	}
 }
+
+// A run directory that already holds files is refused before the replay
+// starts, so an earlier run is never overwritten.
+func TestCheckOutDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := checkOutDir(dir); err != nil {
+		t.Errorf("an empty directory: %v", err)
+	}
+	if err := checkOutDir(filepath.Join(dir, "new")); err != nil {
+		t.Errorf("a directory that does not exist yet: %v", err)
+	}
+	os.WriteFile(filepath.Join(dir, "verdicts.jsonl"), []byte("x"), 0o644)
+	if err := checkOutDir(dir); err == nil || !strings.Contains(err.Error(), "already holds files") {
+		t.Errorf("a used directory: %v", err)
+	}
+	if err := checkOutDir(filepath.Join(dir, "verdicts.jsonl")); err == nil {
+		t.Error("a file was accepted as the directory")
+	}
+}

@@ -58,7 +58,8 @@ func newAsyncQueue() *asyncQueue {
 }
 
 // sizeOf estimates the bytes a result adds to a report: its text fields
-// plus a fixed amount for the rest.
+// plus a fixed amount for the rest. JSON escaping is ignored: run output is
+// capped at judgeapi.MaxRunOutput (4 KB), so the error is small.
 func sizeOf(tr judgeapi.TestResult) int {
 	return 256 + len(tr.Output) + len(tr.Stderr) + len(tr.Message) + len(tr.OutputSHA)
 }
@@ -241,7 +242,8 @@ func (r *reporter) sendBatches(ctx context.Context, rest []judgeapi.TestResult, 
 
 // drop ends the batching of a job that is over: it discards what is waiting
 // and waits for the sender to exit, which it does as soon as its post
-// returns or the job's context is cancelled.
+// returns or the job's context is cancelled. A post already in flight can
+// take up to 3/4 of the lease to finish, as in the synchronous mode.
 func (r *reporter) drop() {
 	q := r.async
 	if q == nil {

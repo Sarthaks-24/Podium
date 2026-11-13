@@ -351,3 +351,70 @@ func TestLoadRunAndPrint(t *testing.T) {
 		}
 	}
 }
+
+// A sampler counter that restarts must not hide kills: only rises count.
+func TestLoadRunOOMKillsSurviveACounterReset(t *testing.T) {
+	dir := writeRunDir(t, "", "")
+	os.WriteFile(filepath.Join(dir, "sampler.log"), []byte(`{"slice_oom_kills":2}`+"\n"+`{"slice_oom_kills":5}`+"\n"+`{"slice_oom_kills":0}`+"\n"+`{"slice_oom_kills":4}`+"\n"), 0o644)
+	r, err := loadRun(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.OOMKills != 7 {
+		t.Errorf("kills %d, want 7 (3 + 4 after the reset)", r.OOMKills)
+	}
+}
+
+func TestJ1NeedsTheSamplerOnEveryTestRun(t *testing.T) {
+	base := []*Run{j1Arm("b1", 500, 2, 0, true)}
+	for name, test := range map[string][]*Run{
+		"kills in the second run": {j1Arm("t1", 500, 2, 0, false), j1Arm("t2", 500, 2, 1, true)},
+	} {
+		rs, _ := Change("j1", base, test, nil)
+		if Ships(rs) {
+			t.Errorf("%s shipped: %+v", name, rs)
+		}
+	}
+	rs, _ := Change("j1", base, []*Run{j1Arm("t1", 500, 2, 0, true), j1Arm("t2", 500, 2, 0, false)}, nil)
+	if r := find(t, rs, "out-of-memory"); !r.Skip {
+		t.Errorf("a test run without sampler lines was counted as checked: %+v", r)
+	}
+}
+
+func TestLoadRunRefusesBadInput(t *testing.T) {
+	good := `{"seq":1,"program":"p","kind":"submit","verdict":"AC","id":9}` + "\n"
+	tm := `{"msg":"job timing","kind":"submit","subject_id":9,"compile_wall_ms":800}` + "\n"
+	if _, err := loadRun(writeRunDir(t, good+"{broken\n", tm)); err == nil || !strings.Contains(err.Error(), "verdicts.jsonl") {
+		t.Errorf("an unparsable verdict line: %v", err)
+	}
+	if _, err := loadRun(writeRunDir(t, good, tm+tm)); err == nil || !strings.Contains(err.Error(), "judge.log") || !strings.Contains(err.Error(), "submit/9") {
+		t.Errorf("a repeated timing key: %v", err)
+	}
+	if _, err := loadRun(writeRunDir(t, good, tm)); err != nil {
+		t.Errorf("good run: %v", err)
+	}
+}
+
+func TestArmsNeedRuns(t *testing.T) {
+	r := mkRun("r", []job{{program: "p"}})
+	if err := checkArms([]*Run{r}, []*Run{r}); err != nil {
+		t.Errorf("both arms present: %v", err)
+	}
+	if err := checkArms(nil, []*Run{r}); err == nil || !strings.Contains(err.Error(), "-base") {
+		t.Errorf("no base runs: %v", err)
+	}
+	if err := checkArms([]*Run{r}, nil); err == nil || !strings.Contains(err.Error(), "-test") {
+		t.Errorf("no test runs: %v", err)
+	}
+}
+
+func writeRunDir(t *testing.T, verdicts, judge string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if verdicts == "" {
+		verdicts = `{"seq":1,"program":"p","kind":"submit","verdict":"AC","id":9}` + "\n"
+	}
+	os.WriteFile(filepath.Join(dir, "verdicts.jsonl"), []byte(verdicts), 0o644)
+	os.WriteFile(filepath.Join(dir, "judge.log"), []byte(judge), 0o644)
+	return dir
+}
