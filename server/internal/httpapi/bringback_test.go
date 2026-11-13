@@ -222,6 +222,13 @@ func TestBringBackRoutesRolesAndBadInput(t *testing.T) {
 	code, out = r.bring(otherRev)
 	errIs(t, "another problem's revision", code, out, 404, "not_found", "")
 
+	// A deleted problem has no history to read or bring back.
+	r.s.db.Exec("UPDATE problems SET deleted = 1 WHERE id = ?", other)
+	code, out = r.org.do("GET", fmt.Sprintf("/api/admin/problems/%d/revisions", other), nil, r.s.srv.URL)
+	errIs(t, "history of a deleted problem", code, out, 409, "deleted", "")
+	code, out = r.org.do("POST", fmt.Sprintf("/api/admin/problems/%d/revisions/%d/bring-back", other, otherRev), nil, r.s.srv.URL)
+	errIs(t, "bring back on a deleted problem", code, out, 409, "deleted", "")
+
 	// An organiser may call both.
 	if code, out := r.org.do("POST", "/api/admin/people", map[string]any{"email": "setter@college.edu", "role": "organiser"}, r.s.srv.URL); code >= 300 {
 		t.Fatalf("make organiser: %d %v", code, out)

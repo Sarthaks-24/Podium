@@ -1283,6 +1283,28 @@ The copy's date is the day in the zone `tz` names (the browser's IANA zone, so i
 
 ### Stage H: bring back a version
 
+**`GET /api/admin/problems/{id}/revisions`** lists the problem's history. Organiser and above; a student is 403, no session 401. 404 `not_found` for an unknown problem, 409 `deleted` for a deleted one. It answers `{"revisions": [...], "total": 7}` with the newest 50 revisions, newest first. Each is `{"id", "rev", "created_at" (ms), "created_by" (user id, 0 when the server made it), "reason", "current", "can_bring_back"}`. `current` is true for the newest only. `can_bring_back` is true when the version recorded its generator arguments and every file it names (the programs, the checker and the tests) is still stored; a version made before v2.1.0 is false, and so is one older than the problem's last three revisions unless a contest or a submission pins it. The answer carries no program text and no test data.
+
+**`POST /api/admin/problems/{id}/revisions/{revision}/bring-back`** writes revision `{revision}` (the revision's `id`, not its number) back onto the problem. Organiser and above. No request body.
+
+| Request | Response |
+|---|---|
+| none | 200 `{"problem_id","revision_id","rev","validation_queued","not_ready":[...]}`; `revision_id` and `rev` are the new revision |
+
+In one transaction the server saves the version's title, statement, limits, checker, samples, subtasks with their generator arguments, tests, programs, starting code and locked code over the problem as one new revision with the reason "Brought back version <n>". The id, slug, tags, difficulty, generator plan and origin stay as they are now, and so does the mark that a person wrote the solution, except that for an AI draft whose reference or brute force the version changes the mark is cleared. The validation is withdrawn, and Validate is queued after the commit as for Replace (`validation_queued` false and `not_ready` listing why when the content cannot be validated). A contest that holds the problem keeps the revision it is pinned to until "Update students now". Nothing is written when the call is refused. No migration.
+
+| Status and code | When, and the message |
+|---|---|
+| 404 `not_found` | the problem does not exist, or the revision does not exist or belongs to another problem; a path id that is not a positive number |
+| 409 `deleted` | the problem was deleted |
+| 409 `archived` | "<title> is archived, so a version cannot be brought back. Restore it first." |
+| 409 `contest_running` | a running contest pins it: "A contest that is running uses this problem. Try again after it ends." |
+| 409 `in_use` | a student has a submission, Run or saved code for the problem (staff rows do not count): "Students have code for this problem, so an older version cannot replace it. Copy it as a new problem instead." |
+| 409 `checking` | a language check of the problem is open: "Podium is still checking the languages of this problem." |
+| 409 `not_kept` | the version is not complete: "This version's files were not kept, so it cannot be brought back." |
+| 409 `current` | the version is the problem's current one: "This is already the current version." |
+| 409 `mode_locked` | the version's mode differs and any submission or draft exists (the existing rule for a mode change) |
+
 ### Stage J: judge protocol
 
 **Protocol 4 (v2.1.0): `wait_s`.** The claim request may carry `wait_s`, a whole number of seconds from 0 to 20 (left out means 0, the answer at once of protocol 3). When nothing is claimable the server holds the request and answers when a job becomes claimable or the wait ends; the answers are the same as for a claim without it: `200` with the job, or `204` for no job (also when the wait ends, when the server begins to shut down, and when 64 claims are already held). A job queued, a job closed, a lease requeued and a contest resumed each wake held claims; a held claim also looks again every 2 s. A lease starts when the claim is answered, not when it was sent. A `wait_s` below 0 or above 20 is `400 bad_request`. Protocol 4 also changes the order in which queued Runs are claimed after a contest ends: a Run whose author's contest time (the close plus their extension) is over is claimed only when no other job is claimable, and a practice Run is queued at priority 60; nothing in the request or response changes for it.

@@ -747,6 +747,30 @@ Everything else (submissions, scores, code, problems and their versions, audit l
 
 The retention pass starts a minute after the server and then runs every 12 hours, in batches of 2,000 rows per transaction, and logs one line (`data past retention removed`). A run job's payload (the code and custom input it named) becomes `{}` and its output excerpts are emptied; the next blob collection then removes the custom input files. A run older than 30 days shows its verdicts and no output.
 
+## Problem versions and disk use
+
+Every new version of a problem stores the text of its programs in the test file store (`PODIUM_TESTS_DIR`), named by hash like the test files. The blob collector (the 24 hour grace period is unchanged) keeps the program and test files of three groups of versions: each problem's newest `GCKeepRevisions` (3, in `server/internal/problems/bringback.go`) versions, every version a contest pins or a submission was judged against, and nothing of a deleted problem. The files of older versions go like any unused blob. Archived problems keep theirs, so Restore and "Bring back this version" still work.
+
+Versions made before v2.1.0 stored no program text. Their program files exist only while a judging job or another version names them, and their subtasks have no generator arguments, so they are never offered for bringing back. The test files of a problem's last three versions that the old collector had already removed are gone for good.
+
+The extra disk is the size of the program and test files that only the kept versions refer to. Count it before the first deploy, on the production database, with read-only queries (nothing is copied off the machine):
+
+```sh
+sqlite3 -readonly /var/lib/podium/podium.db "
+WITH ranked AS (SELECT id, problem_id, rev, row_number() OVER (PARTITION BY problem_id ORDER BY rev DESC) AS n FROM problem_revisions
+                WHERE problem_id IN (SELECT id FROM problems WHERE deleted = 0)),
+     kept AS (SELECT id FROM ranked WHERE n <= 3
+              UNION SELECT revision_id FROM contest_problems WHERE revision_id IS NOT NULL
+              UNION SELECT revision_id FROM submissions WHERE revision_id IS NOT NULL),
+     files AS (SELECT input_sha AS sha FROM revision_tests WHERE revision_id IN kept
+               UNION SELECT output_sha FROM revision_tests WHERE output_sha IS NOT NULL AND revision_id IN kept),
+     now_files AS (SELECT input_sha AS sha FROM testcases UNION SELECT output_sha FROM testcases WHERE output_sha IS NOT NULL)
+SELECT count(*) AS extra_files, coalesce(sum(b.size), 0) / 1048576.0 AS extra_mb
+FROM files f JOIN blobs b ON b.sha = f.sha WHERE f.sha NOT IN (SELECT sha FROM now_files);"
+```
+
+The result counts only test files that the working copies no longer use and that exist today; the program files are a few kilobytes each (at most five per version, 64 KB each). If `extra_mb` is above 200, set `GCKeepRevisions` to 2 and rebuild. Measure it: a number is not a reason, the query is. The same total is `du -sh` of `PODIUM_TESTS_DIR` before and after the first collection that runs on the new build.
+
 ## Site settings
 
 The organisation details the sign-in page, the footer and the privacy page show: name, site contact email, phone and privacy contact. The footer reads "Problems with the site? Email ..." and sign-in "Cannot sign in? Email ..."; each contest can show its own contact on its page (contest setup above). An owner enters them on the Organisation tab of the Dashboard (`PUT /api/admin/site-settings`); they are stored in the database's `settings` table, not in an environment variable, and every change writes a `settings_changed` row to the site audit. Until they are entered the pages show nothing for them: the footer and the sign-in page fall back to `PODIUM_OWNER_EMAIL` as the contact address. Enter a role address (for example `podium@college.edu`) as the contact email so the owner's own address stops appearing on the sign-in page. That address is how people reach whoever runs the site: v1.2 has no contact form (V3-4).
