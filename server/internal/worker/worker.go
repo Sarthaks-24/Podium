@@ -146,7 +146,8 @@ func (w *Worker) lane(stop, ctx context.Context, box int) {
 		// held one does not slow the drain.
 		asked := time.Now()
 		claimCtx, cancelClaim := context.WithCancel(ctx)
-		cut := context.AfterFunc(stop, func() { time.AfterFunc(stopGrace, cancelClaim) })
+		grace := stopGrace
+		cut := context.AfterFunc(stop, func() { time.AfterFunc(grace, cancelClaim) })
 		claim, err := w.Client.Claim(claimCtx, judgeapi.ClaimRequest{
 			Kinds:  []string{judgeapi.KindRun, judgeapi.KindSubmit, judgeapi.KindGenerate, judgeapi.KindGenerateInputs, judgeapi.KindValidate},
 			Worker: w.Name, Version: w.Version, Isolate: w.Isolate, Toolchain: w.Toolchain,

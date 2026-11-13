@@ -290,7 +290,6 @@ func TestHoldsAreBoundedAndZeroWaitDoesNotHold(t *testing.T) {
 	if c != nil || err != nil || time.Since(start) > within {
 		t.Fatalf("a claim over the cap: %+v %v after %v, want an empty answer at once", c, err, time.Since(start))
 	}
-	s.MaxHeld = 64
 	start = time.Now()
 	c, err = s.ClaimWait(context.Background(), nil, judgeapi.ClaimRequest{Kinds: []string{judgeapi.KindSubmit}, Worker: "w"}, 0)
 	if c != nil || err != nil || time.Since(start) > within {

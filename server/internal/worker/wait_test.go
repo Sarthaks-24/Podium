@@ -139,8 +139,11 @@ func TestStopEndsAHeldClaimAndDrainReturns(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("Drain did not return after stop while a claim was held")
 	}
-	if r.jobs.Held() != 0 {
-		t.Errorf("held = %d after the drain", r.jobs.Held())
+	// The server notices the cut connection a moment later.
+	for start := time.Now(); r.jobs.Held() != 0; time.Sleep(time.Millisecond) {
+		if time.Since(start) > time.Second {
+			t.Fatalf("held = %d after the drain", r.jobs.Held())
+		}
 	}
 }
 
