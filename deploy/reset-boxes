@@ -17,7 +17,7 @@ box_base=${PODIUM_JUDGE_BOX_BASE:-0}
 size=$("$judge_bin" size)
 lanes='' sandbox_cap='' unit_cap=''
 while IFS== read -r key value; do
-  if [[ ! $value =~ ^[0-9]{1,6}$ ]]; then
+  if [[ ! $value =~ ^[0-9]{1,7}$ ]]; then
     echo "podium-judge size gave an unreadable line: $key" >&2
     exit 1
   fi
@@ -30,6 +30,14 @@ while IFS== read -r key value; do
 done <<< "$size"
 if [[ -z $lanes || -z $sandbox_cap || -z $unit_cap ]]; then
   echo "podium-judge size did not give lanes and both caps" >&2
+  exit 1
+fi
+# Root does not trust the shape alone. The bounds are Size's own: 1 to 16
+# lanes; a sandbox cap of at least 1,100 MB (the 2 GB machine) and at most
+# the largest hand-set budget, 1,048,576 MB, plus 76; a unit cap of 128 MB
+# per lane, so 128 to 2,048.
+if (( lanes < 1 || lanes > 16 || sandbox_cap < 1100 || sandbox_cap > 1048652 || unit_cap < 128 || unit_cap > 2048 )); then
+  echo "podium-judge size gave numbers outside what it can give: lanes=$lanes sandbox_cap_mb=$sandbox_cap unit_cap_mb=$unit_cap" >&2
   exit 1
 fi
 

@@ -83,7 +83,8 @@ fi
 
 : > "$tmp/systemctl.log"
 mkdir -p "$root/30"; printf keep > "$root/30/marker"
-for stub in "STUB_SIZE_FAIL=1" "STUB_SIZE_TEXT=lanes=x" "STUB_SIZE_TEXT=cap=5" "STUB_SIZE_TEXT=lanes=2;rm"; do
+for stub in "STUB_SIZE_FAIL=1" "STUB_SIZE_TEXT=lanes=x" "STUB_SIZE_TEXT=cap=5" "STUB_SIZE_TEXT=lanes=2;rm" \
+  "STUB_CAP=0" "STUB_CAP=1099" "STUB_CAP=1048653" "STUB_UNIT=0" "STUB_UNIT=127" "STUB_UNIT=2049" "STUB_UNIT=999999999"; do
   if env "$stub" PODIUM_JUDGE_BOX_BASE=30 PODIUM_JUDGE_LANES=2 "$tmp/reset-boxes" >/dev/null 2>&1; then
     fail "a refused or unreadable size ($stub) was accepted"
   elif [[ -f $root/30/marker && ! -s $tmp/systemctl.log ]]; then
@@ -99,7 +100,17 @@ else
   pass "a failed systemctl set-property fails the pre-start step"
 fi
 
-# No second copy of the sizing in shell: the default lane count is gone.
+# lanes outside 1 to 16 are refused whatever the other numbers say.
+mkdir -p "$root/30"; printf keep > "$root/30/marker"; : > "$tmp/systemctl.log"
+for lanes in 0 17 99; do
+  if PODIUM_JUDGE_LANES=$lanes PODIUM_JUDGE_BOX_BASE=30 "$tmp/reset-boxes" >/dev/null 2>&1 || [[ ! -f $root/30/marker || -s $tmp/systemctl.log ]]; then
+    fail "a lane count of $lanes was accepted or touched a box"
+  else
+    pass "a lane count of $lanes is refused without touching a box or a cap"
+  fi
+done
+
+$1 in shell: the default lane count is gone.
 if grep -Eq 'PODIUM_JUDGE_LANES:-' "$source_script"; then
   fail "reset-boxes still carries its own default lane count"
 else
