@@ -39,6 +39,9 @@ type Language struct {
 	// (g++ and every JVM invocation), keeping peak RAM inside the budget.
 	CompileExclusive bool
 	RunExclusive     bool
+	// PCH marks a language whose compile may use the precompiled header
+	// of <bits/stdc++.h> (see pch.go); only student C++ does.
+	PCH bool
 	// Dirs are extra isolate --dir rules the toolchain needs.
 	Dirs []string
 	// OOMMarkers are stderr fragments that mean the runtime itself ran out
@@ -56,7 +59,7 @@ var Languages = map[string]Language{
 	"cpp17": {
 		ID: "cpp17", Name: "C++17", Source: "main.cpp",
 		Compile:          []string{"/usr/bin/g++", "-O2", "-std=gnu++17", "-pipe", "-static", "-o", "main", "main.cpp"},
-		CompileProcesses: 16, CompileMemoryMB: 512, CompileExclusive: true,
+		CompileProcesses: 16, CompileMemoryMB: 512, CompileExclusive: true, PCH: true,
 		Run:        []string{"./main"},
 		TimeFactor: 1.0, MemoryOverheadMB: 0, Processes: 1,
 	},
@@ -94,6 +97,7 @@ var Languages = map[string]Language{
 func CheckerLanguage() Language {
 	l := Languages["cpp17"]
 	l.CompileCPU = 30 * time.Second
+	l.PCH = false
 	return l
 }
 

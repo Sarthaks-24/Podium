@@ -268,7 +268,23 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 | `PODIUM_JUDGE_CACHE_DIR` | optional | optional | optional | `/var/cache/podium-judge` | Downloaded tests and sources, per-job work files and compiled programs (see "Judge cache"). |
 | `PODIUM_JUDGE_BLOB_CACHE_MB` | optional | optional | optional | `2048` | Cap on `blobs/` in the cache directory, in MB, 64 to 1048576. Above it the least recently used files no running job holds are removed after each job. Keep it above the largest problem's tests (every test of a problem is fetched to validate it). |
 | `PODIUM_JUDGE_ASYNC_REPORTS` | optional | optional | optional | `off` | `on` or `off` (v2.1.0, J6). Off: the judge sends each test's result and waits for the server's answer before the next test. On: results go to a queue and one sender posts whatever has piled up while its last post was in flight, in batches of at most 256 KB; the last results travel in the final report; the queue holds at most 1 MB, above which the next test waits. The protocol and the server do not change. It is built to be measured: switch it on only after the test VM session showed that report time is at least 10 percent of a job's wall time in the rush and the jobs got no slower (`loadcompare -change j6`). A bad value stops the judge at start. With it on, `report_ms` in the timing line counts time overlapped with tests, so read the share from a run with it off. |
+| `PODIUM_JUDGE_PCH` | optional | optional | optional | `off` | `on` or `off` (v2.1.0, J5). On: student C++ is compiled with a precompiled `<bits/stdc++.h>` from `/usr/local/lib/podium-pch` (see "Precompiled header"). The judge checks the files and runs one probe compile at start, and if either fails it logs one line and compiles normally, so the setting never stops the judge. Switch it on only after the test VM session showed that compile wall on the heavy C++ programs dropped at least 30 percent with identical verdicts (`loadcompare -change j5`). A bad value stops the judge at start. |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | As above. |
+
+### Precompiled header
+
+Most of a small C++ program's compile time is GCC reading the standard library for `#include <bits/stdc++.h>`. With `PODIUM_JUDGE_PCH=on` the judge gives the C++ compile `-I /usr/local/lib/podium-pch`, which holds only `bits/stdc++.h.gch`: that header already parsed. The real header stays where the system keeps it; the directory is not `/usr/include`, which apt owns.
+
+| Topic | How it works |
+|---|---|
+| Build | `sudo podium-judge pch build` (also `-dir DIR`), run by `install.sh` on a fresh install and on every upgrade, with the judge stopped. It compiles a one-line file that includes the system's `<bits/stdc++.h>` with the options of the C++ compile command (`-O2 -std=gnu++17 -pipe -static`), so GCC accepts the result; the options come from the same table the compile uses, so they cannot drift apart. A build that fails is a warning at install, not a stop. After an apt upgrade of g++, rebuild it: until then GCC ignores the old file and compiles normally. |
+| Who owns it | Built by root, owned by root, not writable by the group or others. The judge refuses to use a directory, `bits` folder or file that is owned by another user or writable by anyone but its owner. Nothing a student controls reaches the build. |
+| In the sandbox | The directory is added to the C++ compile's isolate rules as a read-only mount (`--dir=/usr/local/lib/podium-pch:maybe`; `maybe` so a missing directory is skipped, not an error). Only the compile sees it; a test run never does. The hostile suite writes, replaces, deletes and truncates the header from inside a box and gets "Read-only file system" for each. |
+| When GCC uses it | Only when `#include <bits/stdc++.h>` is the first include and no macro defined before it conflicts with the header (for example `#define _GLIBCXX_DEBUG`), and no pragma comes first. In every other case GCC reads the real header, and the program compiles and behaves the same. A program that does not include it compiles to the same binary with or without the setting. |
+| Checks | At start the judge checks ownership and permissions and runs one probe compile in lane 0's box with the exact student command plus `-Winvalid-pch -H`; it proceeds only if GCC reports loading the file (`! ...stdc++.h.gch`). `podium-judge selftest` with `PODIUM_JUDGE_PCH=on` runs the same probe and prints `PASS precompiled header` or the reason GCC gave (a flag mismatch shows as "not used because ..."). CI builds the header and runs that selftest. |
+| If the file is damaged | A truncated or corrupt file makes GCC stop with "while reading precompiled header". The judge compiles that program again without the header and logs one line (once); the student sees no error. Rebuild with `sudo podium-judge pch build`. |
+| Rollback | A rollback leaves the directory in place. The previous judge never looks at it. |
+| Disk and memory | The file is 97 MB (101,614,001 bytes with g++ 13.3 on Ubuntu 24.04); the build takes about 4 s and peaks near 320 MB, which is why it runs with the judge stopped. A compile with the header used less memory, not more (laptop, WSL2, `/usr/bin/time -v`, three runs each): a small program 195 MB without, 139 MB with; a template-heavy one 335 MB without, 287 MB with. The compile limit is 512 MB. Compile wall: 1.6 s to 0.7 s for the small program and 4.7 s to 3.5 s for the heavy one on that laptop; the production figure comes from the test VM session. |
 
 ### Judge sizing
 
@@ -642,6 +658,28 @@ For every submission and every Run the judge writes one line to `journalctl -u p
 | `report_ms` | time spent sending reports and heartbeats to the server |
 
 Not on the line, because the judge does not know them: how long the job queued, and its verdict. Validation and generation jobs write no timing line.
+
+## Replay corpus and speed comparison
+
+Three changes of v2.1.0 are built and left off until a measurement says to ship them: batched reports (`PODIUM_JUDGE_ASYNC_REPORTS`, J6), the precompiled header (`PODIUM_JUDGE_PCH`, J5) and the queue order at a contest's end (`PODIUM_QUEUE_END_ORDER`, J0, on by default; the arm switches it off). The test VM session decides each one by running the same work twice and comparing. Nothing here runs in production.
+
+**The corpus** (`tools/loadtest/corpus/corpus.json`, with the programs beside it and in `problems/`): 17 programs, 30 Runs and 21 submissions per round (59 percent Runs; in a WSL2 run 302 of 520 jobs queued at the peak were Runs). It holds C++ that includes `<bits/stdc++.h>`, C++ without it, wrong answers, a compile error, a run error, two brute-force time-outs, Node, Java, and four programs that spin for a set share of their time limit. Each program has the verdict it must get as a Run and as a submission. **Replay** (`loadreplay`, built from `server/tools/loadreplay`) sends rounds of it in a fixed order at fixed moments, three times as densely in the last `-burst` minutes, with a unique comment on each source so every request compiles, waits for every verdict and exits 1 if any differs from the recorded one. It needs no k6. Setup and flags are in `tools/loadtest/README.md`.
+
+**The comparison** (`loadcompare`, from `server/tools/loadcompare`) reads the runs of two arms: `verdicts.jsonl` from the replay and the judge's log (the `job timing` lines, joined to requests by `kind` and `subject_id`), with an optional `sampler.log` (`slice_oom_kills`). The A/A pair, two runs with nothing changed, measures the noise, and the script uses it. The thresholds are constants at the top of `server/tools/loadcompare/compare.go`, written before J5 and J6 existed:
+
+| Change | Ships if |
+|---|---|
+| J5 | median compile wall of the heavy C++ jobs that really compiled drops at least 30 percent and by more than twice the A/A noise |
+| J6 | report time is at least 10 percent of a job's wall time in the rush, read on the arm with J6 off, and the jobs of the arm with it on are no slower (within the A/A noise, at least 5 percent) |
+| J0 | the drain of graded submissions is no slower and the p95 time to a verdict for graded submissions is not worse (the same allowance) |
+| J1, after a resize | the same set of time-limit verdicts, the p95 CPU time of each program within its A/A noise (at least 10 percent plus 20 ms), no sandbox out-of-memory kill in the sampler |
+| every arm | no verdict of any corpus program moved, no program missing |
+
+```sh
+loadcompare -change j5 -aa aa1,aa2 -base off1,off2,off3 -test on1,on2,on3
+```
+
+It prints PASS, FAIL or SKIP per check and `RESULT J5: ships` or `does not ship`; the exit status is 1 when it does not ship. The numbers of the session go in `judge-speed.md` and the ones that describe production in `calibration.md`.
 
 ## Metrics
 

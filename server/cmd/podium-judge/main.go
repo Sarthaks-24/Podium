@@ -6,6 +6,7 @@
 //	podium-judge selftest              run the hostile suite here; PASS or FAIL per program
 //	podium-judge calibrate [-reps N]   measure this host and print Markdown
 //	podium-judge size                  print this machine's lanes and caps (the pre-start step reads them)
+//	podium-judge pch build             (root) precompile <bits/stdc++.h> into /usr/local/lib/podium-pch
 //	podium-judge -version              print what this build is
 //
 // Stop the podium-judge service before calibrating: calibrate is a separate
@@ -56,7 +57,7 @@ func main() {
 	envFile := flag.String("env-file", "", "load variables from this file before reading the environment (local development)")
 	showVersion := flag.Bool("version", false, "print the version, commit, build date, schema and judge protocol, then exit")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: podium-judge [-env-file FILE] work | selftest | calibrate [-reps N] | size")
+		fmt.Fprintln(os.Stderr, "usage: podium-judge [-env-file FILE] work | selftest | calibrate [-reps N] | size | pch build")
 		fmt.Fprintln(os.Stderr, "       podium-judge -version")
 	}
 	flag.Parse()
@@ -78,6 +79,8 @@ func main() {
 		fail(calibrate(flag.Args()[1:]))
 	case "size":
 		fail(size(os.Stdout, os.Stderr))
+	case "pch":
+		fail(pch(flag.Args()[1:]))
 	default:
 		flag.Usage()
 		os.Exit(2)
@@ -150,6 +153,10 @@ func selftest(args []string) error {
 		return err
 	}
 	total := len(calib.Hostile) + 4
+	if cfg.PCH {
+		total++
+		failed += calib.PCHSelfTest(ctx, r, judge.PCHDir, 0, *box, os.Stdout)
+	}
 	if failed > 0 {
 		return fmt.Errorf("FAIL: %d of %d programs were not contained or did not run; do not judge on this host until fixed", failed, total)
 	}
@@ -197,8 +204,16 @@ func work() error {
 	if err != nil {
 		return err
 	}
+	runner := judge.NewRunner(judge.Isolate{Path: cfg.IsolatePath}, plan.BudgetMB)
+	if cfg.PCH {
+		// Before the lanes start: the probe uses the first lane's box.
+		if err := runner.Iso.Cleanup(ctx, cfg.BoxBase); err != nil {
+			return fmt.Errorf("clean box %d: %w", cfg.BoxBase, err)
+		}
+		usePCH(ctx, runner, judge.PCHDir, 0, cfg.BoxBase, runner.ProbePCH, log)
+	}
 	w := &worker.Worker{
-		Runner:    judge.NewRunner(judge.Isolate{Path: cfg.IsolatePath}, plan.BudgetMB),
+		Runner:    runner,
 		Client:    client,
 		Cache:     &worker.Cache{Dir: blobs, Client: client, MaxBytes: int64(cfg.BlobCacheMB) << 20},
 		Compiled:  &worker.CompileCache{Dir: compiled, MaxBytes: worker.DefaultCompileCacheBytes},

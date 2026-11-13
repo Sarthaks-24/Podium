@@ -492,6 +492,7 @@ carry() { # runs install_app_files, keep_previous_units or restore_previous_file
     die() { printf '%s
 ' "$*"; exit 1; }
     systemctl() { :; }
+    build_pch() { echo built >> "$tmp/pch.log"; }
     id() { return 1; }
     db_path() { echo "$tmp/none/podium.db"; }
     HERE=$rel LIB=$root/usr/local/lib/podium PREVIOUS=$tmp/prev
@@ -543,8 +544,22 @@ if [[ $(cat "$root/usr/local/lib/podium/reset-boxes") == "reset new" ]]; then
 else
   fail "install_app_files did not install the new reset-boxes"
 fi
+
+# J5: install and upgrade both go through install_app_files, which builds
+# the precompiled header; a build that fails is a warning, never a stop, and
+# a rollback does not touch the header directory.
+if [[ -f $tmp/pch.log ]]; then pass "install_app_files builds the precompiled header (install and upgrade)"; else fail "install_app_files did not call build_pch"; fi
+mkdir -p "$tmp/fakebin"
+eval "$(fn build_pch | sed "s|/usr/local/bin|$tmp/fakebin|g")"
+printf '#!/bin/sh\necho "$@" > "%s/pch.args"\nexit 0\n' "$tmp" > "$tmp/fakebin/podium-judge"; chmod +x "$tmp/fakebin/podium-judge"
+build_pch
+if [[ $(cat "$tmp/pch.args") == "pch build" ]]; then pass "build_pch runs 'podium-judge pch build'"; else fail "build_pch ran: $(cat "$tmp/pch.args" 2>/dev/null)"; fi
+printf '#!/bin/sh\nexit 1\n' > "$tmp/fakebin/podium-judge"
+if out=$(build_pch 2>&1) && [[ $out == *"warning: the precompiled header was not built"* ]]; then pass "a failed header build is a warning, not a stop"; else fail "a failed header build stopped the install: $out"; fi
+if fn restore_previous_files | grep -qi 'podium-pch'; then fail "restore_previous_files touches the header directory"; else pass "a rollback leaves the header directory alone"; fi
+
 carry restore_previous_files
-if [[ $(cat "$root/etc/systemd/system/isolate.slice.d/podium.conf") == "slice old" && $(cat "$root/etc/systemd/system/podium-judge.service") == "podium-judge.service old" ]]; then
+if [[ $(cat "$root/etc/systemd/system/isolate.slice.d/podium.conf") == "slice old"&& $(cat "$root/etc/systemd/system/podium-judge.service") == "podium-judge.service old" ]]; then
   pass "a rollback puts the old slice drop-in and judge unit back"
 else
   fail "restore_previous_files did not bring back the slice drop-in and judge unit"

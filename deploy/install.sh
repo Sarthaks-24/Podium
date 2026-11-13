@@ -370,6 +370,21 @@ install_app_files() {
   # folder: sudo /usr/local/lib/podium/install.sh verify
   install -m 755 "$HERE/install.sh" "$LIB/install.sh"
   systemctl daemon-reload
+  build_pch
+}
+
+# build_pch precompiles <bits/stdc++.h> into /usr/local/lib/podium-pch for
+# the judge's PODIUM_JUDGE_PCH=on setting (v2.1.0, J5). The judge binary
+# builds it, from the system's own headers, with the options of its C++
+# compile command, and the files are root-owned. It is rebuilt on every
+# upgrade, since a new g++ makes the old file useless (GCC then ignores it,
+# so nothing breaks in between). A failure is a warning: the setting is off
+# by default and falls back to normal compiles. A rollback leaves the
+# directory alone; the previous judge never looks at it.
+build_pch() {
+  if ! /usr/local/bin/podium-judge pch build; then
+    echo "warning: the precompiled header was not built (is g++ installed?); PODIUM_JUDGE_PCH=on will compile normally until 'sudo podium-judge pch build' works" >&2
+  fi
 }
 
 # write_manifest: what is installed now, for upgrade and rollback: the

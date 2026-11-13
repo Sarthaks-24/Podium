@@ -8,8 +8,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,6 +47,14 @@ type Runner struct {
 	// exclusive serialises g++ and every JVM invocation across all lanes so
 	// that two lanes plus one JVM stay inside the 2 GB budget.
 	exclusive sync.Mutex
+
+	// pch is the directory of the precompiled header, or empty (SetPCH).
+	pch atomic.Pointer[string]
+	// OnPCHFault, set before the lanes start, is called (once) when a
+	// compile fails because GCC could not read the header, which is then
+	// compiled again without it.
+	OnPCHFault func(output string)
+	pchFault   sync.Once
 
 	memOnce sync.Once
 	memMu   sync.Mutex
@@ -177,7 +187,21 @@ type CompileResult struct {
 
 // Compile writes source into a fresh box, compiles it, and copies the
 // resulting regular files into outDir, which must exist and be empty.
-func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []byte, outDir string) (prog Program, res CompileResult, err error) {
+func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []byte, outDir string) (Program, CompileResult, error) {
+	args, dirs := r.compileCommand(lang)
+	prog, res, err := r.compile(ctx, box, lang, args, dirs, source, outDir)
+	// A header GCC cannot read stops the compile with an error that is not
+	// the student's: compile again without it, as if it were missing.
+	if err == nil && res.Verdict == CompileError && !slices.Equal(args, lang.Compile) && strings.Contains(res.Output, pchFaultMarker) {
+		if r.OnPCHFault != nil {
+			r.pchFault.Do(func() { r.OnPCHFault(res.Output) })
+		}
+		return r.compile(ctx, box, lang, lang.Compile, lang.Dirs, source, outDir)
+	}
+	return prog, res, err
+}
+
+func (r *Runner) compile(ctx context.Context, box int, lang Language, args, dirs []string, source []byte, outDir string) (prog Program, res CompileResult, err error) {
 	prog = Program{Lang: lang, Dir: outDir}
 	if lang.Compile == nil {
 		err := os.WriteFile(filepath.Join(outDir, lang.Source), source, 0o644)
@@ -213,9 +237,9 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		return prog, CompileResult{}, err
 	}
 	meta, err := r.Iso.Run(ctx, RunRequest{
-		Box: box, Limits: lim, Args: lang.Compile,
+		Box: box, Limits: lim, Args: args,
 		Stdout: "compile.txt", StderrToStdout: true,
-		Env: sandboxEnv, Dirs: lang.Dirs,
+		Env: sandboxEnv, Dirs: dirs,
 	})
 	if err != nil {
 		return prog, CompileResult{}, err

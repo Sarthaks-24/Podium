@@ -24,6 +24,7 @@ var JudgeVars = []Var{
 	{Name: "PODIUM_JUDGE_CACHE_DIR", Default: "/var/cache/podium-judge"},
 	{Name: "PODIUM_JUDGE_BLOB_CACHE_MB", Default: "2048"},
 	{Name: "PODIUM_JUDGE_ASYNC_REPORTS", Default: "off"},
+	{Name: "PODIUM_JUDGE_PCH", Default: "off"},
 	{Name: "PODIUM_LOG_LEVEL", Default: "info"},
 }
 
@@ -55,6 +56,10 @@ type Judge struct {
 	// AsyncReports is PODIUM_JUDGE_ASYNC_REPORTS: true batches a job's test
 	// results and sends them while the next test runs (J6). Default false.
 	AsyncReports bool
+	// PCH is PODIUM_JUDGE_PCH: true compiles student C++ with the
+	// precompiled <bits/stdc++.h> in judge.PCHDir when it is usable (J5).
+	// Default false.
+	PCH bool
 	// LogLevel is the minimum level written to the JSON log.
 	LogLevel slog.Level
 }
@@ -102,6 +107,7 @@ func LoadWorker(get Getenv) (Judge, error) {
 	c.CacheDir = r.str("PODIUM_JUDGE_CACHE_DIR")
 	c.BlobCacheMB = r.int("PODIUM_JUDGE_BLOB_CACHE_MB", 64, 1<<20)
 	c.AsyncReports = r.onOff("PODIUM_JUDGE_ASYNC_REPORTS")
+	c.PCH = r.onOff("PODIUM_JUDGE_PCH")
 	c.LogLevel = r.level("PODIUM_LOG_LEVEL")
 	return c, r.p.err()
 }
@@ -116,6 +122,7 @@ func LoadJudge(get Getenv) (Judge, error) {
 		BudgetMB:    r.budget(),
 		BoxBase:     r.int("PODIUM_JUDGE_BOX_BASE", 0, MaxBoxBase),
 		CacheDir:    r.str("PODIUM_JUDGE_CACHE_DIR"),
+		PCH:         r.onOff("PODIUM_JUDGE_PCH"),
 		LogLevel:    r.level("PODIUM_LOG_LEVEL"),
 	}
 	return c, r.p.err()

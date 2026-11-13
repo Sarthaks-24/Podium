@@ -89,3 +89,28 @@ func TestJudgeAsyncReportsSetting(t *testing.T) {
 		t.Errorf("a bad value: %v", err)
 	}
 }
+
+// J5: the precompiled header is off unless asked for.
+func TestJudgePCHSetting(t *testing.T) {
+	tok := strings.Repeat("j", 40)
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{{"", false}, {"off", false}, {"on", true}} {
+		c, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_PCH": tc.value}))
+		if err != nil || c.PCH != tc.want {
+			t.Errorf("PODIUM_JUDGE_PCH=%q: %v, %v; want %v", tc.value, c.PCH, err, tc.want)
+		}
+		// selftest and calibrate read it too.
+		j, err := LoadJudge(env(map[string]string{"PODIUM_JUDGE_PCH": tc.value}))
+		if err != nil || j.PCH != tc.want {
+			t.Errorf("LoadJudge, PODIUM_JUDGE_PCH=%q: %v, %v; want %v", tc.value, j.PCH, err, tc.want)
+		}
+	}
+	for _, load := range []func(Getenv) (Judge, error){LoadWorker, LoadJudge} {
+		_, err := load(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_PCH": "maybe"}))
+		if err == nil || !strings.Contains(err.Error(), "PODIUM_JUDGE_PCH must be on or off") || strings.Contains(err.Error(), "maybe") {
+			t.Errorf("a bad value: %v", err)
+		}
+	}
+}

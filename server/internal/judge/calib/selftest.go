@@ -90,3 +90,27 @@ func helloWorld(ctx context.Context, r *judge.Runner, box int, work, id string) 
 	}
 	return nil
 }
+
+// PCHSelfTest is selftest's check of the precompiled header, run when
+// PODIUM_JUDGE_PCH=on: the files in dir belong to uid (root in production)
+// and no one else can write them, and a probe compile in the sandbox, with
+// the student compile command, loads the header. It prints one PASS or FAIL
+// line and returns 1 for a failure.
+func PCHSelfTest(ctx context.Context, r *judge.Runner, dir string, uid, box int, w io.Writer) (failed int) {
+	if err := judge.CheckPCHFiles(dir, uid); err != nil {
+		fmt.Fprintf(w, "FAIL precompiled header: %v\n", err)
+		return 1
+	}
+	r.SetPCH(dir)
+	used, why, err := r.ProbePCH(ctx, box)
+	switch {
+	case err != nil:
+		fmt.Fprintf(w, "FAIL precompiled header: %v\n", err)
+	case !used:
+		fmt.Fprintf(w, "FAIL precompiled header: g++ -Winvalid-pch did not use it: %s\n", why)
+	default:
+		fmt.Fprintln(w, "PASS precompiled header: g++ -Winvalid-pch loads it with the student compile command")
+		return 0
+	}
+	return 1
+}
