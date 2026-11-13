@@ -244,6 +244,23 @@ func TestAnUnusableHeaderFallsBackToANormalCompile(t *testing.T) {
 			t.Errorf("the fault hook ran %d times, want once", faults)
 		}
 	})
+	t.Run("a confirmed fault switches the header off", func(t *testing.T) {
+		r, dir := pchRunner(t)
+		gch := filepath.Join(dir, "bits", "stdc++.h.gch")
+		b, _ := os.ReadFile(gch)
+		os.WriteFile(gch, b[:1000], 0o644)
+		if v, out, _ := run(t, r, withInclude); v != judge.OK || out != want {
+			t.Fatalf("first compile: %s %q", v, out)
+		}
+		if got := r.PCH(); got != "" {
+			t.Errorf("the header is still set after a confirmed fault: %q", got)
+		}
+		var faults int
+		r.OnPCHFault = func(string) { faults++ }
+		if v, out, _ := run(t, r, withInclude); v != judge.OK || out != want || faults != 0 {
+			t.Errorf("second compile: %s %q, %d faults (it must not meet the damaged header again)", v, out, faults)
+		}
+	})
 	t.Run("student prints the fault text", func(t *testing.T) {
 		r, _ := pchRunner(t)
 		faults := 0

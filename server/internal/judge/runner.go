@@ -52,7 +52,8 @@ type Runner struct {
 	pch atomic.Pointer[string]
 	// OnPCHFault, set before the lanes start, is called (once) when a
 	// compile fails because GCC could not read the header, which is then
-	// compiled again without it.
+	// compiled again without it. The first such confirmed fault also turns
+	// the header off for this runner.
 	OnPCHFault func(output string)
 	pchFault   sync.Once
 
@@ -197,8 +198,13 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		// is reported only when the compile without it does not fail.
 		faultOutput := res.Output
 		prog, res, err = r.compile(ctx, box, lang, lang.Compile, lang.Dirs, source, outDir)
-		if r.OnPCHFault != nil && err == nil && res.Verdict != CompileError {
-			r.pchFault.Do(func() { r.OnPCHFault(faultOutput) })
+		if err == nil && res.Verdict != CompileError {
+			// Confirmed: a header broken mid-contest must not cost every
+			// later compile a second run.
+			r.SetPCH("")
+			if r.OnPCHFault != nil {
+				r.pchFault.Do(func() { r.OnPCHFault(faultOutput) })
+			}
 		}
 		return prog, res, err
 	}

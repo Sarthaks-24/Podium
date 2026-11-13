@@ -51,6 +51,7 @@ var Hostile = []Case{
 	{Name: "TCP connect to 1.1.1.1 (C++)", Lang: "cpp17", File: "socket_connect.cpp", Want: []judge.Verdict{judge.RuntimeError}, Forbidden: "CONNECTED"},
 	{Name: "#include /dev/urandom (compile)", Lang: "cpp17", File: "include_urandom.cpp", Want: []judge.Verdict{judge.CompileError}},
 	{Name: "new long[1<<28] (Java)", Lang: "java21", File: "java_oom.java", Want: []judge.Verdict{judge.MemoryLimit}},
+	{Name: "thread bomb (Java)", Lang: "java21", File: "java_thread_bomb.java", Want: []judge.Verdict{judge.RuntimeError, judge.MemoryLimit, judge.TimeLimit}, Time: 2 * time.Second},
 	{Name: "unbounded recursion (Python)", Lang: "python3", File: "py_recursion.py", Want: []judge.Verdict{judge.RuntimeError, judge.MemoryLimit}},
 	{Name: "100 worker threads (Node)", Lang: "node22", File: "node_threads.js", Want: []judge.Verdict{judge.RuntimeError, judge.OK}},
 	// The judge's own environment always contains PATH=; the sandbox's
