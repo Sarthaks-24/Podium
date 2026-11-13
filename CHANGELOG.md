@@ -80,6 +80,12 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage P: server measurement
 
+- The server logs a `cpu sample` line every 10 s: the CPU each of the server, the judge and the sandboxes used, their memory peaks, and CPU steal, read from the control group files. It does nothing on a machine without them. How to read it: `docs/OPERATIONS.md`, "CPU profile and CPU sample line".
+- `PODIUM_CPU_PROFILE` writes a CPU profile of a testing-mode run to a file. It is refused in dev and production mode and is never an HTTP endpoint.
+- `PODIUM_STANDINGS_ENCODE_ONCE` (off by default) encodes a board's labels and rows once per board version. The response bytes are the same. Turn it on only if a profile on the test VM shows standings encoding near the top.
+- The database refuses a write statement inside a read-only transaction with an error naming the statement kind. Statements such as `WITH ... INSERT` and `PRAGMA x = y` now take a turn at the write gate like other writes. No existing code wrote inside a read-only transaction.
+- Known limits: the sampler's percentages are of one CPU and a `-1` means a reading was missing; the profile needs a restart to start and stop.
+
 ### v2.1.0 stage W: rewrite with AI
 
 ### v2.1.0 stage H: bring back a version

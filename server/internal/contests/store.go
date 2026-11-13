@@ -204,6 +204,9 @@ type Service struct {
 	// Hub, when set, carries contest events (standings, announcements,
 	// clarifications, new end times) to the contest's connected members.
 	Hub *events.Hub
+	// StandingsEncodeOnce (PODIUM_STANDINGS_ENCODE_ONCE) sends a board's labels
+	// and rows from bytes encoded once per board version.
+	StandingsEncodeOnce bool
 	// BoardEvery is the shortest time between two recomputes of a
 	// contest's board (DefaultBoardEvery when zero).
 	BoardEvery time.Duration

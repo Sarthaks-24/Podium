@@ -207,6 +207,8 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | Shared token for the judge API, at least 32 characters (`openssl rand -hex 32`). The same value goes in `judge.env`. Production refuses the testing token. Secret. |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | `debug`, `info`, `warn` or `error`. |
 | `PODIUM_AI_PROMPT_FILE` | optional | optional | optional | built-in rules | Path to a UTF-8 text file, at most 16 KB, that replaces the AI wizard's authoring rules (see "Custom wizard prompt"). A missing, empty, oversized or non-UTF-8 file stops the server at start-up with a message naming the variable and the path. |
+| `PODIUM_CPU_PROFILE` | optional | not allowed | not allowed | none | Path of a file a CPU profile of the server is written to, from start to shutdown (see "CPU profile and CPU sample line"). Testing mode only: in any other mode the server refuses to start while it is set, with a message naming the variable. The file is created with mode 0600; a path that cannot be written stops the server at start-up. |
+| `PODIUM_STANDINGS_ENCODE_ONCE` | optional | optional | optional | `off` | `on`, `1` or `true` encodes a board's labels and rows once per board version and splices them into each standings response; `off`, `0`, `false` or empty builds each response as before. The bytes sent are the same either way. Leave it off unless a profile shows the server spending its time encoding standings. Read once at start-up. |
 
 The AI wizard's provider key is deliberately not a variable: an admin pastes it in the web app and the server holds it in memory only (see "AI wizard keys").
 
@@ -567,6 +569,23 @@ Set up and prove it once:
 3. Fire each alert on purpose (the drill list is in `docs/RUNBOOK.md`, "Proving the safety net"): kill a unit with `sudo systemctl kill -s KILL podium-judge`, run the restore proof against a damaged copy with `sudo /usr/local/lib/podium/podium-check restore-proof --corrupt`, stop Litestream, fill a scratch file until the disk rule trips.
 
 `podium-check restore-proof` restores the bucket's newest database into a scratch folder with `litestream restore` and runs `podium-server check -hash` on it against the live test files. Run it by hand once a term and write down how long it took (V3-10); `--corrupt` overwrites the scratch copy's schema page before the check, so it must alert.
+
+## CPU profile and CPU sample line
+
+Two tools answer where the server's CPU goes. Neither is an HTTP endpoint.
+
+**CPU sample line (always on).** Every 10 s the server writes one line to `journalctl -u podium-server` with the message `cpu sample`. It says how the VM's CPUs were split between the web server, the judge and the sandboxes since the last line, and the memory peak of each. It is read from the control group files systemd keeps, and from nothing else: `cpu.stat` and `memory.peak` of `system.slice/podium-server.service`, `system.slice/podium-judge.service` and `isolate.slice` (every sandbox box), and the first line of `/proc/stat` for CPU steal. On a kernel before 6.5, which has no `memory.peak`, the largest `memory.current` seen since start is used instead.
+
+| Field | Meaning |
+|---|---|
+| `interval_s` | seconds since the previous line |
+| `server_cpu_pct`, `judge_cpu_pct`, `sandbox_cpu_pct` | CPU used by that group in the interval, as a percent of one CPU: 100 is one full CPU, so the two-vCPU VM tops out at 200 in all |
+| `server_mem_peak_mb`, `judge_mem_peak_mb`, `sandbox_mem_peak_mb` | the group's memory peak in MB (since the group started, not per interval) |
+| `steal_pct` | share of all CPU time the hypervisor took from this VM in the interval |
+
+A value of `-1` means that reading was not available this time: the group does not exist yet (`isolate.slice` appears with the first sandbox box), its file could not be read, or its counter went backwards (the server or judge restarted); the next line measures again. The first reading after start-up only sets the starting point, so the first line comes 10 s after the server starts. Where the files do not exist (a laptop, Windows, a container) the server logs once `cpu sampling is off` and does nothing more. The sampler reads seven small files per tick and allocates a few KB; it stops at shutdown.
+
+**CPU profile (testing mode only).** Set `PODIUM_CPU_PROFILE=/path/run.pprof` in a testing-mode run and the server records a CPU profile from start until shutdown, then closes the file. Read it with `go tool pprof -top podium-server run.pprof`. A run in dev or production mode with the variable set refuses to start and names it; the server never serves profiles over HTTP. Use it on the test VM during a load test; if standings encoding is in the top ten, set `PODIUM_STANDINGS_ENCODE_ONCE=on` and measure again.
 
 ## Judge timing line
 

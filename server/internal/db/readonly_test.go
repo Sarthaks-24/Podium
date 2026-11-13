@@ -56,6 +56,9 @@ func TestWriteKind(t *testing.T) {
 		"SAVEPOINT x":                     "SAVEPOINT",
 		"":                                "",
 		"-- only a comment":               "",
+		"(SELECT 1)":                      "statement",
+		"WITH a AS (SELECT 1)":            "WITH",
+		"WITH a AS (SELECT 'oops":         "WITH",
 		"/* unterminated":                 "",
 	} {
 		if got := writeKind(q); got != want {
@@ -106,6 +109,11 @@ func TestReadOnlyTxRefusesWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
+	stq, err := d.PrepareContext(ctx, "INSERT INTO t (who) VALUES ('x') RETURNING id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stq.Close()
 	tx, err := d.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
@@ -120,6 +128,9 @@ func TestReadOnlyTxRefusesWrites(t *testing.T) {
 	}
 	if _, err := tx.StmtContext(ctx, st).ExecContext(ctx); !errors.Is(err, ErrWriteInReadOnly) {
 		t.Errorf("prepared outside, used inside: %v", err)
+	}
+	if _, err := tx.StmtContext(ctx, stq).QueryContext(ctx); !errors.Is(err, ErrWriteInReadOnly) {
+		t.Errorf("prepared outside with RETURNING, used inside: %v", err)
 	}
 }
 

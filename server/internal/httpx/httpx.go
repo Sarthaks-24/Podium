@@ -18,6 +18,15 @@ import (
 	"time"
 )
 
+// WriteJSONBytes writes body, already encoded the way WriteJSON encodes (one
+// JSON value and a newline), with the same headers.
+func WriteJSONBytes(w http.ResponseWriter, status int, body []byte) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	w.Write(body)
+}
+
 // WriteJSON writes v as a JSON response with the given status.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

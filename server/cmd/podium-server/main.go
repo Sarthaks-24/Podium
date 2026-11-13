@@ -28,6 +28,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/db"
 	"github.com/Sarthaks-24/podium/internal/httpapi"
 	"github.com/Sarthaks-24/podium/internal/jobs/judgeserver"
+	"github.com/Sarthaks-24/podium/internal/ops"
 	"github.com/Sarthaks-24/podium/internal/problems"
 	"github.com/Sarthaks-24/podium/internal/schedule"
 )
@@ -102,6 +103,12 @@ func run(envFile string) error {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	log.Info("starting podium-server", append([]any{"version", version, "codename", buildinfo.Codename}, config.Summary(os.Getenv, config.ServerVars)...)...)
 
+	stopProfile, err := startCPUProfile(cfg, log)
+	if err != nil {
+		return err
+	}
+	defer stopProfile()
+
 	if cfg.AIPrompt != "" {
 		ai.SetRules(cfg.AIPrompt)
 		log.Info("ai prompt", "rules", "file sha256:"+cfg.AIPromptSHA)
@@ -149,6 +156,8 @@ func run(envFile string) error {
 		log.Warn("judge API uses the public testing token; set PODIUM_JUDGE_TOKEN before going to production")
 	}
 	sched := schedule.Start(svc.tasks())
+	stopSampler := ops.StartSampler(log)
+	defer stopSampler()
 
 	// Request contexts derive from base, which is cancelled when shutdown
 	// begins, so long-lived event streams end instead of holding Shutdown
