@@ -16,6 +16,8 @@ import (
 type jobTiming struct {
 	kind, language string
 	lane           int
+	subject        int64 // the submission or run row the job judges
+
 	started        time.Time
 	// Compiles of the program and the checker: how many, how many came from
 	// the cache, and the time spent in them.
@@ -66,7 +68,7 @@ func (t *jobTiming) checker(res judge.CheckerResult) {
 // log writes the job's timing line. Durations are milliseconds.
 func (t *jobTiming) log(l *slog.Logger, jobID int64, total time.Duration) {
 	ms := func(d time.Duration) int64 { return d.Milliseconds() }
-	l.Info("job timing", "job_id", jobID, "kind", t.kind, "language", t.language, "lane", t.lane,
+	l.Info("job timing", "job_id", jobID, "kind", t.kind, "language", t.language, "lane", t.lane, "subject_id", t.subject,
 		"total_ms", ms(total),
 		"compiles", t.compiles, "compiles_cached", t.compilesCached,
 		"compile_wall_ms", ms(t.compileWall), "lock_wait_ms", ms(t.compileLock),

@@ -629,6 +629,7 @@ For every submission and every Run the judge writes one line to `journalctl -u p
 | Field | Meaning |
 |---|---|
 | `job_id`, `kind`, `language`, `lane` | the job, `submit` or `run`, the language id, and the lane's box number |
+| `subject_id` | the id of the submission or run the job judges (the `id` of `GET /api/submissions/{id}` or `GET /api/runs/{id}`); the replay comparison joins its verdicts to this line with it |
 | `total_ms` | from the claim to the end of the final report |
 | `compiles`, `compiles_cached` | compiles this job needed (the program, and a custom checker) and how many came from the compile cache |
 | `compile_wall_ms` | wall time of the compiles that ran; a cache hit adds nothing |

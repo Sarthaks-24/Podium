@@ -139,7 +139,7 @@ func (w *Worker) submit(ctx context.Context, box int, c *judgeapi.Claim) error {
 		return err
 	}
 	defer done()
-	rep.tm.lane, rep.tm.language = box, pl.Program.Language
+	rep.tm.lane, rep.tm.language, rep.tm.subject = box, pl.Program.Language, pl.SubmissionID
 	return w.finish(ctx, c, rep, w.runSubmit(ctx, box, Lease{c.JobID, c.Lease}, rep, work, pl, w.hold(c.JobID)))
 }
 
@@ -245,7 +245,7 @@ func (w *Worker) run(ctx context.Context, box int, c *judgeapi.Claim) error {
 		return err
 	}
 	defer done()
-	rep.tm.lane, rep.tm.language = box, pl.Program.Language
+	rep.tm.lane, rep.tm.language, rep.tm.subject = box, pl.Program.Language, pl.SubmissionID
 	return w.finish(ctx, c, rep, w.runRun(ctx, box, Lease{c.JobID, c.Lease}, rep, work, pl, w.hold(c.JobID)))
 }
 

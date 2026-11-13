@@ -41,7 +41,7 @@ func TestJobTimingLine(t *testing.T) {
 	}
 	claim := &judgeapi.Claim{JobID: 5, Kind: judgeapi.KindSubmit, Lease: "l"}
 	rep := &reporter{client: client, jobID: 5, lease: "l"}
-	rep.tm = jobTiming{kind: claim.Kind, language: "cpp17", lane: 1, started: time.Now().Add(-2 * time.Second)}
+	rep.tm = jobTiming{kind: claim.Kind, language: "cpp17", lane: 1, subject: 77, started: time.Now().Add(-2 * time.Second)}
 	lang := judge.Languages["cpp17"]
 	held := &[]func(){}
 	for i := 0; i < 2; i++ {
@@ -70,7 +70,7 @@ func TestJobTimingLine(t *testing.T) {
 		t.Fatalf("no job timing line in %s", logs.String())
 	}
 	want := map[string]float64{
-		"job_id": 5, "lane": 1, "compiles": 2, "compiles_cached": 1,
+		"job_id": 5, "subject_id": 77, "lane": 1, "compiles": 2, "compiles_cached": 1,
 		"compile_wall_ms": 900, "lock_wait_ms": 300, "setup_ms": 30, "cleanup_ms": 24,
 		"tests": 2, "tests_wall_ms": 570, "slowest_cpu_ms": 400, "slowest_wall_ms": 450, "slowest_limit_ms": 1000,
 		"checker_runs": 1, "checker_wall_ms": 30,
