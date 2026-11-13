@@ -499,6 +499,7 @@ carry() { # runs install_app_files, keep_previous_units or restore_previous_file
     eval "$(sed -n '/^UNITS=(/,/)$/p' "$script")"
     eval "$(inroot install_app_files)"
     eval "$(inroot keep_previous_units)"
+    eval "$(inroot keep_previous_reset)"
     eval "$(inroot restore_previous_files)"
     "$@"
   )
@@ -513,8 +514,11 @@ echo "User=nobody" > "$root/etc/systemd/system/podium-litestream.service"
 echo "slice old" > "$root/etc/systemd/system/isolate.slice.d/podium.conf"
 echo "slice new" > "$rel/systemd/isolate.slice.d/podium.conf"
 for b in podium-server podium-judge; do echo new > "$rel/bin/$b"; echo old > "$tmp/prev/bin/$b"; done
-echo reset > "$rel/reset-boxes"; echo alert > "$rel/backup/podium-alert"; echo script > "$rel/install.sh"
+mkdir -p "$root/usr/local/lib/podium"
+echo "reset old" > "$root/usr/local/lib/podium/reset-boxes"
+echo "reset new" > "$rel/reset-boxes"; echo alert > "$rel/backup/podium-alert"; echo script > "$rel/install.sh"
 carry keep_previous_units "$tmp/prev/systemd"
+carry keep_previous_reset "$tmp/prev"
 carry install_app_files
 if [[ $(cat "$tmp/prev/systemd/isolate.slice.d/podium.conf") == "slice old" && $(cat "$tmp/prev/systemd/podium-judge.service") == "podium-judge.service old" ]]; then
   pass "an upgrade keeps the running slice drop-in and judge unit for rollback"
@@ -526,12 +530,31 @@ if [[ $(cat "$root/etc/systemd/system/isolate.slice.d/podium.conf") == "slice ne
 else
   fail "install_app_files did not install the slice drop-in and judge unit"
 fi
+# The pre-start step is part of the release: the new judge binary has the
+# "size" subcommand it calls, the old one does not, so an upgrade keeps the
+# old step and a rollback puts it back with the old binary.
+if [[ $(cat "$tmp/prev/reset-boxes") == "reset old" ]]; then
+  pass "an upgrade keeps the running pre-start step for rollback"
+else
+  fail "the previous reset-boxes was not kept"
+fi
+if [[ $(cat "$root/usr/local/lib/podium/reset-boxes") == "reset new" ]]; then
+  pass "an upgrade installs the new pre-start step"
+else
+  fail "install_app_files did not install the new reset-boxes"
+fi
 carry restore_previous_files
 if [[ $(cat "$root/etc/systemd/system/isolate.slice.d/podium.conf") == "slice old" && $(cat "$root/etc/systemd/system/podium-judge.service") == "podium-judge.service old" ]]; then
   pass "a rollback puts the old slice drop-in and judge unit back"
 else
   fail "restore_previous_files did not bring back the slice drop-in and judge unit"
 fi
+if [[ $(cat "$root/usr/local/lib/podium/reset-boxes") == "reset old" ]]; then
+  pass "a rollback puts the old pre-start step back with the old judge binary"
+else
+  fail "restore_previous_files left the new reset-boxes with the old judge binary"
+fi
+if fn cmd_upgrade | grep -q 'keep_previous_reset "$PREVIOUS.new"'; then pass "cmd_upgrade keeps the pre-start step through keep_previous_reset"; else fail "cmd_upgrade must call keep_previous_reset"; fi
 if fn cmd_upgrade | grep -q 'keep_previous_units "\$PREVIOUS.new/systemd"'; then pass "cmd_upgrade keeps the units and the slice drop-in through keep_previous_units"; else fail "cmd_upgrade must call keep_previous_units"; fi
 
 if (( fails > 0 )); then echo "$fails install.sh check(s) failed"; exit 1; fi

@@ -792,6 +792,13 @@ keep_previous_units() {
   return 0
 }
 
+# keep_previous_reset DIR: copies the installed pre-start step into DIR,
+# for rollback.
+keep_previous_reset() {
+  if [[ -f $LIB/reset-boxes ]]; then cp -a "$LIB/reset-boxes" "$1/reset-boxes"; fi
+  return 0
+}
+
 cmd_upgrade() {
   [[ $# -eq 0 ]] || die "upgrade: unknown argument '$1' (usage: sudo ./install.sh upgrade)"
   [[ -x /usr/local/bin/podium-server ]] || die "no podium installed here; run sudo ./install.sh for a fresh install"
@@ -831,6 +838,7 @@ cmd_upgrade() {
   install -d -m 755 "$PREVIOUS.new/bin" "$PREVIOUS.new/systemd"
   cp -a /usr/local/bin/podium-server /usr/local/bin/podium-judge "$PREVIOUS.new/bin/"
   keep_previous_units "$PREVIOUS.new/systemd"
+  keep_previous_reset "$PREVIOUS.new"
   if [[ -f $MANIFEST ]]; then cp "$MANIFEST" "$PREVIOUS.new/MANIFEST"; else
     echo "release=unknown (installed before MANIFEST existed)" > "$PREVIOUS.new/MANIFEST"
   fi
@@ -1009,6 +1017,9 @@ restore_previous_files() {
   if [[ -f $PREVIOUS/systemd/$SLICE_DROPIN ]]; then
     install -m 644 "$PREVIOUS/systemd/$SLICE_DROPIN" "/etc/systemd/system/$SLICE_DROPIN"
   fi
+  # The pre-start step calls "podium-judge size", which only the newer judge
+  # binary has: the old step goes back with the old binary.
+  if [[ -f $PREVIOUS/reset-boxes ]]; then install -m 755 "$PREVIOUS/reset-boxes" "$LIB/reset-boxes"; fi
   systemctl daemon-reload
   # Litestream's state belongs to the user its restored unit runs as
   # (podium before v1.1.0, podium-backup since).

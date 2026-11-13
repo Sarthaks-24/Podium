@@ -37,6 +37,10 @@ KillMode=mixed
 # its own cap (isolate.slice.d/podium.conf). Inputs and programs the worker
 # copies into the tmpfs box root are charged here until the box is
 # destroyed, hence the headroom above the Go heap limit.
+# 256M is the base for the two lanes of a 2 GB machine. The pre-start step
+# (reset-boxes, which asks "podium-judge size") sets this unit to 128M per
+# lane for this boot, and isolate.slice to the budget plus 76M, with
+# systemctl set-property --runtime.
 MemoryMax=256M
 Environment=GOMEMLIMIT=96MiB
 # isolate is setuid root, so NoNewPrivileges and ProtectSystem stay off.
