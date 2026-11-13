@@ -8,8 +8,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,8 +26,10 @@ const (
 	// maxArtifactBytes bounds what a compile may hand to later runs.
 	maxArtifactBytes = 64 << 20
 	// DefaultMemoryBudgetMB is the total --cg-mem the runner lets boxes hold
-	// at once. It stays under the 1100 MB cap on isolate.slice, so one box's
-	// usage can never get a different box OOM-killed.
+	// at once when the worker does not set one (tests, calibrate): the budget
+	// of the 2 GB machine, just under its 1100 MB cap on isolate.slice. The
+	// worker sets the budget from package sizing, which keeps it 76 MB under
+	// the cap so one box's usage can never get a different box OOM-killed.
 	DefaultMemoryBudgetMB = 1024
 )
 
@@ -43,6 +47,14 @@ type Runner struct {
 	// exclusive serialises g++ and every JVM invocation across all lanes so
 	// that two lanes plus one JVM stay inside the 2 GB budget.
 	exclusive sync.Mutex
+
+	// pch is the directory of the precompiled header, or empty (SetPCH).
+	pch atomic.Pointer[string]
+	// OnPCHFault, set before the lanes start, is called (once) when a
+	// compile fails because GCC could not read the header, which is then
+	// compiled again without it.
+	OnPCHFault func(output string)
+	pchFault   sync.Once
 
 	memOnce sync.Once
 	memMu   sync.Mutex
@@ -117,6 +129,29 @@ func (r *Runner) reserve(ctx context.Context, kb int) (func(), error) {
 	}, nil
 }
 
+// NewRunner is the runner podium-judge builds at start: budgetMB comes from
+// package sizing. It is the only thing about the machine the runner holds;
+// the limits below never read it.
+func NewRunner(iso Isolate, budgetMB int) *Runner {
+	return &Runner{Iso: iso, MemoryBudgetKB: budgetMB * 1024}
+}
+
+// compileLimits are the limits of one compile step, the same on every
+// machine.
+func (r *Runner) compileLimits(lang Language) Limits {
+	lim := Limits{CPU: compileCPU, Wall: compileWall, MemoryKB: lang.CompileMemoryMB * 1024,
+		Processes: lang.CompileProcesses, FileSizeKB: compileFileSizeKB}
+	if lang.CompileCPU > 0 {
+		lim.CPU, lim.Wall = lang.CompileCPU, 2*lang.CompileCPU
+	}
+	return lim
+}
+
+// runLimits are the limits of one test run, the same on every machine.
+func (r *Runner) runLimits(lang Language, timeLimit time.Duration, memoryMB int) Limits {
+	return lang.LimitsFor(timeLimit, memoryMB)
+}
+
 // Program is a compiled (or, for interpreted languages, stored) submission
 // ready to run: the files in Dir are copied into each test's box.
 type Program struct {
@@ -152,7 +187,25 @@ type CompileResult struct {
 
 // Compile writes source into a fresh box, compiles it, and copies the
 // resulting regular files into outDir, which must exist and be empty.
-func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []byte, outDir string) (prog Program, res CompileResult, err error) {
+func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []byte, outDir string) (Program, CompileResult, error) {
+	args, dirs := r.compileCommand(lang)
+	prog, res, err := r.compile(ctx, box, lang, args, dirs, source, outDir)
+	// A header GCC cannot read stops the compile with an error that is not
+	// the student's: compile again without it, as if it were missing.
+	if err == nil && res.Verdict == CompileError && !slices.Equal(args, lang.Compile) && strings.Contains(res.Output, pchFaultMarker) {
+		// The student can print the marker text too (#error), so the header
+		// is reported only when the compile without it does not fail.
+		faultOutput := res.Output
+		prog, res, err = r.compile(ctx, box, lang, lang.Compile, lang.Dirs, source, outDir)
+		if r.OnPCHFault != nil && err == nil && res.Verdict != CompileError {
+			r.pchFault.Do(func() { r.OnPCHFault(faultOutput) })
+		}
+		return prog, res, err
+	}
+	return prog, res, err
+}
+
+func (r *Runner) compile(ctx context.Context, box int, lang Language, args, dirs []string, source []byte, outDir string) (prog Program, res CompileResult, err error) {
 	prog = Program{Lang: lang, Dir: outDir}
 	if lang.Compile == nil {
 		err := os.WriteFile(filepath.Join(outDir, lang.Source), source, 0o644)
@@ -165,11 +218,7 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		timing.LockWait = time.Since(start)
 		defer r.exclusive.Unlock()
 	}
-	lim := Limits{CPU: compileCPU, Wall: compileWall, MemoryKB: lang.CompileMemoryMB * 1024,
-		Processes: lang.CompileProcesses, FileSizeKB: compileFileSizeKB}
-	if lang.CompileCPU > 0 {
-		lim.CPU, lim.Wall = lang.CompileCPU, 2*lang.CompileCPU
-	}
+	lim := r.compileLimits(lang)
 	release, err := r.reserve(ctx, lim.MemoryKB)
 	if err != nil {
 		return prog, CompileResult{}, err
@@ -192,9 +241,9 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		return prog, CompileResult{}, err
 	}
 	meta, err := r.Iso.Run(ctx, RunRequest{
-		Box: box, Limits: lim, Args: lang.Compile,
+		Box: box, Limits: lim, Args: args,
 		Stdout: "compile.txt", StderrToStdout: true,
-		Env: sandboxEnv, Dirs: lang.Dirs,
+		Env: sandboxEnv, Dirs: dirs,
 	})
 	if err != nil {
 		return prog, CompileResult{}, err
@@ -243,7 +292,7 @@ func (l Language) LimitsFor(timeLimit time.Duration, memoryMB int) Limits {
 // output.
 func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit time.Duration, memoryMB int, inputPath, outputPath string) (res ExecResult, err error) {
 	lang := prog.Lang
-	lim := lang.LimitsFor(timeLimit, memoryMB)
+	lim := r.runLimits(lang, timeLimit, memoryMB)
 	var timing StepTiming
 	if lang.RunExclusive {
 		start := time.Now()

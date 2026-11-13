@@ -212,7 +212,7 @@ func TestJobTimingLineOnTheRealJudge(t *testing.T) {
 	}
 	num := func(k string) float64 { f, _ := line[k].(float64); return f }
 	if line["language"] != "cpp17" || num("compiles") != 1 || num("compile_wall_ms") <= 0 || num("setup_ms") <= 0 ||
-		num("cleanup_ms") <= 0 || num("tests") < 1 || num("tests_wall_ms") <= 0 || num("slowest_limit_ms") <= 0 {
+		num("cleanup_ms") <= 0 || num("subject_id") != float64(v.ID) || num("tests") < 1 || num("tests_wall_ms") <= 0 || num("slowest_limit_ms") <= 0 {
 		t.Errorf("timing line %v", line)
 	}
 }

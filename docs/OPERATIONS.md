@@ -18,7 +18,7 @@ sudo ./install.sh
 | Step | What it does |
 |---|---|
 | `packages` | g++, OpenJDK 21, Python 3, Node 22 (NodeSource repository), sqlite3, jq. Every apt signing key (NodeSource, isolate, Caddy) must have the fingerprint written into `install.sh`, or the key is removed and the install stops before apt can trust it. If a repository rotates its key, check the new fingerprint on that project's own site before changing it in `add_repo`. |
-| `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes at 1100 MB through `isolate.slice`; enables `isolate.service`; makes the tuning below survive a reboot; runs `isolate-check-environment` |
+| `isolate` | isolate from its upstream apt repository; mounts its box root `/var/lib/isolate` on a 1200 MB tmpfs (so files a program writes count against its memory limit); caps all sandboxes through `isolate.slice` (1100 MB as the base, which the judge's pre-start step raises on a bigger machine, see "Judge sizing"); enables `isolate.service`; makes the tuning below survive a reboot; runs `isolate-check-environment` |
 | `testlib` | `testlib.h` (release 0.9.41) into `/usr/local/include` for custom checkers. Downloaded from GitHub at a pinned commit and refused unless its SHA-256 matches the one in the script. Skipped when the installed file already matches. |
 | `users` | system users `podium`, `judge` and `podium-backup` (Litestream and the heartbeat, in group podium; D116); adds `judge` to group `isolate` (the isolate binary is executable only by that group) |
 | `dirs` | `/var/lib/podium` and `/var/lib/podium/tests` (podium, 750), `/var/lib/podium/db` (podium, group podium, 2770, so Litestream can write; the database files are 660), `/var/cache/podium-judge` (judge, 750), `/etc/podium`; creates `server.env` and `judge.env` from the examples if missing (root, 600), with the absolute VM paths for the database and tests |
@@ -207,6 +207,7 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | Shared token for the judge API, at least 32 characters (`openssl rand -hex 32`). The same value goes in `judge.env`. Production refuses the testing token. Secret. |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | `debug`, `info`, `warn` or `error`. |
 | `PODIUM_AI_PROMPT_FILE` | optional | optional | optional | built-in rules | Path to a UTF-8 text file, at most 16 KB, that replaces the AI wizard's authoring rules (see "Custom wizard prompt"). A missing, empty, oversized or non-UTF-8 file stops the server at start-up with a message naming the variable and the path. |
+| `PODIUM_QUEUE_END_ORDER` | optional | optional | optional | `on` | `on` or `off`. On: a Run whose author's own contest time is over (the contest's close plus that student's extension) waits behind every graded submission, and a practice Run is queued at practice priority. No Run is cancelled; each still gets its result, later. Off: Runs queue as they did before v2.1.0 (new practice Runs go back to the Run priority; practice Runs already queued keep their practice priority until they are judged). Leave it on; it exists so a test session can compare the two orders. |
 
 The AI wizard's provider key is deliberately not a variable: an admin pastes it in the web app and the server holds it in memory only (see "AI wizard keys").
 
@@ -253,7 +254,7 @@ Each account is linked to the Google account that first signed in with it. If so
 
 ### podium-judge (`/etc/podium/judge.env`)
 
-Listed in the order the judge reads them, with the same mode columns. `podium-judge calibrate` reads only `PODIUM_ISOLATE_PATH`, `PODIUM_JUDGE_LANES`, `PODIUM_JUDGE_CACHE_DIR` and `PODIUM_LOG_LEVEL`.
+Listed in the order the judge reads them, with the same mode columns. `podium-judge calibrate` reads only `PODIUM_ISOLATE_PATH`, `PODIUM_JUDGE_LANES`, `PODIUM_JUDGE_CACHE_DIR` and `PODIUM_LOG_LEVEL`; `podium-judge size` (the pre-start step) reads the lane, budget and box base settings.
 
 | Variable | testing | dev | production | Default | Purpose |
 |---|---|---|---|---|---|
@@ -261,11 +262,85 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 | `PODIUM_SERVER_URL` | optional | optional | optional | `http://127.0.0.1:8081` | The server's judge API (its `PODIUM_JUDGE_LISTEN`) as a URL with no path. For a remote judge, the local end of the tunnel. Production refuses a plain `http` address that is not loopback, since the token travels in every request. |
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | The server's `PODIUM_JUDGE_TOKEN`. Production refuses the testing token. Secret. |
 | `PODIUM_ISOLATE_PATH` | optional | optional | optional | `/usr/bin/isolate` | The isolate binary. |
-| `PODIUM_JUDGE_LANES` | optional | optional | optional | `2` | Sandboxes judged in parallel (1 to 16). Two fit a 2 GB VM. Lane n uses isolate box `PODIUM_JUDGE_BOX_BASE` + n; a judge that finds its box busy waits up to about 4 s and then fails the job as a judge error. |
+| `PODIUM_JUDGE_LANES` | optional | optional | optional | one per vCPU | Sandboxes judged in parallel (1 to 16). Left out, the judge runs one lane per vCPU and sizes its memory to the machine (see "Judge sizing"). A value above the machine's vCPUs is refused at start. Lane n uses isolate box `PODIUM_JUDGE_BOX_BASE` + n; a judge that finds its box busy waits up to about 4 s and then fails the job as a judge error. |
+| `PODIUM_JUDGE_MEMORY_BUDGET_MB` | optional | optional | optional | chosen from the machine's memory | Memory in MB the sandboxes may hold at once, 1024 to 1048576 (a smaller budget would let the slice kill a correct Java run). Left out, the judge uses the sizing table in "Judge sizing" (1,024 MB on 2 GB, about 3,900 MB on 8 GB, at most 4,096 MB). The pre-start step sets the sandbox slice's cap to this plus 76 MB. A value below 1,024 MB or above half the machine's memory less 196 MB is refused at start, naming the variable, the value and the limit. |
 | `PODIUM_JUDGE_BOX_BASE` | optional | optional | optional | `0` | First isolate box id (0 to 984). Give a second judge on the same host a base past the first one's boxes, so neither cleans up or waits on the other's; the boxes must keep clear of box 80, which `selftest` and `calibrate` use. |
 | `PODIUM_JUDGE_CACHE_DIR` | optional | optional | optional | `/var/cache/podium-judge` | Downloaded tests and sources, per-job work files and compiled programs (see "Judge cache"). |
 | `PODIUM_JUDGE_BLOB_CACHE_MB` | optional | optional | optional | `2048` | Cap on `blobs/` in the cache directory, in MB, 64 to 1048576. Above it the least recently used files no running job holds are removed after each job. Keep it above the largest problem's tests (every test of a problem is fetched to validate it). |
+| `PODIUM_JUDGE_ASYNC_REPORTS` | optional | optional | optional | `off` | `on` or `off` (v2.1.0, J6). Off: the judge sends each test's result and waits for the server's answer before the next test. On: results go to a queue and one sender posts whatever has piled up while its last post was in flight, in batches of at most 256 KB; the last results travel in the final report; the queue holds at most 1 MB, above which the next test waits. The protocol and the server do not change. It is built to be measured: switch it on only after the test VM session showed that report time is at least 10 percent of a job's wall time in the rush and the jobs got no slower (`loadcompare -change j6`). A bad value stops the judge at start. With it on, `report_ms` in the timing line counts time overlapped with tests, so read the share from a run with it off. |
+| `PODIUM_JUDGE_PCH` | optional | optional | optional | `off` | `on` or `off` (v2.1.0, J5). On: student C++ is compiled with a precompiled `<bits/stdc++.h>` from `/usr/local/lib/podium-pch` (see "Precompiled header"). The judge checks the files and runs one probe compile at start, and if either fails it logs one line and compiles normally, so the setting never stops the judge. Switch it on only after the test VM session showed that compile wall on the heavy C++ programs dropped at least 30 percent with identical verdicts (`loadcompare -change j5`). A bad value stops the judge at start. |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | As above. |
+
+### Precompiled header
+
+Most of a small C++ program's compile time is GCC reading the standard library for `#include <bits/stdc++.h>`. With `PODIUM_JUDGE_PCH=on` the judge gives the C++ compile `-I /usr/local/lib/podium-pch`, which holds only `bits/stdc++.h.gch`: that header already parsed. The real header stays where the system keeps it; the directory is not `/usr/include`, which apt owns.
+
+| Topic | How it works |
+|---|---|
+| Build | `sudo podium-judge pch build` (also `-dir DIR`), run by `install.sh` on a fresh install and on every upgrade, with the judge stopped. It compiles a one-line file that includes the system's `<bits/stdc++.h>` with the options of the C++ compile command (`-O2 -std=gnu++17 -pipe -static`), so GCC accepts the result; the options come from the same table the compile uses, so they cannot drift apart. A build that fails is a warning at install, not a stop. After an apt upgrade of g++, rebuild it: until then GCC ignores the old file and compiles normally. |
+| Who owns it | Built by root, owned by root, not writable by the group or others. The judge refuses to use a directory, `bits` folder or file that is owned by another user or writable by anyone but its owner. Nothing a student controls reaches the build. |
+| In the sandbox | The directory is added to the C++ compile's isolate rules as a read-only mount (`--dir=/usr/local/lib/podium-pch:maybe:noexec`; `maybe` so a missing directory is skipped, not an error, and `noexec` so nothing in it can be run). Only the compile sees it; a test run never does. The hostile suite writes, replaces, deletes and truncates the header from inside a box and gets "Read-only file system" for each. |
+| When GCC uses it | Only when `#include <bits/stdc++.h>` is the first include and no macro defined before it conflicts with the header (for example `#define _GLIBCXX_DEBUG`), and no pragma comes first. In every other case GCC reads the real header, and the program compiles and behaves the same. A program that does not include it compiles to the same binary with or without the setting. |
+| Checks | At start the judge checks ownership and permissions and runs one probe compile in lane 0's box with the exact student command plus `-Winvalid-pch -H`; it proceeds only if GCC reports loading the file (`! ...stdc++.h.gch`). `podium-judge selftest` with `PODIUM_JUDGE_PCH=on` runs the same probe and prints `PASS precompiled header` or the reason GCC gave (a flag mismatch shows as "not used because ..."). CI builds the header and runs that selftest. |
+| If the file is damaged | A truncated or corrupt file makes GCC stop with "while reading precompiled header". The judge compiles that program again without the header and logs one line (once); the student sees no error. Rebuild with `sudo podium-judge pch build`. |
+| Rollback | A rollback leaves the directory in place. The previous judge never looks at it. |
+| Disk and memory | The file is 97 MB (101,614,001 bytes with g++ 13.3 on Ubuntu 24.04); the build takes about 4 s and peaks near 320 MB, which is why it runs with the judge stopped. A compile with the header used less memory, not more (laptop, WSL2, `/usr/bin/time -v`, three runs each): a small program 195 MB without, 139 MB with; a template-heavy one 335 MB without, 287 MB with. The compile limit is 512 MB. Compile wall: 1.6 s to 0.7 s for the small program and 4.7 s to 3.5 s for the heavy one on that laptop; the production figure comes from the test VM session. |
+
+### Judge sizing
+
+The judge sizes itself to its machine. The same function, `Size(vCPUs, memory)` in `server/internal/sizing`, is asked twice: by the root pre-start step of `podium-judge.service` (`reset-boxes`, which runs `podium-judge size`) and by the worker when it starts. The pre-start step resets that many boxes and sets two caps for this boot with `systemctl set-property --runtime`: the memory cap of `isolate.slice` (all sandboxes together) and the memory cap of the `podium-judge` unit. Runtime properties disappear at reboot and the step sets them again at every start. The worker then checks the cap it finds on the slice and refuses to start, naming both numbers, if the slice allows less than its budget needs.
+
+| Setting | Rule |
+|---|---|
+| Lanes | one per vCPU, at most 16 (on Google Cloud E2 a vCPU is one hyperthread; the calibration was done with two lanes on two hyperthreads, so one lane per vCPU keeps timing as calibrated) |
+| Memory budget | half the memory less 196 MB, at least 1,024 MB and at most 4,096 MB. Under about 2,950 MB of memory the machine cannot hold the largest single run (1,280 MB), so it keeps 1,024 MB. |
+| Sandbox cap | the budget plus 76 MB, for box files and runtime overhead the budget does not count |
+| Judge unit cap | 128 MB per lane |
+
+Sandboxes get just under half the memory. The rest is for the server, Litestream, Caddy, the operating system, the tmpfs the boxes live on and the judge unit. The machine's memory is read from `/proc/meminfo` and rounded up to the next 512 MB, so a VM sold as 8 GB that shows 7.7 GiB counts as 8 GB.
+
+Memory budget and sandbox cap by memory (the lanes do not change them):
+
+| Memory | Budget | Sandbox cap |
+|---|---|---|
+| 2 GB | 1,024 MB | 1,100 MB |
+| 4 GB | 1,852 MB | 1,928 MB |
+| 8 GB | 3,900 MB | 3,976 MB |
+| 16 GB | 4,096 MB | 4,172 MB |
+
+Lanes and judge unit cap by vCPUs (memory does not change them):
+
+| vCPUs | Lanes | Judge unit cap |
+|---|---|---|
+| 1 | 1 | 128 MB |
+| 2 | 2 | 256 MB |
+| 4 | 4 | 512 MB |
+| 8 | 8 | 1,024 MB |
+
+A 2 GB machine with 2 vCPUs is exactly today's judge: two lanes, a 1,024 MB budget, a 1,100 MB slice and a 256 MB unit. The files in `deploy/` keep those values as the base (`isolate.slice.d/podium.conf`, `MemoryMax=256M`), and the pre-start step overrides them on a bigger machine. A Java run on a problem with the largest memory limit (1,024 MB) is given 1,280 MB, more than a 2 GB machine's 1,100 MB slice, so on that machine such a run can still be killed for memory; a machine with 4 GB or more holds it.
+
+**What never follows the machine.** The lock that lets one g++, javac or java run at a time, each language's time factor and memory overhead, the compile limits, the wall-time formula and a problem's own limits are the same on every machine. A resize must not change the conditions a verdict is judged under; only the number of lanes and the memory they share change.
+
+**Values set by hand win.** A hand-set budget under 1,024 MB is refused (the smallest `Size` gives; a smaller slice cap could let the slice kill a correct Java run). A `judge.env` made from an older example has `PODIUM_JUDGE_LANES=2` in it, which pins two lanes whatever the machine; empty the value to let the judge follow the vCPUs. `PODIUM_JUDGE_LANES` and `PODIUM_JUDGE_MEMORY_BUDGET_MB` replace the formula for that one number (the caps follow the budget and the lane count). The judge refuses to start, naming the variable, the value and the limit, when a lane count is above the machine's vCPUs or a budget is above half the memory less 196 MB. If the cap on the slice is lower than the budget plus 76 MB (for example the pre-start step could not set it), the worker refuses to start with "the sandbox slice allows N MB but this judge needs M MB".
+
+**The start line.** `journalctl -u podium-judge -n 50 | grep "starting podium-judge"` shows what the judge chose: `lanes`, `budget_mb`, `sandbox_cap_mb` (the cap it found on the slice, or `none` or `unknown`), `vcpus`, `memory_mb` (rounded as above) and `cpu_model`. `podium-judge size` prints the numbers for the settings in its own environment (the pre-start step runs it with `judge.env` loaded) and changes nothing.
+
+**After a resize**: stop the VM, change the machine type, start it, read the start line, then run `podium-judge calibrate` with the judge stopped and compare with the table below. A resized E2 machine can come back on a different CPU model, which shows in `cpu_model` and in the timings. If the numbers are not close to the table, the time limits calibrated for production no longer apply to that machine; do not run a graded contest on it until you have looked.
+
+Calibration of the production machine (Google Cloud `e2-standard-2`, 2 vCPU, 8 GB, Intel Xeon at 2.20 GHz, two lanes; measured with `podium-judge calibrate`, 2026-11-08):
+
+| Language | Compile wall (ms) | Hello CPU (ms) | Hello whole step (ms) | Sort 1e6 CPU (ms) | Sort peak memory (MB) |
+|---|---|---|---|---|---|
+| C++17 | 134 | 2 | 25 | 245 | 5 |
+| Java 21 | 736 | 52 | 71 | 697 | 43 |
+| Python 3 | 49 | 31 | 55 | 1218 | 110 |
+| JavaScript (Node 22) | none | 58 | 80 | 682 | 129 |
+
+**Containers and small machines.** The sizing reads the machine's memory from `/proc/meminfo`, not a container's limit: in a container (Docker, a cgroup memory limit), set `PODIUM_JUDGE_MEMORY_BUDGET_MB` by hand, within the limit. A machine with less than 2 GB keeps today's 1,024 MB budget and 1,100 MB cap, which can exceed its memory, as before.
+
+**Upgrading.** A `judge.env` with `PODIUM_JUDGE_LANES` above the machine's vCPUs (for example 2 on a 1 vCPU machine) used to start and is now refused at start, naming the variable and the vCPU count; lower it or empty it.
+
+The 8 GB budget of 3,900 MB and the larger sizes are not measured under load on a real machine yet; the numbers above come from the formula.
 
 ### Litestream (`/etc/podium/litestream.env`)
 
@@ -575,6 +650,7 @@ For every submission and every Run the judge writes one line to `journalctl -u p
 | Field | Meaning |
 |---|---|
 | `job_id`, `kind`, `language`, `lane` | the job, `submit` or `run`, the language id, and the lane's box number |
+| `subject_id` | the id of the submission or run the job judges (the `id` of `GET /api/submissions/{id}` or `GET /api/runs/{id}`); the replay comparison joins its verdicts to this line with it |
 | `total_ms` | from the claim to the end of the final report |
 | `compiles`, `compiles_cached` | compiles this job needed (the program, and a custom checker) and how many came from the compile cache |
 | `compile_wall_ms` | wall time of the compiles that ran; a cache hit adds nothing |
@@ -586,6 +662,28 @@ For every submission and every Run the judge writes one line to `journalctl -u p
 | `report_ms` | time spent sending reports and heartbeats to the server |
 
 Not on the line, because the judge does not know them: how long the job queued, and its verdict. Validation and generation jobs write no timing line.
+
+## Replay corpus and speed comparison
+
+Three changes of v2.1.0 are built and left off until a measurement says to ship them: batched reports (`PODIUM_JUDGE_ASYNC_REPORTS`, J6), the precompiled header (`PODIUM_JUDGE_PCH`, J5) and the queue order at a contest's end (`PODIUM_QUEUE_END_ORDER`, J0, on by default; the arm switches it off). The test VM session decides each one by running the same work twice and comparing. Nothing here runs in production.
+
+**The corpus** (`tools/loadtest/corpus/corpus.json`, with the programs beside it and in `problems/`): 17 programs, 30 Runs and 21 submissions per round (59 percent Runs; in a WSL2 run 302 of 520 jobs queued at the peak were Runs). It holds C++ that includes `<bits/stdc++.h>`, C++ without it, wrong answers, a compile error, a run error, two brute-force time-outs, Node, Java, and four programs that spin for a set share of their time limit. Each program has the verdict it must get as a Run and as a submission. **Replay** (`loadreplay`, built from `server/tools/loadreplay`) sends rounds of it in a fixed order at fixed moments, three times as densely in the last `-burst` minutes, with a unique comment on each source so every request compiles, waits for every verdict and exits 1 if any differs from the recorded one. It needs no k6. Setup and flags are in `tools/loadtest/README.md`.
+
+**The comparison** (`loadcompare`, from `server/tools/loadcompare`) reads the runs of two arms: `verdicts.jsonl` from the replay and the judge's log (the `job timing` lines, joined to requests by `kind` and `subject_id`), with an optional `sampler.log` (`slice_oom_kills`). The A/A pair, two runs with nothing changed, measures the noise, and the script uses it. The thresholds are constants at the top of `server/tools/loadcompare/compare.go`, written before J5 and J6 existed:
+
+| Change | Ships if |
+|---|---|
+| J5 | median compile wall of the heavy C++ jobs that really compiled drops at least 30 percent and by more than twice the A/A noise |
+| J6 | report time is at least 10 percent of a job's wall time in the rush, read on the arm with J6 off, and the jobs of the arm with it on are no slower (within the A/A noise, at least 5 percent) |
+| J0 | the drain of graded submissions is no slower and the p95 time to a verdict for graded submissions is not worse (the same allowance) |
+| J1, after a resize | the same set of time-limit verdicts, the p95 CPU time of each program within its A/A noise (at least 10 percent plus 20 ms), no sandbox out-of-memory kill in the sampler |
+| every arm | no verdict of any corpus program moved, no program missing |
+
+```sh
+loadcompare -change j5 -aa aa1,aa2 -base off1,off2,off3 -test on1,on2,on3
+```
+
+It prints PASS, FAIL or SKIP per check and `RESULT J5: ships` or `does not ship`; the exit status is 1 when it does not ship. The numbers of the session go in `judge-speed.md` and the ones that describe production in `calibration.md`.
 
 ## Metrics
 
@@ -763,6 +861,15 @@ Configuration files are never overwritten: add a new variable with `sudoedit` be
 `0016_v210_sessions.sql` adds `sessions.remember` (0 or 1, default 0) and `sessions.last_seen_at`. It rewrites no row: every session that exists at the upgrade is ordinary, so nobody is signed out or kept in by it. Every role starts on "Nobody", so no session changes until an owner chooses. Backups include it.
 
 - **Rollback.** The previous server refuses a database that records 0016, so rolling back means restoring the backup taken just before the upgrade.
+
+### Judge protocol 4 (v2.1.0): held claims
+
+The judge now asks the server to hold an empty claim for up to 20 seconds, so a job starts the moment it is queued instead of up to 3 seconds later. This raises the judge protocol from 3 to 4.
+
+- **Install the server and the judge together.** `install.sh upgrade` does, from one release. A mixed pair does not work, in either direction, and says so: a v2.1.0 judge against an older server stops with "claim: the server answered 400, so it runs an older release than this judge (protocol 4): install the same release on both", and an older judge against a v2.1.0 server stops with "judge protocol 4 needed, this judge speaks 3: install the same release on both". Both appear in `journalctl -u podium-judge`, and the judge exits with status 3, which its unit does not restart.
+- **Timeouts.** The judge listener's read timeout is 60 s, its write timeout 5 min and its idle timeout 120 s; the judge's own HTTP client waits 5 min. All are well above the 20 s hold. The judge listener is not behind Caddy, and an SSH tunnel to a remote judge (see "Judge API listener") carries a 20 s hold without change.
+- **Stopping.** `systemctl stop podium-server` ends held claims at once (they answer "no job") and does not use up the 10 s the web server gets to finish requests. Stopping the judge cuts a held claim one second after the stop, so a drain is not slowed; a job that was being handed out in that second is requeued when its 60 s lease runs out, as after a crash.
+- **If it misbehaves,** nothing needs configuring: a held claim also looks at the queue every 2 seconds, so the worst case is what polling cost before. At most 64 claims are held at once; any more are answered "no job" at once and the judge waits its normal 2 to 3 seconds.
 
 ## Upgrading to v2.0.2
 

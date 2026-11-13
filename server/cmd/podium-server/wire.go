@@ -80,8 +80,12 @@ func newServices(ctx context.Context, cfg config.Server, database *sql.DB, log *
 			judgeapi.KindRun:            submissions.RunKind{},
 		}
 	})
+	s.jobs.EndOrderOff = !cfg.QueueEndOrder
+	if s.jobs.EndOrderOff {
+		log.Warn("PODIUM_QUEUE_END_ORDER is off: Runs after a student's contest time queue as before v2.1.0")
+	}
 	s.problems = &problems.Service{DB: database, Blobs: s.blobs, Jobs: s.jobs}
-	s.contests = &contests.Service{DB: database, Problems: s.problems, Hub: s.hub}
+	s.contests = &contests.Service{DB: database, Problems: s.problems, Hub: s.hub, Wake: s.jobs.Wake}
 	s.submissions = submissions.New(database, s.jobs, s.problems, s.hub, cfg.SessionSecret, s.contests.ViewFor)
 	inputEvents := &problems.InputGenerationEvents{Problems: s.problems, Hub: s.hub}
 	s.jobs.Notify(s.submissions.OnJobChange, s.contests.OnJobChange, inputEvents.OnJobChange)

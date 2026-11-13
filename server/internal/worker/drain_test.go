@@ -127,6 +127,7 @@ func (r *drainRig) enqueue(t *testing.T) int64 {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
+	r.jobs.Wake()
 	return id
 }
 

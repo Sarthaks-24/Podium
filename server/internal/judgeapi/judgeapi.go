@@ -23,8 +23,9 @@ import (
 // each claim. Version 3 (v1.2.0) added open run inputs
 // (RunInput.Open) and the revealed hidden test of a practice submission
 // (SubmitPayload.Reveal). Bump it whenever a request or payload changes
-// shape.
-const ProtocolVersion = 3
+// shape. Version 4 (v2.1.0) added wait_s to the claim: the server may hold
+// the request until a job is queued.
+const ProtocolVersion = 4
 
 // Job kinds: validation here; submissions, runs and generation in their
 // own files.
@@ -83,7 +84,13 @@ type ClaimRequest struct {
 	// Toolchain is the hash the server returned for the judge's
 	// toolchain report; the job records it.
 	Toolchain string `json:"toolchain,omitempty"`
+	// WaitS asks the server to hold the request up to this many seconds when
+	// nothing is claimable (protocol 4); 0 to MaxClaimWait.
+	WaitS int `json:"wait_s,omitempty"`
 }
+
+// MaxClaimWait is the longest hold a claim may ask for, in seconds.
+const MaxClaimWait = 20
 
 // Toolchain is what a judge host compiles and runs with: the first line
 // of each tool's version output and the kernel release. It is reported

@@ -102,6 +102,7 @@ func (s *Service) RequestValidation(ctx context.Context, id, userID int64) (*Val
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.Jobs.Wake()
 	return s.LatestValidation(ctx, id)
 }
 

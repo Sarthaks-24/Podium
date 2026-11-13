@@ -138,6 +138,14 @@ sandbox-test: sandbox-binaries ## Hostile-program suite and M2 and M3 acceptance
 	@# MSYS_NO_PATHCONV: Git Bash would turn the /mnt path into a Windows one.
 	MSYS_NO_PATHCONV=1 $(LINUX) bash tools/sandbox-test.sh server/bin/worker.test -test.v -test.timeout 20m -examples "$(SANDBOX_EXAMPLES)"
 
+# The cap a 2 vCPU, 8 GB machine gets (sizing.Size(2, 8192)): the memory
+# cases of the hostile suite and the Java run on a 1,024 MB problem, run
+# with isolate.slice at that cap instead of the 2 GB machine's 1,100 MB.
+BIGCAP_MB ?= 3976
+.PHONY: sandbox-test-bigcap
+sandbox-test-bigcap: sandbox-binaries ## Hostile suite and the J1 memory tests under the larger sandbox cap (Linux, or WSL2 on Windows)
+	$(LINUX) env PODIUM_SANDBOX_CAP_MB=$(BIGCAP_MB) bash tools/sandbox-test.sh server/bin/calib.test -test.v -test.timeout 10m
+
 .PHONY: calibrate
 calibrate: ## Measure this judge host and print the calibration tables
 	cd server && $(GOFLAGS_LINUX) go build -trimpath -o bin/podium-judge ./cmd/podium-judge

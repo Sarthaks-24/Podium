@@ -13,9 +13,14 @@ import (
 )
 
 // Polling and back-off when the queue is empty or the server is away.
-const (
-	idlePoll   = 2 * time.Second
-	maxBackoff = 30 * time.Second
+const maxBackoff = 30 * time.Second
+
+// idlePoll is the least time between two claims that came back empty at once.
+// stopGrace is how long a claim may still run after a stop. Both are
+// variables so tests can shorten them.
+var (
+	idlePoll  = 2 * time.Second
+	stopGrace = time.Second
 )
 
 // DefaultAuthRetries: five refused tokens in a row, about a minute with
@@ -46,6 +51,9 @@ type Worker struct {
 	// AuthRetries is how many refused tokens in a row a lane accepts
 	// before the worker stops (DefaultAuthRetries when zero).
 	AuthRetries int
+	// AsyncReports batches a job's test results and sends them while the
+	// next test runs (PODIUM_JUDGE_ASYNC_REPORTS, J6). Off by default.
+	AsyncReports bool
 
 	// handle replaces the job dispatch in tests; nil runs the real kinds.
 	handle func(ctx context.Context, box int, c *judgeapi.Claim) error
@@ -135,11 +143,24 @@ func (w *Worker) lane(stop, ctx context.Context, box int) {
 		}
 		// The claim itself runs under the job context: a stop that lands
 		// while the request is in flight must not drop a job the server
-		// has already leased to this lane.
-		claim, err := w.Client.Claim(ctx, judgeapi.ClaimRequest{
+		// has already leased to this lane. The server holds an empty claim
+		// up to MaxClaimWait seconds, so a stop cuts the request only after
+		// stopGrace: a claim about to return a job is answered first, and a
+		// held one does not slow the drain.
+		asked := time.Now()
+		claimCtx, cancelClaim := context.WithCancel(ctx)
+		grace := stopGrace
+		cut := context.AfterFunc(stop, func() { time.AfterFunc(grace, cancelClaim) })
+		claim, err := w.Client.Claim(claimCtx, judgeapi.ClaimRequest{
 			Kinds:  []string{judgeapi.KindRun, judgeapi.KindSubmit, judgeapi.KindGenerate, judgeapi.KindGenerateInputs, judgeapi.KindValidate},
 			Worker: w.Name, Version: w.Version, Isolate: w.Isolate, Toolchain: w.Toolchain,
+			WaitS: judgeapi.MaxClaimWait,
 		})
+		cut()
+		cancelClaim()
+		if claim == nil && stop.Err() != nil {
+			continue // stopping: the loop ends, whatever the answer was
+		}
 		var protocol *ProtocolError
 		var auth *AuthError
 		if !errors.As(err, &auth) {
@@ -167,8 +188,11 @@ func (w *Worker) lane(stop, ctx context.Context, box int) {
 			continue
 		case claim == nil:
 			backoff = idlePoll
-			// Jitter keeps lanes from polling in step.
-			sleep(stop, idlePoll+time.Duration(rand.Int64N(int64(time.Second))))
+			// The hold was the wait. An empty answer that came back sooner
+			// than the idle poll means the server did not hold (it was busy,
+			// or shutting down): wait out the rest, with jitter so lanes do
+			// not poll in step.
+			sleep(stop, idlePoll+time.Duration(rand.Int64N(int64(idlePoll)/2))-time.Since(asked))
 			continue
 		}
 		backoff = idlePoll

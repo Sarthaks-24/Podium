@@ -111,7 +111,7 @@ func TestLoadJudgeLaneRange(t *testing.T) {
 		t.Error("0 lanes accepted")
 	}
 	c, err := LoadJudge(env(nil))
-	if err != nil || c.Lanes != 2 {
+	if err != nil || c.Lanes != 0 {
 		t.Errorf("default lanes: %v %+v", err, c)
 	}
 }
@@ -207,5 +207,21 @@ func TestAIPromptFile(t *testing.T) {
 		return err
 	}(); err != nil {
 		t.Errorf("a file of exactly 16 KB: %v", err)
+	}
+}
+
+func TestLoadServerQueueEndOrder(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{{"", true}, {"on", true}, {"off", false}} {
+		c, err := LoadServer(env(validServer(map[string]string{"PODIUM_QUEUE_END_ORDER": tc.value})))
+		if err != nil || c.QueueEndOrder != tc.want {
+			t.Errorf("PODIUM_QUEUE_END_ORDER=%q: %v, %v; want %v", tc.value, c.QueueEndOrder, err, tc.want)
+		}
+	}
+	_, err := LoadServer(env(validServer(map[string]string{"PODIUM_QUEUE_END_ORDER": "maybe"})))
+	if err == nil || !strings.Contains(err.Error(), "PODIUM_QUEUE_END_ORDER must be on or off") || strings.Contains(err.Error(), "maybe") {
+		t.Errorf("a bad value: %v, want a message naming the variable without echoing the value", err)
 	}
 }

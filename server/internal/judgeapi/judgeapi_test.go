@@ -17,8 +17,16 @@ func TestClaimCarriesTheProtocolVersion(t *testing.T) {
 		t.Errorf("a claim without the field decodes as %d, want 0 (protocol 1)", old.Protocol)
 	}
 	b, _ := json.Marshal(ClaimRequest{Kinds: []string{"submit"}, Protocol: ProtocolVersion, Toolchain: "abc"})
-	if !strings.Contains(string(b), `"protocol":3`) || ProtocolVersion != 3 {
+	if !strings.Contains(string(b), `"protocol":4`) || ProtocolVersion != 4 {
 		t.Errorf("claim %s, protocol %d", b, ProtocolVersion)
+	}
+	// Version 4 added wait_s; a claim that does not wait does not name it.
+	if strings.Contains(string(b), "wait_s") {
+		t.Errorf("a claim that does not wait names wait_s: %s", b)
+	}
+	b, _ = json.Marshal(ClaimRequest{WaitS: MaxClaimWait})
+	if !strings.Contains(string(b), `"wait_s":20`) {
+		t.Errorf("a waiting claim: %s", b)
 	}
 	// Version 3 added Reveal; it stays out of a payload that does not reveal.
 	b, _ = json.Marshal(SubmitPayload{})
@@ -26,7 +34,7 @@ func TestClaimCarriesTheProtocolVersion(t *testing.T) {
 		t.Errorf("a payload without a reveal names it: %s", b)
 	}
 	b, _ = json.Marshal(ToolchainReport{Protocol: ProtocolVersion})
-	if !strings.Contains(string(b), `"protocol":3`) {
+	if !strings.Contains(string(b), `"protocol":4`) {
 		t.Errorf("toolchain report %s", b)
 	}
 }

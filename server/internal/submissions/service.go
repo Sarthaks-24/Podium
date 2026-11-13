@@ -584,6 +584,7 @@ func (s *Service) Submit(ctx context.Context, r SubmitRequest) (v *SubmissionVie
 	if err := tx.Commit(); err != nil {
 		return nil, false, err
 	}
+	s.Jobs.Wake()
 	v, err = s.GetWith(ctx, id, r.Scope.View)
 	return v, false, err
 }
@@ -854,7 +855,13 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 		return nil, err
 	}
 	pl.SubmissionID = id
-	jobID, err := s.Jobs.Enqueue(ctx, tx, judgeapi.KindRun, RunPriority, pl, r.UserID)
+	// A practice Run queues behind graded work (J0); with the end order off
+	// it is queued as before.
+	priority := RunPriority
+	if r.Scope.Practice && !s.Jobs.EndOrderOff {
+		priority = PracticePriority
+	}
+	jobID, err := s.Jobs.Enqueue(ctx, tx, judgeapi.KindRun, priority, pl, r.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -867,6 +874,7 @@ func (s *Service) Run(ctx context.Context, r RunRequest) (*RunView, error) {
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.Jobs.Wake()
 	return s.GetRunWith(ctx, id, r.Scope.View)
 }
 

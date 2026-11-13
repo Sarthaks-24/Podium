@@ -33,6 +33,7 @@ var ServerVars = []Var{
 	{Name: "PODIUM_JUDGE_TOKEN", Secret: true},
 	{Name: "PODIUM_LOG_LEVEL", Default: "info"},
 	{Name: "PODIUM_AI_PROMPT_FILE"},
+	{Name: "PODIUM_QUEUE_END_ORDER", Default: "on"},
 }
 
 // Server is the validated configuration of podium-server.
@@ -74,6 +75,10 @@ type Server struct {
 	// characters of its SHA-256, for the log. The text itself is never logged.
 	AIPrompt    string
 	AIPromptSHA string
+	// QueueEndOrder is PODIUM_QUEUE_END_ORDER: true (the default) queues a
+	// Run whose author's contest time is over behind every graded
+	// submission; false keeps the order Runs had before v2.1.0.
+	QueueEndOrder bool
 }
 
 // MaxAIPromptFile is the largest PODIUM_AI_PROMPT_FILE accepted.
@@ -162,7 +167,20 @@ func LoadServer(get Getenv) (Server, error) {
 	if f := r.str("PODIUM_AI_PROMPT_FILE"); f != "" {
 		c.AIPrompt, c.AIPromptSHA = readPromptFile(r.p, f)
 	}
+	c.QueueEndOrder = r.onOff("PODIUM_QUEUE_END_ORDER")
 	return c, r.p.err()
+}
+
+// onOff reads a variable that is "on" or "off".
+func (r *reader) onOff(name string) bool {
+	switch r.str(name) {
+	case "on":
+		return true
+	case "off":
+		return false
+	}
+	r.p.add("%s must be on or off", name)
+	return true
 }
 
 func randomSecret() []byte {

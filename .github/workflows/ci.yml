@@ -110,4 +110,7 @@ jobs:
         run: |
           cd server && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/podium-judge ./cmd/podium-judge
           sudo install -m 755 bin/podium-judge /usr/local/bin/podium-judge
-          cd /tmp && sudo -u judge env PODIUM_ISOLATE_PATH=/usr/bin/isolate PODIUM_JUDGE_CACHE_DIR=/tmp /usr/local/bin/podium-judge selftest
+          # J5: build the precompiled header as root, as install does, and
+          # make selftest prove the student compile command loads it.
+          sudo /usr/local/bin/podium-judge pch build
+          cd /tmp && sudo -u judge env PODIUM_ISOLATE_PATH=/usr/bin/isolate PODIUM_JUDGE_CACHE_DIR=/tmp PODIUM_JUDGE_PCH=on /usr/local/bin/podium-judge selftest

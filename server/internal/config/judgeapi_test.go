@@ -38,7 +38,7 @@ func TestWorkerNeedsServerAndToken(t *testing.T) {
 		t.Errorf("worker without token: %v", err)
 	}
 	c, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": strings.Repeat("j", 40), "PODIUM_SERVER_URL": "http://127.0.0.1:8081/"}))
-	if err != nil || c.ServerURL != "http://127.0.0.1:8081" || c.Lanes != 2 {
+	if err != nil || c.ServerURL != "http://127.0.0.1:8081" || c.Lanes != 0 {
 		t.Errorf("worker: %+v %v", c, err)
 	}
 	if _, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": strings.Repeat("j", 40), "PODIUM_SERVER_URL": "127.0.0.1:8081"})); err == nil {

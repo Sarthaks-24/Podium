@@ -262,6 +262,7 @@ func (s *Service) requestInputGeneration(ctx context.Context, id, userID int64, 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.Jobs.Wake()
 	return s.LatestInputGeneration(ctx, id)
 }
 

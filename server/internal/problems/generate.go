@@ -99,6 +99,7 @@ func (s *Service) requestGeneration(ctx context.Context, id, userID int64, all, 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.Jobs.Wake()
 	return s.LatestGeneration(ctx, id)
 }
 

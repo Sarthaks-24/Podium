@@ -30,10 +30,14 @@ func (w *Worker) startJob(ctx context.Context, c *judgeapi.Claim, payload any) (
 	}
 	rep = &reporter{client: w.Client, jobID: c.JobID, lease: c.Lease}
 	rep.tm = jobTiming{kind: c.Kind, started: time.Now()}
+	if w.AsyncReports {
+		rep.async = newAsyncQueue()
+	}
 	hbCtx, stop := context.WithCancel(ctx)
 	go rep.heartbeat(hbCtx)
 	return rep, work, func() {
 		stop()
+		rep.drop()
 		os.RemoveAll(work)
 		for _, release := range w.held(c.JobID) {
 			release()
@@ -78,6 +82,9 @@ func (w *Worker) held(jobID int64) []func() {
 // finish sends the closing report, or a fatal one when the run broke.
 func (w *Worker) finish(ctx context.Context, c *judgeapi.Claim, rep *reporter, err error) error {
 	defer w.logTiming(c, rep)
+	if err == nil {
+		err = rep.asyncErr() // a batched post that failed after its test
+	}
 	if errors.Is(err, ErrLease) || ctx.Err() != nil {
 		return err
 	}
@@ -86,9 +93,12 @@ func (w *Worker) finish(ctx context.Context, c *judgeapi.Claim, rep *reporter, e
 	}
 	if err != nil {
 		w.Log.Error("job failed to run", "job_id", c.JobID, "kind", c.Kind, "err", err)
+		if lerr := rep.flush(ctx); lerr != nil {
+			return lerr
+		}
 		return rep.send(ctx, judgeapi.Report{Fatal: "The judge could not run this job: " + clip(err.Error(), 300)})
 	}
-	return rep.send(ctx, judgeapi.Report{Final: true})
+	return rep.finalReport(ctx)
 }
 
 // compile builds a program through the compile cache and reports the
@@ -139,7 +149,7 @@ func (w *Worker) submit(ctx context.Context, box int, c *judgeapi.Claim) error {
 		return err
 	}
 	defer done()
-	rep.tm.lane, rep.tm.language = box, pl.Program.Language
+	rep.tm.lane, rep.tm.language, rep.tm.subject = box, pl.Program.Language, pl.SubmissionID
 	return w.finish(ctx, c, rep, w.runSubmit(ctx, box, Lease{c.JobID, c.Lease}, rep, work, pl, w.hold(c.JobID)))
 }
 
@@ -163,6 +173,9 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 	stopAll, revealed := false, false
 	failed := map[int]bool{}
 	for i, t := range pl.Tests {
+		if err := rep.asyncErr(); err != nil {
+			return err
+		}
 		tr := judgeapi.TestResult{Idx: t.Idx, Role: judgeapi.RoleProgram, Verdict: string(judge.Skipped)}
 		if !stopAll && (t.Sample || !failed[t.Subtask]) {
 			in, err := w.Cache.Path(ctx, lease, t.InputSHA)
@@ -204,7 +217,7 @@ func (w *Worker) runSubmit(ctx context.Context, box int, lease Lease, rep *repor
 				}
 			}
 		}
-		if err := rep.send(ctx, judgeapi.Report{Results: []judgeapi.TestResult{tr}}); err != nil {
+		if err := rep.result(ctx, tr); err != nil {
 			return err
 		}
 	}
@@ -245,7 +258,7 @@ func (w *Worker) run(ctx context.Context, box int, c *judgeapi.Claim) error {
 		return err
 	}
 	defer done()
-	rep.tm.lane, rep.tm.language = box, pl.Program.Language
+	rep.tm.lane, rep.tm.language, rep.tm.subject = box, pl.Program.Language, pl.SubmissionID
 	return w.finish(ctx, c, rep, w.runRun(ctx, box, Lease{c.JobID, c.Lease}, rep, work, pl, w.hold(c.JobID)))
 }
 
@@ -270,9 +283,11 @@ func (w *Worker) runRun(ctx context.Context, box int, lease Lease, rep *reporter
 	// passed; the rest are reported as skipped.
 	stopOpen := false
 	for i, input := range pl.Inputs {
+		if err := rep.asyncErr(); err != nil {
+			return err
+		}
 		if input.Open && stopOpen {
-			if err := rep.send(ctx, judgeapi.Report{Results: []judgeapi.TestResult{
-				{Idx: input.Idx, Role: judgeapi.RoleProgram, Verdict: string(judge.Skipped)}}}); err != nil {
+			if err := rep.result(ctx, judgeapi.TestResult{Idx: input.Idx, Role: judgeapi.RoleProgram, Verdict: string(judge.Skipped)}); err != nil {
 				return err
 			}
 			continue
@@ -304,7 +319,7 @@ func (w *Worker) runRun(ctx context.Context, box int, lease Lease, rep *reporter
 		if input.ExpectedSHA != "" && tr.Verdict != string(judge.Accepted) {
 			stopOpen = true
 		}
-		if err := rep.send(ctx, judgeapi.Report{Results: []judgeapi.TestResult{tr}}); err != nil {
+		if err := rep.result(ctx, tr); err != nil {
 			return err
 		}
 	}
