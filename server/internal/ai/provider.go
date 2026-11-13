@@ -52,10 +52,13 @@ type Brief struct {
 	SubtaskIdeas string `json:"subtask_ideas"`
 }
 
-// Request is one generation. Exactly one of Brief and Pasted is set.
+// Request is one generation. Exactly one of Brief and Pasted is set. In a
+// rewrite (stage W) Old holds the problem to write again and Pasted is what
+// should change.
 type Request struct {
 	Brief  *Brief
 	Pasted string
+	Old    string
 	// System is the whole system prompt, built once when the run starts so
 	// the retry sees the same text. Empty means the start-up rules.
 	System string

@@ -209,16 +209,18 @@ var writeSQL = regexp.MustCompile(`(?is)\b(INSERT\s+(OR\s+\w+\s+)?INTO|UPDATE|DE
 // without making a revision, and what they may change: none of it is
 // recorded in a revision (validation state, bank details).
 var revisionFreeWrites = map[string]string{
-	"insert":        "INSERT INTO problems, followed by writeRevision",
-	"save":          "UPDATE problems, followed by writeRevision",
-	"writeChildren": "subtasks and testcases, called by insert and save only",
-	"Update":        "validated_hash and solution_by_person after save",
-	"archiveIn":     "archived and slug",
-	"replaceIn":     "origin and solution_by_person after save",
-	"AcceptEdit":    "validated_hash after replaceIn saved the revision (AI edit)",
-	"Restore":       "archived and slug",
-	"Finish":        "validated_hash after a validation",
-	"Delete":        "the tombstone: it clears the working copy and no revision is wanted (v2.0.2)",
+	"insert":             "INSERT INTO problems, followed by writeRevision",
+	"save":               "UPDATE problems, followed by writeRevision",
+	"writeChildren":      "subtasks and testcases, called by insert and save only",
+	"Update":             "validated_hash and solution_by_person after save",
+	"archiveIn":          "archived and slug",
+	"replaceIn":          "origin and solution_by_person after save",
+	"AcceptEdit":         "validated_hash after replaceIn saved the revision (AI edit)",
+	"ReplaceWithRewrite": "validated_hash after replaceIn saved the revision (AI rewrite)",
+	"copyArchivedIn":     "validation state and archived_slug of the archived copy, which insert and archiveIn made",
+	"Restore":            "archived and slug",
+	"Finish":             "validated_hash after a validation",
+	"Delete":             "the tombstone: it clears the working copy and no revision is wanted (v2.0.2)",
 }
 
 // No code writes problems, subtasks or testcases except through save and
