@@ -349,7 +349,10 @@ func WriteError(log *slog.Logger, w http.ResponseWriter, r *http.Request, err er
 	var notAllowed *NotAllowedError
 	var unended *UnendedContestsError
 	var langState *LanguageStateError
+	var rewrite *RewriteRefusal
 	switch {
+	case errors.As(err, &rewrite):
+		httpx.WriteError(w, http.StatusConflict, rewrite.Code, rewrite.Message)
 	case errors.Is(err, ErrNotFound):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such problem.")
 	case errors.Is(err, ErrDeleted):
@@ -843,6 +846,55 @@ func (d *Handlers) ValidateProblem(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Log.Info("validation queued", "by", auth.UserFrom(r.Context()).ID, "problem_id", id, "validation_id", v.ID)
 	httpx.WriteJSON(w, http.StatusAccepted, validationOut(v))
+}
+
+// ReplaceWithRewrite puts an AI rewrite on the problem in the path (stage W)
+// and queues Validate on it. The body names the rewrite and the fingerprint
+// the wizard gave when the rewrite began.
+func (d *Handlers) ReplaceWithRewrite(w http.ResponseWriter, r *http.Request) {
+	id, ok := problemID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		DraftID int64  `json:"draft_id"`
+		Base    string `json:"base"`
+		// TZ is the browser's IANA zone, so the copy's date is the day the
+		// organiser saw in the confirm dialog.
+		TZ string `json:"tz"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.DraftID <= 0 || req.Base == "" || len(req.Base) > maxRewriteBase {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Say which rewrite replaces the problem and what it was made from.")
+		return
+	}
+	var loc *time.Location
+	if req.TZ != "" && len(req.TZ) <= 64 {
+		if l, err := time.LoadLocation(req.TZ); err == nil {
+			loc = l
+		}
+	}
+	u := auth.UserFrom(r.Context())
+	p, kept, err := d.Problems.ReplaceWithRewrite(r.Context(), id, req.DraftID, req.Base, u.ID, loc)
+	if err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	d.Log.Info("problem replaced by an AI rewrite", "by", u.ID, "problem_id", p.ID, "draft_id", req.DraftID, "copy_id", kept.ID)
+	out := map[string]any{"problem_id": p.ID, "copy_id": kept.ID, "copy_title": kept.Title, "validation_queued": false, "not_ready": []string{}}
+	if _, err := d.Problems.RequestValidation(r.Context(), id, u.ID); err == nil {
+		out["validation_queued"] = true
+	} else {
+		var nr *NotReadyError
+		if errors.As(err, &nr) {
+			out["not_ready"] = nr.Problems
+		} else {
+			d.Log.Warn("replace: validation not queued", "problem_id", id, "err", err)
+		}
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 func (d *Handlers) GetValidation(w http.ResponseWriter, r *http.Request) {

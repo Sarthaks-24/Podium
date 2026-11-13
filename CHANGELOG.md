@@ -101,6 +101,11 @@ Not released yet. Each stage adds plain-English entries and known limits under i
 
 ### v2.1.0 stage W: rewrite with AI
 
+- **Rewrite with AI.** A problem's More menu has "Rewrite with AI", after "Edit with AI". It opens the AI wizard for that problem: you say what should change, and the AI writes the whole problem again with new tests. It sees the statement, settings, reference solution and sample tests, never the hidden tests. The result is an ordinary draft problem of its own; the old problem is not touched until you press Replace.
+- **Replace and Keep both.** The draft carries the note "This is a rewrite of <title>." with "Replace <title> with this" and "Keep both". Replace is off until the draft has passed Validate. It asks first, then in one step keeps the current version as an archived problem named "<title> (before rewrite, <date>)", puts the rewrite on the old problem as one new revision (same id and slug, so contests and links still point at it), marks it an AI draft that needs Validate and a person's review, starts Validate, and archives the rewrite draft. To go back, restore the archived copy from the archived problems.
+- **When Replace is refused.** The rewrite stays as its own problem and the page says why: a contest that is running uses the old problem, students have submitted or saved code for it, it is archived or deleted, or it changed after the rewrite began. A contest that already holds the old problem keeps the old version until "Update students now", which still refuses an AI draft nobody has reviewed.
+- Known limits: the note on the draft is kept in the browser that made the rewrite, so another browser sees the draft as a plain new problem (it can still be kept as it is). Only a student's submission, Run or saved code counts as "students have used it"; an organiser trying the problem does not. The archived copy keeps the old problem's tests, solutions and validation, but not its language check results.
+
 ### v2.1.0 stage H: bring back a version
 
 ## v2.0.2 Billota (2026-11-07)

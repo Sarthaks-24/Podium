@@ -77,6 +77,7 @@ var routeRoles = map[string]string{
 	"POST /api/admin/problems/{id}/ai-edit":                        "organiser",
 	"POST /api/admin/problems/{id}/ai-edit/{draft}/accept":         "organiser",
 	"DELETE /api/admin/problems/{id}/ai-edit/{draft}":              "organiser",
+	"POST /api/admin/problems/{id}/replace-with-rewrite":           "organiser",
 	"GET /api/admin/ai/prompts":                                    "admin",
 	"PUT /api/admin/ai/prompts/{kind}":                             "admin",
 	"POST /api/admin/ai/prompts/{kind}/reset":                      "admin",

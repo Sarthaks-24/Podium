@@ -549,6 +549,45 @@ The page shows what the model says it changed and a diff of each file. Read it a
 - **It cannot change the mode.** A reply that switches between whole-program and function is refused, with no second try. Use Rewrite with AI for that.
 - **A second try.** If the pack parser refuses the AI's edit, Podium sends it the reasons once. If that fails too, the page says nothing was saved. Open "Details" for the reasons and "What the AI sent back" for the model's own files, which you can copy and send to whoever runs Podium.
 
+## Edit, rewrite or start again
+
+Three tools use the AI on a problem, and each keeps something different.
+
+| Tool | Where | What it does | Tests |
+|---|---|---|---|
+| Edit with AI | the problem's More menu | Changes part of the problem and keeps the rest as it is | Kept. The AI cannot see or change them |
+| Rewrite with AI | the problem's More menu | Writes the whole problem again from what you say should change | New. The AI writes a generator and the judge makes them |
+| New problem with AI | Problems, "New problem with AI" | Starts from a brief or pasted text | New |
+
+Pick the smallest one that fixes the problem. An unclear sentence or a wrong limit is an edit. A wrong idea, tests that miss the point, or a switch between a whole program and one function is a rewrite.
+
+### Rewrite with AI
+
+1. Open the problem and choose "Rewrite with AI" in the More menu. It opens the AI wizard for that problem. The AI sees the statement, the settings, the reference solution and the sample tests, never the hidden tests. "Students write" starts as the problem's current choice, and you can change it.
+2. Write what should change under "What should change", for example "the limits are wrong, the statement is unclear, or the tests miss a case". Press "Rewrite the problem". The run is the ordinary wizard run: the draft, its tests and its validation, and for a function problem the language checks.
+3. The result is a new problem with its own slug, marked "ai draft". The old problem is exactly as it was. If you do nothing more, you have both: use the new one in new contests.
+4. On the draft, the note "This is a rewrite of <title>." offers two choices. "Keep both" removes the note and nothing else changes. "Replace <title> with this" is off until the draft has passed Validate, and off while the editor holds unsaved changes (the server uses the saved draft).
+
+What Replace does, after you confirm:
+
+- the current version is kept as an archived problem named "<title> (before rewrite, <date>)", with its tests, solutions and validation. To go back, restore it from the archived problems and give it a free slug (the old slug is in use);
+- the old problem gets the rewrite's statement, tests and solutions as one new revision. Its id and slug stay, so links and contests still point at it;
+- your own reference solution and brute force are replaced by the AI's, so the problem is an AI draft again: a contest asks before taking it until a person reviews it and saves it, and it must pass Validate again, which starts at once;
+- the rewrite draft is archived.
+
+A contest that already holds the problem keeps the version it was pinned to until you press "Update students now", which refuses an AI draft that is not confirmed.
+
+When Replace is refused, nothing changes and the draft stays as its own problem:
+
+| The page says | Why |
+|---|---|
+| A contest that is running uses <title>, so it cannot be replaced now. | A running contest holds the problem. Try again after it ends. |
+| Students have submitted or saved code for <title>, so it cannot be replaced. | A student has a submission, a Run or saved code. An organiser trying the problem does not count. A rewrite can change the function students wrote against. Use the rewrite in new contests. |
+| <title> is archived (or was deleted), so it cannot be replaced. | Restore the problem first, or keep the rewrite. |
+| <title> changed after this rewrite began. | Someone edited the problem while the AI worked. Rewrite it again, or keep the rewrite. |
+
+The note on the draft is kept in the browser that made the rewrite. In another browser the draft is a plain new problem.
+
 ## Validation
 
 Validation runs the problem on the real judge, in isolate, exactly as a contest would. Choose Validate in the editor; the report updates every 2 seconds while the job waits and runs. Validation has the lowest priority, behind all contest work.

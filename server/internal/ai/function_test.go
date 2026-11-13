@@ -384,13 +384,15 @@ func TestFunctionRequestsCarryNoTestData(t *testing.T) {
 			t.Errorf("%s: the brief is not in the request", name)
 		}
 	}
-	// The request type has no field a test could be put in.
+	// The request type has no field a test could be put in. Old, the problem
+	// a rewrite starts from, holds its settings, statement, reference and
+	// sample tests, built by rewriteText, which never reads a hidden test.
 	var fields []string
 	rt := reflect.TypeOf(Request{})
 	for i := 0; i < rt.NumField(); i++ {
 		fields = append(fields, rt.Field(i).Name)
 	}
-	if got := strings.Join(fields, ","); got != "Brief,Pasted,System,Previous,Fix,Shorter,JavaLists" {
+	if got := strings.Join(fields, ","); got != "Brief,Pasted,Old,System,Previous,Fix,Shorter,JavaLists" {
 		t.Errorf("Request fields %s: a new field must be reviewed for test data", got)
 	}
 }

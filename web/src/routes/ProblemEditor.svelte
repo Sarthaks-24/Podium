@@ -21,7 +21,7 @@
   import DeleteProblemDialog from '../components/problem/DeleteProblemDialog.svelte';
   import RestoreFlow from '../components/RestoreFlow.svelte';
   import ValidationReport from '../components/ValidationReport.svelte';
-  import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration } from '../lib/ai';
+  import { inputGenPending, inputGenReport, isAIDraft, type InputGeneration, type RewriteLink } from '../lib/ai';
   import { ApiError, errorText, getJSON, isSignedOut, sendBody, sendJSON } from '../lib/api';
   import GeneratorPanel from '../components/problem/GeneratorPanel.svelte';
   import EditorBar from '../components/problem/EditorBar.svelte';
@@ -32,6 +32,9 @@
   import CheckingSection from '../components/problem/CheckingSection.svelte';
   import AddToContestDialog from '../components/problem/AddToContestDialog.svelte';
   import AiEditPanel from '../components/problem/AiEditPanel.svelte';
+  import RewriteBanner from '../components/problem/RewriteBanner.svelte';
+  import { draftStorage } from '../lib/drafts';
+  import { recallRewrite, rewriteHref } from '../lib/rewrite';
   import LanguageProofPanel from '../components/problem/LanguageProofPanel.svelte';
   import '../components/problem/editor.css';
   import { setTitle } from '../lib/head';
@@ -111,6 +114,8 @@
   let chained = $state(false);
   let regenOpen = $state(false);
   let aiEditOpen = $state(false);
+  /** The problem this draft is a rewrite of, from the wizard run that made it; null for any other problem. */
+  let rewriteLink = $state<RewriteLink | null>(null);
   let replaceOpen = $state(false);
 
   let archiveOpen = $state(false);
@@ -204,6 +209,7 @@
   function adopt(p: Problem, replace: boolean) {
     const keep = !replace && dirty;
     problem = p;
+    rewriteLink = p.archived ? null : recallRewrite(draftStorage(), p.id);
     const saved = toDraft(p);
     baseline = JSON.stringify(saved);
     if (!keep) draft = saved;
@@ -562,11 +568,16 @@
   const menu = $derived([
     { label: 'Download pack', onselect: downloadPack },
     ...(problem && !problem.archived ? [{ label: 'Edit with AI', onselect: openAiEdit }] : []),
+    ...(problem && !problem.archived ? [{ label: 'Rewrite with AI', onselect: openRewrite }] : []),
     ...((problem?.tests.length ?? 0) > 0 ? [{ label: 'Regenerate all outputs', onselect: () => (regenOpen = true) }] : []),
     ...(problem && !problem.archived ? [{ label: 'Archive', onselect: () => (archiveOpen = true), danger: true }] : []),
     ...(problem?.archived ? [{ label: 'Restore', onselect: () => (restoreOpen = true) }] : []),
     ...(problem && administers(session.user?.role) ? [{ label: 'Delete', onselect: () => (deleteOpen = true), danger: true }] : []),
   ]);
+
+  function openRewrite() {
+    if (problem) navigate(rewriteHref(problem.id));
+  }
 
   async function openAiEdit() {
     aiEditOpen = true;
@@ -639,6 +650,15 @@
   {:else if page.state === 'error'}
     <PageState kind="error" message={page.error} onretry={load} />
   {:else if problem && draft}
+    {#if rewriteLink}
+      <RewriteBanner
+        draftId={problem.id}
+        link={rewriteLink}
+        validated={problem.validated && validation?.current !== false && !validating && !genPending}
+        {dirty}
+        onkept={() => (rewriteLink = null)}
+      />
+    {/if}
     <EditorNotes {problem} {aiDraft} bind:reason {fields} />
 
     {#if aiEditOpen}

@@ -70,6 +70,8 @@ type wizardRun struct {
 	problemID  int64
 	startedAt  time.Time
 	finishedAt time.Time
+	// rewrite is the old problem a rewrite run started from, nil otherwise.
+	rewrite *rewriteLink
 }
 
 type wizardErrorJSON struct {
@@ -84,10 +86,13 @@ type wizardJSON struct {
 	State     string           `json:"state"`
 	Error     *wizardErrorJSON `json:"error,omitempty"`
 	ProblemID *int64           `json:"problem_id,omitempty"`
-	Provider  string           `json:"provider"`
-	Model     string           `json:"model"`
-	StartedAt int64            `json:"started_at"`
-	ServerNow int64            `json:"server_now"`
+	// RewriteOf names the problem a rewrite run started from and the
+	// fingerprint of its content then; absent for any other run.
+	RewriteOf *rewriteLink `json:"rewrite_of,omitempty"`
+	Provider  string       `json:"provider"`
+	Model     string       `json:"model"`
+	StartedAt int64        `json:"started_at"`
+	ServerNow int64        `json:"server_now"`
 }
 
 // ForgetKey drops the keys of a session that is ending.
@@ -138,12 +143,12 @@ func optID(id int64) *int64 {
 
 // start registers a new run for userID with the provider and model of
 // entry, and drops runs that ended long ago.
-func (a *Wizard) start(kind string, userID int64, problemID int64, entry KeyEntry) *wizardRun {
+func (a *Wizard) start(kind string, userID int64, problemID int64, entry KeyEntry, rewrite *rewriteLink) *wizardRun {
 	var b [16]byte
 	rand.Read(b[:])
 	now := time.Now()
 	run := &wizardRun{id: hex.EncodeToString(b[:]), kind: kind, userID: userID, state: wizardThinking,
-		problemID: problemID, provider: entry.Provider, model: entry.Model, startedAt: now}
+		problemID: problemID, provider: entry.Provider, model: entry.Model, startedAt: now, rewrite: rewrite}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.runs == nil {
@@ -171,9 +176,13 @@ func (a *Wizard) view(id string, userID int64) (wizardJSON, bool) {
 
 // json must be called with a.mu held.
 func (r *wizardRun) json() wizardJSON {
-	return wizardJSON{ID: r.id, Kind: r.kind, State: r.state, Error: r.err, ProblemID: optID(r.problemID),
+	out := wizardJSON{ID: r.id, Kind: r.kind, State: r.state, Error: r.err, ProblemID: optID(r.problemID),
 		Provider: r.provider, Model: r.model,
 		StartedAt: r.startedAt.UnixMilli(), ServerNow: time.Now().UnixMilli()}
+	if r.rewrite != nil {
+		out.RewriteOf = r.rewrite
+	}
+	return out
 }
 
 // finish records the outcome of a run and returns its JSON.
@@ -490,6 +499,9 @@ type wizardRequestJSON struct {
 	// function, is array (the default), arraylist or either. Absent means the default.
 	StudentsWrite *string `json:"students_write"`
 	JavaLists     *string `json:"java_lists"`
+	// RewriteOf, in paste mode, is the problem to write again: Text then
+	// says what should change (stage W).
+	RewriteOf *int64 `json:"rewrite_of"`
 }
 
 // StartWizard asks the model for a problem in the background. The answer
@@ -501,8 +513,13 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req Request
+	var rewrite *rewriteLink
 	switch body.Mode {
 	case "brief":
+		if body.RewriteOf != nil {
+			httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose paste to rewrite a problem.")
+			return
+		}
 		if body.Brief == nil {
 			httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Write a brief or paste a problem.")
 			return
@@ -517,6 +534,12 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 			Constraints: body.Brief.Constraints, SubtaskIdeas: body.Brief.Subtasks}
 	case "paste":
 		req.Pasted = body.Text
+		if body.RewriteOf != nil {
+			var ok bool
+			if req.Old, rewrite, ok = d.loadRewrite(w, r, *body.RewriteOf); !ok {
+				return
+			}
+		}
 	default:
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose brief or paste.")
 		return
@@ -571,8 +594,8 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	run := d.Wizard.start("generate", u.ID, 0, entry)
-	d.Log.Info("ai wizard started", "user_id", u.ID, "wizard_id", run.id, "mode", body.Mode, "function", function, "provider", entry.Provider, "model", entry.Model)
+	run := d.Wizard.start("generate", u.ID, 0, entry, rewrite)
+	d.Log.Info("ai wizard started", "user_id", u.ID, "wizard_id", run.id, "mode", body.Mode, "function", function, "rewrite", rewrite != nil, "provider", entry.Provider, "model", entry.Model)
 	go func() {
 		defer release()
 		d.publishWizard(u.ID, d.runGenerate(run, prov, req, function, u.ID, entry.Key))
