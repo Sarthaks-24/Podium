@@ -1,6 +1,7 @@
 package judge
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,7 +28,7 @@ func TestCompileCommandUsesThePCHOnlyWhenSet(t *testing.T) {
 	if i < 0 || args[i+1] != "/pch" || i > indexOf(args, "-o") {
 		t.Fatalf("on: no -I /pch before -o in %v", args)
 	}
-	if !slices.Contains(dirs, "/pch:maybe") {
+	if !slices.Contains(dirs, "/pch:maybe:noexec") {
 		t.Errorf("on: dirs %v lack the header directory", dirs)
 	}
 	// Everything but the added pair is the language's own command.
@@ -118,5 +119,67 @@ func TestCheckPCHFiles(t *testing.T) {
 			t.Errorf("group-writable %s: %v", name, err)
 		}
 		os.Chmod(path, st.Mode())
+	}
+}
+
+// A symlinked directory, bits folder or file is refused: the judge would
+// follow it to somewhere root did not put the header.
+func TestCheckPCHFilesRefusesSymlinks(t *testing.T) {
+	good := func() string {
+		dir := t.TempDir()
+		os.MkdirAll(filepath.Join(dir, "bits"), 0o755)
+		os.WriteFile(filepath.Join(dir, "bits", "stdc++.h.gch"), []byte("x"), 0o644)
+		return dir
+	}
+	link := func(target, name string) bool {
+		if err := os.Symlink(target, name); err != nil {
+			t.Skipf("symlinks are not available: %v", err)
+		}
+		return true
+	}
+	uid := os.Getuid()
+	real := good()
+	if err := CheckPCHFiles(real, uid); err != nil && runtime.GOOS != "windows" {
+		t.Fatalf("a good header: %v", err)
+	}
+	dirLink := filepath.Join(t.TempDir(), "pch")
+	link(real, dirLink)
+	if err := CheckPCHFiles(dirLink, uid); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("symlinked directory: %v", err)
+	}
+	d := good()
+	os.RemoveAll(filepath.Join(d, "bits"))
+	link(filepath.Join(real, "bits"), filepath.Join(d, "bits"))
+	if err := CheckPCHFiles(d, uid); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("symlinked bits: %v", err)
+	}
+	d = good()
+	os.Remove(filepath.Join(d, "bits", "stdc++.h.gch"))
+	link(filepath.Join(real, "bits", "stdc++.h.gch"), filepath.Join(d, "bits", "stdc++.h.gch"))
+	if err := CheckPCHFiles(d, uid); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("symlinked file: %v", err)
+	}
+}
+
+// BuildPCH will not write through a symlink planted at the directory or at
+// bits.
+func TestBuildPCHRefusesSymlinks(t *testing.T) {
+	elsewhere := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "pch")
+	if err := os.Symlink(elsewhere, dir); err != nil {
+		t.Skipf("symlinks are not available: %v", err)
+	}
+	if err := BuildPCH(context.Background(), dir); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("symlinked directory: %v", err)
+	}
+	dir = t.TempDir()
+	if err := os.Symlink(elsewhere, filepath.Join(dir, "bits")); err != nil {
+		t.Skipf("symlinks are not available: %v", err)
+	}
+	if err := BuildPCH(context.Background(), dir); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("symlinked bits: %v", err)
+	}
+	if ents, _ := os.ReadDir(elsewhere); len(ents) != 0 {
+		t.Errorf("something was written through the link: %v", ents)
 	}
 }

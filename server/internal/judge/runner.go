@@ -193,10 +193,14 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 	// A header GCC cannot read stops the compile with an error that is not
 	// the student's: compile again without it, as if it were missing.
 	if err == nil && res.Verdict == CompileError && !slices.Equal(args, lang.Compile) && strings.Contains(res.Output, pchFaultMarker) {
-		if r.OnPCHFault != nil {
-			r.pchFault.Do(func() { r.OnPCHFault(res.Output) })
+		// The student can print the marker text too (#error), so the header
+		// is reported only when the compile without it does not fail.
+		faultOutput := res.Output
+		prog, res, err = r.compile(ctx, box, lang, lang.Compile, lang.Dirs, source, outDir)
+		if r.OnPCHFault != nil && err == nil && res.Verdict != CompileError {
+			r.pchFault.Do(func() { r.OnPCHFault(faultOutput) })
 		}
-		return r.compile(ctx, box, lang, lang.Compile, lang.Dirs, source, outDir)
+		return prog, res, err
 	}
 	return prog, res, err
 }

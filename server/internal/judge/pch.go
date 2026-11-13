@@ -55,7 +55,7 @@ func (r *Runner) compileCommand(lang Language) (args, dirs []string) {
 	if dir == "" || !lang.PCH || out < 0 {
 		return lang.Compile, lang.Dirs
 	}
-	return slices.Insert(slices.Clone(lang.Compile), out, "-I", dir), append(slices.Clone(lang.Dirs), dir+":maybe")
+	return slices.Insert(slices.Clone(lang.Compile), out, "-I", dir), append(slices.Clone(lang.Dirs), dir+":maybe:noexec")
 }
 
 // PCHBuildArgs is the g++ command that precompiles header into out: the
@@ -74,7 +74,20 @@ func BuildPCH(ctx context.Context, dir string) error {
 	if err := os.MkdirAll(filepath.Join(dir, "bits"), 0o755); err != nil {
 		return err
 	}
+	// Root runs this, so the directories must be plain and owned by the
+	// caller: a link planted by someone else would make root write and
+	// chmod elsewhere.
 	for _, d := range []string{dir, filepath.Join(dir, "bits")} {
+		fi, err := os.Lstat(d)
+		if err != nil {
+			return err
+		}
+		if !fi.IsDir() {
+			return fmt.Errorf("precompiled header: %s is a symbolic link or not a directory", d)
+		}
+		if owner, ok := ownerOf(fi); ok && owner != os.Getuid() {
+			return fmt.Errorf("precompiled header: %s is owned by uid %d, not %d", d, owner, os.Getuid())
+		}
 		if err := os.Chmod(d, 0o755); err != nil {
 			return err
 		}
@@ -114,13 +127,16 @@ func tail(s string, n int) string {
 // anyone else could replace.
 func CheckPCHFiles(dir string, uid int) error {
 	gch := filepath.Join(dir, pchFile)
-	if _, err := os.Stat(gch); err != nil {
+	if _, err := os.Lstat(gch); err != nil {
 		return fmt.Errorf("precompiled header: %w", err)
 	}
 	for _, p := range []string{dir, filepath.Join(dir, "bits"), gch} {
-		fi, err := os.Stat(p)
+		fi, err := os.Lstat(p)
 		if err != nil {
 			return fmt.Errorf("precompiled header: %w", err)
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("precompiled header: %s is a symbolic link", p)
 		}
 		if owner, ok := ownerOf(fi); ok && owner != uid {
 			return fmt.Errorf("precompiled header: %s is owned by uid %d, not %d", p, owner, uid)

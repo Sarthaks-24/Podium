@@ -244,6 +244,18 @@ func TestAnUnusableHeaderFallsBackToANormalCompile(t *testing.T) {
 			t.Errorf("the fault hook ran %d times, want once", faults)
 		}
 	})
+	t.Run("student prints the fault text", func(t *testing.T) {
+		r, _ := pchRunner(t)
+		faults := 0
+		r.OnPCHFault = func(string) { faults++ }
+		src := "#include <bits/stdc++.h>\n#error while reading precompiled header\nint main() {}\n"
+		if v, _, _ := run(t, r, src); v != judge.CompileError {
+			t.Errorf("verdict %s, want a compile error", v)
+		}
+		if faults != 0 {
+			t.Errorf("the fault hook ran %d times for the student's own error", faults)
+		}
+	})
 }
 
 // selftest's line for the header: PASS for a good one, FAIL with the reason
