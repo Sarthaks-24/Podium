@@ -2,6 +2,8 @@ package judge
 
 import (
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,61 +14,86 @@ import (
 // What a verdict is judged under never follows the machine: the compile
 // lock, each language's time factor and overheads, the compile limits, the
 // wall-time formula and a problem's own limits. A resize changes how many
-// lanes run and how much memory they share, and nothing here. This pins
-// the values once and checks them for every machine of the sizing table,
-// so a change that lets Size reach any of them fails here.
+// lanes run and how much memory they share, and nothing here.
+//
+// For every machine of the sizing table this builds the runner the way
+// podium-judge does at start (NewRunner with that machine's budget), asks
+// it for the limits it would use for a fixed set of languages and problems,
+// and requires the answers to be identical on every machine while the
+// memory budget differs. A change that wires any of these to the machine
+// (to the budget the runner holds, or to Size) shows up as a difference.
 func TestWhatAVerdictIsJudgedUnderIsTheSameOnEveryMachine(t *testing.T) {
-	// Size may only decide these four numbers.
 	if got := reflect.TypeOf(sizing.Sizing{}).NumField(); got != 4 {
 		t.Fatalf("sizing.Sizing has %d fields; only lanes, caps and budget may follow the machine", got)
 	}
-	type fixed struct {
-		timeFactor       float64
-		overheadMB       int
-		processes        int
-		compileMB        int
-		compileProcesses int
-		compileLock      bool
-		runLock          bool
+	machines := []struct{ vcpus, memMB int }{}
+	for _, v := range []int{1, 2, 4, 8} {
+		for _, m := range []int{2048, 4096, 8192, 16384} {
+			machines = append(machines, struct{ vcpus, memMB int }{v, m})
+		}
 	}
-	pinned := map[string]fixed{
-		"cpp17":   {1.0, 0, 1, 512, 16, true, false},
-		"java21":  {2.0, 256, 64, 512, 64, true, true},
-		"python3": {3.0, 64, 1, 128, 1, false, false},
-		"node22":  {2.0, 128, 16, 0, 0, false, false},
+	problems := []struct {
+		timeLimit time.Duration
+		memoryMB  int
+	}{{500 * time.Millisecond, 16}, {time.Second, 256}, {3 * time.Second, 1024}}
+
+	// signature is everything a verdict depends on that Size could touch.
+	signature := func(r *Runner) string {
+		var b strings.Builder
+		ids := make([]string, 0, len(Languages))
+		for id := range Languages {
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		langs := []Language{CheckerLanguage()}
+		for _, id := range ids {
+			langs = append(langs, Languages[id])
+		}
+		for _, l := range langs {
+			b.WriteString(l.ID)
+			b.WriteString(" lock:")
+			b.WriteString(boolWord(l.CompileExclusive) + "/" + boolWord(l.RunExclusive))
+			c := r.compileLimits(l)
+			b.WriteString(" compile:" + c.CPU.String() + "," + c.Wall.String() + "," + itoa(c.MemoryKB) + "," + itoa(c.Processes) + "," + itoa(c.FileSizeKB))
+			for _, p := range problems {
+				lim := r.runLimits(l, p.timeLimit, p.memoryMB)
+				args := strings.Join(RunArgs(RunRequest{Box: 1, Limits: lim, Args: []string{"./main"}}, "/m"), " ")
+				b.WriteString(" run:" + lim.CPU.String() + "," + itoa(lim.MemoryKB) + "," + itoa(lim.Processes) + "," + itoa(lim.FileSizeKB) + " " + args)
+			}
+			b.WriteString("\n")
+		}
+		return b.String()
 	}
-	for _, m := range []struct{ vcpus, memMB int }{
-		{1, 2048}, {2, 2048}, {4, 2048}, {8, 2048},
-		{1, 4096}, {2, 4096}, {4, 4096}, {8, 4096},
-		{1, 8192}, {2, 8192}, {4, 8192}, {8, 8192},
-		{1, 16384}, {2, 16384}, {4, 16384}, {8, 16384},
-	} {
+
+	var first string
+	budgets := map[int]bool{}
+	for i, m := range machines {
 		s := sizing.Size(m.vcpus, m.memMB)
-		r := &Runner{MemoryBudgetKB: s.BudgetMB * 1024}
+		r := NewRunner(Isolate{Path: "isolate"}, s.BudgetMB)
 		if r.MemoryBudgetKB != s.BudgetMB*1024 {
-			t.Fatal("the budget is not what the runner holds")
+			t.Fatalf("%d vCPUs, %d MB: the runner holds %d KB, Size gave %d MB", m.vcpus, m.memMB, r.MemoryBudgetKB, s.BudgetMB)
 		}
-		for id, want := range pinned {
-			l := Languages[id]
-			got := fixed{l.TimeFactor, l.MemoryOverheadMB, l.Processes, l.CompileMemoryMB, l.CompileProcesses, l.CompileExclusive, l.RunExclusive}
-			if got != want {
-				t.Errorf("%d vCPUs, %d MB, %s: %+v, want %+v", m.vcpus, m.memMB, id, got, want)
-			}
-			// A problem's own limits, here a 1 second, 1,024 MB problem.
-			lim := l.LimitsFor(time.Second, 1024)
-			wantCPU := time.Duration(want.timeFactor * float64(time.Second))
-			if lim.CPU != wantCPU || lim.MemoryKB != (1024+want.overheadMB)*1024 {
-				t.Errorf("%d vCPUs, %d MB, %s: limits %+v", m.vcpus, m.memMB, id, lim)
-			}
+		budgets[r.MemoryBudgetKB] = true
+		sig := signature(r)
+		if i == 0 {
+			first = sig
+			continue
 		}
-		if compileCPU != 10*time.Second || compileWall != 20*time.Second || compileFileSizeKB != 64*1024 || DefaultFileSizeKB != 16*1024 {
-			t.Errorf("%d vCPUs, %d MB: compile limits changed", m.vcpus, m.memMB)
+		if sig != first {
+			t.Errorf("%d vCPUs, %d MB: the limits a verdict is judged under differ from the first machine's:\n%s\nwant:\n%s", m.vcpus, m.memMB, sig, first)
 		}
-		// The wall-time formula: two times the CPU limit plus one second.
-		args := strings.Join(RunArgs(RunRequest{Box: 1, Limits: Limits{CPU: 3 * time.Second, MemoryKB: 1024, Processes: 1}, Args: []string{"./main"}}, "/m"), " ")
-		if !strings.Contains(args, "--time=3.000 --wall-time=7.000") {
-			t.Errorf("%d vCPUs, %d MB: wall-time formula changed: %s", m.vcpus, m.memMB, args)
-		}
+	}
+	if len(budgets) < 3 {
+		t.Errorf("the machines of the table gave %d distinct budgets; the test would prove nothing", len(budgets))
+	}
+	// The wall-time formula: two times the CPU limit plus one second.
+	if !strings.Contains(first, "--time=1.000 --wall-time=3.000") {
+		t.Errorf("wall-time formula changed:\n%s", first)
+	}
+	// Pin the values themselves, so a change to both sides still shows.
+	if !strings.Contains(first, "java21 lock:true/true compile:10s,20s,524288,64,65536") ||
+		!strings.Contains(first, "cpp17 lock:true/false compile:10s,20s,524288,16,65536") {
+		t.Errorf("compile lock or compile limits changed:\n%s", first)
 	}
 	// The largest single run is what the sizing formula assumes.
 	if got := Languages["java21"].LimitsFor(time.Second, 1024).MemoryKB / 1024; got != sizing.LargestRunMB {
@@ -76,3 +103,12 @@ func TestWhatAVerdictIsJudgedUnderIsTheSameOnEveryMachine(t *testing.T) {
 		t.Errorf("DefaultMemoryBudgetMB %d differs from sizing.MinBudgetMB %d", DefaultMemoryBudgetMB, sizing.MinBudgetMB)
 	}
 }
+
+func boolWord(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }

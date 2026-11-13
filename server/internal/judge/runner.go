@@ -119,6 +119,29 @@ func (r *Runner) reserve(ctx context.Context, kb int) (func(), error) {
 	}, nil
 }
 
+// NewRunner is the runner podium-judge builds at start: budgetMB comes from
+// package sizing. It is the only thing about the machine the runner holds;
+// the limits below never read it.
+func NewRunner(iso Isolate, budgetMB int) *Runner {
+	return &Runner{Iso: iso, MemoryBudgetKB: budgetMB * 1024}
+}
+
+// compileLimits are the limits of one compile step, the same on every
+// machine.
+func (r *Runner) compileLimits(lang Language) Limits {
+	lim := Limits{CPU: compileCPU, Wall: compileWall, MemoryKB: lang.CompileMemoryMB * 1024,
+		Processes: lang.CompileProcesses, FileSizeKB: compileFileSizeKB}
+	if lang.CompileCPU > 0 {
+		lim.CPU, lim.Wall = lang.CompileCPU, 2*lang.CompileCPU
+	}
+	return lim
+}
+
+// runLimits are the limits of one test run, the same on every machine.
+func (r *Runner) runLimits(lang Language, timeLimit time.Duration, memoryMB int) Limits {
+	return lang.LimitsFor(timeLimit, memoryMB)
+}
+
 // Program is a compiled (or, for interpreted languages, stored) submission
 // ready to run: the files in Dir are copied into each test's box.
 type Program struct {
@@ -167,11 +190,7 @@ func (r *Runner) Compile(ctx context.Context, box int, lang Language, source []b
 		timing.LockWait = time.Since(start)
 		defer r.exclusive.Unlock()
 	}
-	lim := Limits{CPU: compileCPU, Wall: compileWall, MemoryKB: lang.CompileMemoryMB * 1024,
-		Processes: lang.CompileProcesses, FileSizeKB: compileFileSizeKB}
-	if lang.CompileCPU > 0 {
-		lim.CPU, lim.Wall = lang.CompileCPU, 2*lang.CompileCPU
-	}
+	lim := r.compileLimits(lang)
 	release, err := r.reserve(ctx, lim.MemoryKB)
 	if err != nil {
 		return prog, CompileResult{}, err
@@ -245,7 +264,7 @@ func (l Language) LimitsFor(timeLimit time.Duration, memoryMB int) Limits {
 // output.
 func (r *Runner) Execute(ctx context.Context, box int, prog Program, timeLimit time.Duration, memoryMB int, inputPath, outputPath string) (res ExecResult, err error) {
 	lang := prog.Lang
-	lim := lang.LimitsFor(timeLimit, memoryMB)
+	lim := r.runLimits(lang, timeLimit, memoryMB)
 	var timing StepTiming
 	if lang.RunExclusive {
 		start := time.Now()

@@ -198,7 +198,7 @@ func work() error {
 		return err
 	}
 	w := &worker.Worker{
-		Runner:    &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}, MemoryBudgetKB: plan.BudgetMB * 1024},
+		Runner:    judge.NewRunner(judge.Isolate{Path: cfg.IsolatePath}, plan.BudgetMB),
 		Client:    client,
 		Cache:     &worker.Cache{Dir: blobs, Client: client, MaxBytes: int64(cfg.BlobCacheMB) << 20},
 		Compiled:  &worker.CompileCache{Dir: compiled, MaxBytes: worker.DefaultCompileCacheBytes},
