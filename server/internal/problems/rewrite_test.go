@@ -164,12 +164,24 @@ func TestArchivedCopyExportsLikeTheOldProblemAndSurvivesGC(t *testing.T) {
 	}
 	same("after replace", r.export(t, cp.ID))
 
+	// The newest revisions of a problem are kept whole too (stage H). Both
+	// problems count as deleted for each collection below, so that rule
+	// keeps nothing and only the copy's own test rows can keep the files.
+	setDeleted := func(v int) {
+		t.Helper()
+		if _, err := r.s.DB.Exec("UPDATE problems SET deleted = ? WHERE id IN (?, ?)", v, cp.ID, r.old.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// A garbage collection a week later keeps every test file of the copy.
 	later := r.now.Add(8 * 24 * time.Hour)
 	age(t, r.s, r.now.Add(-48*time.Hour))
+	setDeleted(1)
 	if _, err := r.s.Blobs.GC(ctx, r.s.DB, later); err != nil {
 		t.Fatal(err)
 	}
+	setDeleted(0)
 	for _, tc := range oldTests {
 		if !onDisk(r.s, tc.InputSHA) || !onDisk(r.s, tc.OutputSHA) {
 			t.Errorf("test %d of the old problem was collected", tc.Idx)
@@ -178,15 +190,11 @@ func TestArchivedCopyExportsLikeTheOldProblemAndSurvivesGC(t *testing.T) {
 	same("after gc", r.export(t, cp.ID))
 
 	// Control: with the copy's test rows gone the same run collects them,
-	// so the survival above is the copy's doing. The newest revisions of a
-	// problem are kept whole too (stage H), so both problems count as deleted
-	// for the run, which keeps no revision files.
+	// so the survival above is the copy's doing.
 	if _, err := r.s.DB.Exec("DELETE FROM testcases WHERE problem_id = ?", cp.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.s.DB.Exec("UPDATE problems SET deleted = 1 WHERE id IN (?, ?)", cp.ID, r.old.ID); err != nil {
-		t.Fatal(err)
-	}
+	setDeleted(1)
 	if _, err := r.s.Blobs.GC(ctx, r.s.DB, later); err != nil {
 		t.Fatal(err)
 	}
