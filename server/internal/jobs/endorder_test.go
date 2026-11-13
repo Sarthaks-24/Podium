@@ -208,6 +208,11 @@ func TestClaimQueriesUseTheirIndex(t *testing.T) {
 		}
 		rows.Close()
 		all := strings.Join(plan, "\n")
+		for _, d := range plan {
+			if strings.HasPrefix(d, "SCAN") && !strings.Contains(d, "USING") {
+				t.Errorf("mode %d plan scans a table without an index: %s\n%s", mode, d, all)
+			}
+		}
 		if !strings.Contains(all, "jobs_by_state") || strings.Contains(all, "TEMP B-TREE") {
 			t.Errorf("mode %d plan does not walk jobs_by_state without a sort:\n%s", mode, all)
 		}
@@ -216,7 +221,7 @@ func TestClaimQueriesUseTheirIndex(t *testing.T) {
 
 // Many late Runs wait at the head of the index (priority 10), the worst case
 // after a contest ends: the claim skips each one and must stay cheap. The
-// average is logged (go test -v: 2.4 ms on a laptop, 155 ms under the race detector on WSL) and bounded at a second.
+// average is logged (go test -v: 2.4 ms on a laptop, 155 ms under the race detector on WSL). The one-second bound is only a backstop; TestClaimQueriesUseTheirIndex is what proves the plan.
 func TestClaimStaysCheapWithManyLateRuns(t *testing.T) {
 	r := newEndRig(t)
 	r.c.t = r.closeAt.Add(time.Hour)
