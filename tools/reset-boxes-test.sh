@@ -110,7 +110,7 @@ for lanes in 0 17 99; do
   fi
 done
 
-$1 in shell: the default lane count is gone.
+# No second copy of the sizing in shell: the default lane count is gone.
 if grep -Eq 'PODIUM_JUDGE_LANES:-' "$source_script"; then
   fail "reset-boxes still carries its own default lane count"
 else
