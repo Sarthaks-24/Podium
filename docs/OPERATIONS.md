@@ -207,7 +207,7 @@ Listed in the order the server reads them. The testing, dev and production colum
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | Shared token for the judge API, at least 32 characters (`openssl rand -hex 32`). The same value goes in `judge.env`. Production refuses the testing token. Secret. |
 | `PODIUM_LOG_LEVEL` | optional | optional | optional | `info` | `debug`, `info`, `warn` or `error`. |
 | `PODIUM_AI_PROMPT_FILE` | optional | optional | optional | built-in rules | Path to a UTF-8 text file, at most 16 KB, that replaces the AI wizard's authoring rules (see "Custom wizard prompt"). A missing, empty, oversized or non-UTF-8 file stops the server at start-up with a message naming the variable and the path. |
-| `PODIUM_QUEUE_END_ORDER` | optional | optional | optional | `on` | `on` or `off`. On: a Run whose author's own contest time is over (the contest's close plus that student's extension) waits behind every graded submission, and a practice Run is queued at practice priority. No Run is cancelled; each still gets its result, later. Off: Runs queue as they did before v2.1.0. Leave it on; it exists so a test session can compare the two orders. |
+| `PODIUM_QUEUE_END_ORDER` | optional | optional | optional | `on` | `on` or `off`. On: a Run whose author's own contest time is over (the contest's close plus that student's extension) waits behind every graded submission, and a practice Run is queued at practice priority. No Run is cancelled; each still gets its result, later. Off: Runs queue as they did before v2.1.0 (new practice Runs go back to the Run priority; practice Runs already queued keep their practice priority until they are judged). Leave it on; it exists so a test session can compare the two orders. |
 
 The AI wizard's provider key is deliberately not a variable: an admin pastes it in the web app and the server holds it in memory only (see "AI wizard keys").
 
@@ -304,7 +304,7 @@ A 2 GB machine with 2 vCPUs is exactly today's judge: two lanes, a 1,024 MB budg
 
 **What never follows the machine.** The lock that lets one g++, javac or java run at a time, each language's time factor and memory overhead, the compile limits, the wall-time formula and a problem's own limits are the same on every machine. A resize must not change the conditions a verdict is judged under; only the number of lanes and the memory they share change.
 
-**Values set by hand win.** A `judge.env` made from an older example has `PODIUM_JUDGE_LANES=2` in it, which pins two lanes whatever the machine; empty the value to let the judge follow the vCPUs. `PODIUM_JUDGE_LANES` and `PODIUM_JUDGE_MEMORY_BUDGET_MB` replace the formula for that one number (the caps follow the budget and the lane count). The judge refuses to start, naming the variable, the value and the limit, when a lane count is above the machine's vCPUs or a budget is above half the memory less 196 MB. If the cap on the slice is lower than the budget plus 76 MB (for example the pre-start step could not set it), the worker refuses to start with "the sandbox slice allows N MB but this judge needs M MB".
+**Values set by hand win.** A hand-set budget under 1,024 MB is refused (the smallest `Size` gives; a smaller slice cap could let the slice kill a correct Java run). A `judge.env` made from an older example has `PODIUM_JUDGE_LANES=2` in it, which pins two lanes whatever the machine; empty the value to let the judge follow the vCPUs. `PODIUM_JUDGE_LANES` and `PODIUM_JUDGE_MEMORY_BUDGET_MB` replace the formula for that one number (the caps follow the budget and the lane count). The judge refuses to start, naming the variable, the value and the limit, when a lane count is above the machine's vCPUs or a budget is above half the memory less 196 MB. If the cap on the slice is lower than the budget plus 76 MB (for example the pre-start step could not set it), the worker refuses to start with "the sandbox slice allows N MB but this judge needs M MB".
 
 **The start line.** `journalctl -u podium-judge -n 50 | grep "starting podium-judge"` shows what the judge chose: `lanes`, `budget_mb`, `sandbox_cap_mb` (the cap it found on the slice, or `none` or `unknown`), `vcpus`, `memory_mb` (rounded as above) and `cpu_model`. `podium-judge size` prints the numbers for the settings in its own environment (the pre-start step runs it with `judge.env` loaded) and changes nothing.
 
@@ -318,6 +318,10 @@ Calibration of the production machine (Google Cloud `e2-standard-2`, 2 vCPU, 8 G
 | Java 21 | 736 | 52 | 71 | 697 | 43 |
 | Python 3 | 49 | 31 | 55 | 1218 | 110 |
 | JavaScript (Node 22) | none | 58 | 80 | 682 | 129 |
+
+**Containers and small machines.** The sizing reads the machine's memory from `/proc/meminfo`, not a container's limit: in a container (Docker, a cgroup memory limit), set `PODIUM_JUDGE_MEMORY_BUDGET_MB` by hand, within the limit. A machine with less than 2 GB keeps today's 1,024 MB budget and 1,100 MB cap, which can exceed its memory, as before.
+
+**Upgrading.** A `judge.env` with `PODIUM_JUDGE_LANES` above the machine's vCPUs (for example 2 on a 1 vCPU machine) used to start and is now refused at start, naming the variable and the vCPU count; lower it or empty it.
 
 The 8 GB budget of 3,900 MB and the larger sizes are not measured under load on a real machine yet; the numbers above come from the formula.
 
