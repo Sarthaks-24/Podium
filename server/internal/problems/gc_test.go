@@ -126,6 +126,13 @@ func TestGCKeepsEverythingReferenced(t *testing.T) {
 	if _, err := s.DB.Exec("UPDATE jobs SET created_at = ?", now.Add(-8*24*time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
+	// The problem's revision also names the programs now (stage H) and a
+	// problem's newest revisions are kept whole, so for this check the
+	// revision stops naming them: only the job's pin is under test here.
+	if res, _ := s.Blobs.GC(ctx, s.DB, now); res.Rows != 0 || !onDisk(s, refSHA) {
+		t.Fatalf("the programs a kept revision names were collected: %+v", res)
+	}
+	rewriteRevision(t, s, "UPDATE problem_revisions SET reference_sha = '', brute_sha = '', validator_sha = '', generator_sha = '', checker_sha = ''")
 	if res, _ := s.Blobs.GC(ctx, s.DB, now); res.Rows == 0 || onDisk(s, refSHA) || hasRow(t, s, refSHA) {
 		t.Errorf("a week-old job's program kept: %+v", res)
 	}

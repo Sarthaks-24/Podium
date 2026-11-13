@@ -371,7 +371,7 @@ func (k GenerateKind) Finish(ctx context.Context, tx *sql.Tx, job *jobs.Job) err
 	if sm.Applied == 0 {
 		return nil
 	}
-	svc := Service{DB: nil, Now: k.Now}
+	svc := Service{DB: nil, Now: k.Now, Blobs: k.Store}
 	if err := svc.save(ctx, tx, p, RevisionNote{Reason: "Outputs generated from the reference solution."}); err != nil {
 		return err
 	}

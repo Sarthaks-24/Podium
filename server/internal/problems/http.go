@@ -883,17 +883,90 @@ func (d *Handlers) ReplaceWithRewrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Log.Info("problem replaced by an AI rewrite", "by", u.ID, "problem_id", p.ID, "draft_id", req.DraftID, "copy_id", kept.ID)
-	out := map[string]any{"problem_id": p.ID, "copy_id": kept.ID, "copy_title": kept.Title, "validation_queued": false, "not_ready": []string{}}
-	if _, err := d.Problems.RequestValidation(r.Context(), id, u.ID); err == nil {
-		out["validation_queued"] = true
-	} else {
-		var nr *NotReadyError
-		if errors.As(err, &nr) {
-			out["not_ready"] = nr.Problems
-		} else {
-			d.Log.Warn("replace: validation not queued", "problem_id", id, "err", err)
-		}
+	out := map[string]any{"problem_id": p.ID, "copy_id": kept.ID, "copy_title": kept.Title}
+	out["validation_queued"], out["not_ready"] = d.queueValidation(r.Context(), id, u.ID)
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// queueValidation queues Validate on a problem a request just changed. It
+// says whether that worked and, when the content cannot be validated yet,
+// what is missing; a fault is logged and reads as not queued.
+func (d *Handlers) queueValidation(ctx context.Context, id, by int64) (queued bool, notReady []string) {
+	_, err := d.Problems.RequestValidation(ctx, id, by)
+	var nr *NotReadyError
+	switch {
+	case err == nil:
+		return true, []string{}
+	case errors.As(err, &nr):
+		return false, nr.Problems
+	default:
+		d.Log.Warn("validation not queued", "problem_id", id, "err", err)
+		return false, []string{}
 	}
+}
+
+// maxHistory bounds the history list.
+const maxHistory = 50
+
+type historyEntryJSON struct {
+	ID           int64  `json:"id"`
+	Rev          int    `json:"rev"`
+	CreatedAt    int64  `json:"created_at"`
+	CreatedBy    int64  `json:"created_by"`
+	Reason       string `json:"reason"`
+	Current      bool   `json:"current"`
+	CanBringBack bool   `json:"can_bring_back"`
+}
+
+// ListRevisions answers a problem's history: its newest revisions, newest
+// first, each with whether it can be brought back.
+func (d *Handlers) ListRevisions(w http.ResponseWriter, r *http.Request) {
+	id, ok := problemID(w, r)
+	if !ok {
+		return
+	}
+	p, err := d.Problems.Get(r.Context(), id)
+	if err == nil && p.Deleted {
+		err = ErrDeleted
+	}
+	if err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	list, total, err := d.Problems.History(r.Context(), id, maxHistory)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	out := make([]historyEntryJSON, 0, len(list))
+	for _, e := range list {
+		out = append(out, historyEntryJSON{e.Revision.ID, e.Revision.Rev, e.Revision.CreatedAt.UnixMilli(), e.Revision.CreatedBy,
+			e.Revision.Reason, e.Current, e.CanBringBack})
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"revisions": out, "total": total})
+}
+
+// BringBack writes a revision in the path back onto the problem and queues
+// Validate on it (stage H).
+func (d *Handlers) BringBack(w http.ResponseWriter, r *http.Request) {
+	id, ok := problemID(w, r)
+	if !ok {
+		return
+	}
+	revID, err := strconv.ParseInt(r.PathValue("revision"), 10, 64)
+	if err != nil || revID <= 0 {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such version.")
+		return
+	}
+	u := auth.UserFrom(r.Context())
+	p, rev, err := d.Problems.BringBack(r.Context(), id, revID, u.ID)
+	if err != nil {
+		d.problemError(w, r, err)
+		return
+	}
+	d.Log.Info("version brought back", "by", u.ID, "problem_id", p.ID, "from_revision_id", revID, "revision_id", rev.ID)
+	out := map[string]any{"problem_id": p.ID, "revision_id": rev.ID, "rev": rev.Rev}
+	out["validation_queued"], out["not_ready"] = d.queueValidation(r.Context(), id, u.ID)
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 

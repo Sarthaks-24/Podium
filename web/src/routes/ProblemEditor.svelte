@@ -32,6 +32,7 @@
   import CheckingSection from '../components/problem/CheckingSection.svelte';
   import AddToContestDialog from '../components/problem/AddToContestDialog.svelte';
   import AiEditPanel from '../components/problem/AiEditPanel.svelte';
+  import HistoryPanel from '../components/problem/HistoryPanel.svelte';
   import RewriteBanner from '../components/problem/RewriteBanner.svelte';
   import { draftStorage } from '../lib/drafts';
   import { recallRewrite, rewriteHref } from '../lib/rewrite';
@@ -114,6 +115,7 @@
   let chained = $state(false);
   let regenOpen = $state(false);
   let aiEditOpen = $state(false);
+  let historyOpen = $state(false);
   /** The problem this draft is a rewrite of, from the wizard run that made it; null for any other problem. */
   let rewriteLink = $state<RewriteLink | null>(null);
   let replaceOpen = $state(false);
@@ -569,6 +571,7 @@
     { label: 'Download pack', onselect: downloadPack },
     ...(problem && !problem.archived ? [{ label: 'Edit with AI', onselect: openAiEdit }] : []),
     ...(problem && !problem.archived ? [{ label: 'Rewrite with AI', onselect: openRewrite }] : []),
+    ...(problem ? [{ label: 'Version history', onselect: openHistory }] : []),
     ...((problem?.tests.length ?? 0) > 0 ? [{ label: 'Regenerate all outputs', onselect: () => (regenOpen = true) }] : []),
     ...(problem && !problem.archived ? [{ label: 'Archive', onselect: () => (archiveOpen = true), danger: true }] : []),
     ...(problem?.archived ? [{ label: 'Restore', onselect: () => (restoreOpen = true) }] : []),
@@ -589,6 +592,23 @@
     aiEditOpen = false;
     await tick();
     document.querySelector<HTMLElement>('[aria-controls="problem-menu"]')?.focus();
+  }
+
+  async function openHistory() {
+    historyOpen = true;
+    await tick();
+    document.getElementById('history-heading')?.focus();
+  }
+
+  async function closeHistory() {
+    historyOpen = false;
+    await tick();
+    document.querySelector<HTMLElement>('[aria-controls="problem-menu"]')?.focus();
+  }
+
+  async function broughtBack() {
+    historyOpen = false;
+    await load();
   }
 
   async function aiEditAccepted() {
@@ -663,6 +683,10 @@
 
     {#if aiEditOpen}
       <AiEditPanel problemId={problem.id} {dirty} origin={problem.origin} onaccepted={aiEditAccepted} onclose={closeAiEdit} />
+    {/if}
+
+    {#if historyOpen}
+      <HistoryPanel problemId={problem.id} {dirty} onbrought={broughtBack} onclose={closeHistory} />
     {/if}
 
     <EditorBar

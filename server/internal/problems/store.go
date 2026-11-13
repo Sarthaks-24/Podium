@@ -490,7 +490,7 @@ func (s *Service) insert(ctx context.Context, tx *sql.Tx, p *Problem, note Revis
 	if err := s.writeChildren(ctx, tx, p); err != nil {
 		return err
 	}
-	_, _, err = writeRevision(ctx, tx, p, note, now)
+	_, _, err = writeRevision(ctx, tx, s.Blobs, p, note, now)
 	return err
 }
 
@@ -728,7 +728,7 @@ func (s *Service) save(ctx context.Context, tx *sql.Tx, p *Problem, note Revisio
 	if err := s.writeChildren(ctx, tx, p); err != nil {
 		return err
 	}
-	_, _, err = writeRevision(ctx, tx, p, note, p.UpdatedAt)
+	_, _, err = writeRevision(ctx, tx, s.Blobs, p, note, p.UpdatedAt)
 	return err
 }
 

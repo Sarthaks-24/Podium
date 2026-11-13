@@ -99,14 +99,9 @@ func (s *Service) ReplaceWithRewrite(ctx context.Context, oldID, draftID int64, 
 	if len(live) > 0 {
 		return nil, nil, refuse("contest_running", copyRewriteRunning, old.Title)
 	}
-	// Only students count: an organiser's own Try as a student is not use.
-	var used bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM submissions s JOIN users u ON u.id = s.user_id
-			WHERE s.problem_id = ? AND u.role = 'student')
-		OR EXISTS (SELECT 1 FROM drafts d JOIN users u ON u.id = d.user_id WHERE d.problem_id = ? AND u.role = 'student')`, oldID, oldID).Scan(&used); err != nil {
+	if used, err := studentCode(ctx, tx, oldID); err != nil {
 		return nil, nil, err
-	}
-	if used {
+	} else if used {
 		return nil, nil, refuse("in_use", copyRewriteInUse, old.Title)
 	}
 	// A proof that finds a changed problem drops its result, so the replace

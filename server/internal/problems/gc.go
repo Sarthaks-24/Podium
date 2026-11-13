@@ -39,7 +39,8 @@ type GCResult struct {
 // the source of any submission or run, and not named in the payload of a
 // job that is waiting, running, or less than GCRecentJobs old. Problem
 // sources, checkers, generators and custom inputs are stored again
-// whenever a job needs them, so only those jobs pin them. Blobs recorded
+// whenever a job needs them, so only those jobs and the kept revisions pin
+// them. Blobs recorded
 // in the last GCGrace are kept.
 //
 // The removal of each batch, rows and files, happens inside one write
@@ -54,18 +55,29 @@ func (b Blobs) GC(ctx context.Context, db *sql.DB, now time.Time) (GCResult, err
 	if err != nil {
 		return res, err
 	}
-	// The tests of a revision a contest pins or a submission
-	// was judged against are kept: they are the record of what judged it.
-	// Other revisions' files go like any unused blob.
-	rows, err := db.QueryContext(ctx, `WITH pinned_revisions (revision_id) AS (
+	// The program and test files of a revision a contest pins or a submission
+	// was judged against are kept: they are the record of what judged it. So
+	// are those of the newest GCKeepRevisions revisions of each problem that is
+	// not deleted, which are the versions an organiser can bring back. Other
+	// revisions' files go like any unused blob.
+	rows, err := db.QueryContext(ctx, `WITH kept_revisions (revision_id) AS (
 			SELECT revision_id FROM contest_problems WHERE revision_id IS NOT NULL
-			UNION SELECT revision_id FROM submissions WHERE revision_id IS NOT NULL)
+			UNION SELECT revision_id FROM submissions WHERE revision_id IS NOT NULL
+			UNION SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY problem_id ORDER BY rev DESC) AS n
+				FROM problem_revisions WHERE problem_id IN (SELECT id FROM problems WHERE deleted = 0)) WHERE n <= ?),
+		kept_files (sha) AS (
+			SELECT input_sha FROM revision_tests WHERE revision_id IN (SELECT revision_id FROM kept_revisions)
+			UNION SELECT output_sha FROM revision_tests WHERE output_sha IS NOT NULL AND revision_id IN (SELECT revision_id FROM kept_revisions)
+			UNION SELECT reference_sha FROM problem_revisions WHERE id IN (SELECT revision_id FROM kept_revisions)
+			UNION SELECT brute_sha FROM problem_revisions WHERE id IN (SELECT revision_id FROM kept_revisions)
+			UNION SELECT validator_sha FROM problem_revisions WHERE id IN (SELECT revision_id FROM kept_revisions)
+			UNION SELECT generator_sha FROM problem_revisions WHERE id IN (SELECT revision_id FROM kept_revisions)
+			UNION SELECT checker_sha FROM problem_revisions WHERE id IN (SELECT revision_id FROM kept_revisions))
 		SELECT sha FROM blobs WHERE created_at < ?
 		EXCEPT SELECT input_sha FROM testcases
 		EXCEPT SELECT output_sha FROM testcases WHERE output_sha IS NOT NULL
 		EXCEPT SELECT source_sha FROM submissions
-		EXCEPT SELECT input_sha FROM revision_tests WHERE revision_id IN (SELECT revision_id FROM pinned_revisions)
-		EXCEPT SELECT output_sha FROM revision_tests WHERE output_sha IS NOT NULL AND revision_id IN (SELECT revision_id FROM pinned_revisions)`, cutoff)
+		EXCEPT SELECT sha FROM kept_files`, GCKeepRevisions, cutoff)
 	if err != nil {
 		return res, fmt.Errorf("blob gc: %w", err)
 	}

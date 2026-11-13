@@ -187,6 +187,8 @@ func New(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/admin/problems/{id}/export", organiser(bank.ExportProblem))
 	mux.HandleFunc("POST /api/admin/problems/{id}/validate", organiser(bank.ValidateProblem))
 	mux.HandleFunc("POST /api/admin/problems/{id}/replace-with-rewrite", organiser(bank.ReplaceWithRewrite))
+	mux.HandleFunc("GET /api/admin/problems/{id}/revisions", organiser(bank.ListRevisions))
+	mux.HandleFunc("POST /api/admin/problems/{id}/revisions/{revision}/bring-back", organiser(bank.BringBack))
 	mux.HandleFunc("GET /api/admin/problems/{id}/validation", organiser(bank.GetValidation))
 	mux.HandleFunc("POST /api/admin/problems/{id}/generate", organiser(bank.GenerateOutputs))
 	mux.HandleFunc("GET /api/admin/problems/{id}/generation", organiser(bank.GetGeneration))
