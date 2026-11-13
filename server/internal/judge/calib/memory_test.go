@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Sarthaks-24/podium/internal/judge"
+	"github.com/Sarthaks-24/podium/internal/sizing"
 )
 
 const (
@@ -172,5 +173,75 @@ func TestJavaThreadBombLeavesTheBoxClean(t *testing.T) {
 	}
 	if next.Got != judge.OK {
 		t.Errorf("the next correct program got %s (%s)", next.Got, next.Detail)
+	}
+}
+
+// The opening check of the test VM session (V203-93): under the larger cap,
+// a correct Java program on the largest memory limit runs in one lane while
+// the other lane runs memory bombs for as long as it takes. The Java
+// program is accepted, every bomb is stopped at its own limit, and the
+// slice's own limit is never hit.
+func TestJavaOnTheLargestLimitBesideMemoryBombs(t *testing.T) {
+	capMB := bigCap(t)
+	r := runner(t)
+	// The budget the worker would use under this cap, so both boxes run
+	// at once; the default budget would make the Java run wait alone.
+	r.MemoryBudgetKB = (capMB - sizing.SlackMB) * 1024
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	javaBox, bombBox := testBox+2, testBox+3
+	for _, b := range []int{javaBox, bombBox} {
+		if err := r.Iso.Cleanup(ctx, b); err != nil {
+			t.Fatalf("clean box %d: %v", b, err)
+		}
+	}
+	java, javaDir := compileFor(t, r, javaBox, "java_large.java", "java21")
+	bomb, bombDir := compileFor(t, r, bombBox, "malloc_2g.cpp", "cpp17")
+	oomBefore, killBefore := sliceEvents(t)
+
+	javaDone := make(chan struct{})
+	bombs, bombErr := 0, error(nil)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			// 256 MB and a long time limit: beside a JVM holding over
+			// 1 GB a small host fills memory slowly, and a bomb that
+			// runs out of time first would say nothing about memory.
+			res, err := r.Execute(ctx, bombBox, bomb, 5*time.Second, 256, filepath.Join(bombDir, "in"), filepath.Join(bombDir, "out"))
+			if err == nil && res.Verdict != judge.MemoryLimit {
+				err = fmt.Errorf("bomb %d got %s, want a memory limit verdict", bombs+1, res.Verdict)
+			}
+			if err != nil {
+				bombErr = err
+				return
+			}
+			bombs++
+			select {
+			case <-javaDone:
+				return
+			default:
+			}
+		}
+	}()
+	res, err := r.Execute(ctx, javaBox, java, 5*time.Second, 1024, filepath.Join(javaDir, "in"), filepath.Join(javaDir, "out"))
+	close(javaDone)
+	wg.Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Java: %s, %d MB used; %d bombs beside it", res.Verdict, res.Meta.MemoryKB()/1024, bombs)
+	if res.Verdict != judge.OK {
+		t.Errorf("the correct Java program got %s (%s)", res.Verdict, res.Stderr)
+	}
+	if used := res.Meta.MemoryKB() / 1024; used <= 1100 {
+		t.Errorf("the Java program used only %d MB; it should hold more than the old cap", used)
+	}
+	if bombErr != nil {
+		t.Error(bombErr)
+	}
+	if oomAfter, killAfter := sliceEvents(t); oomAfter != oomBefore || killAfter != killBefore {
+		t.Errorf("isolate.slice own counters moved: oom %d to %d, oom_kill %d to %d; the slice's limit was hit", oomBefore, oomAfter, killBefore, killAfter)
 	}
 }
