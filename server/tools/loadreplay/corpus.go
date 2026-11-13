@@ -57,6 +57,23 @@ func LoadCorpus(root, manifest string) (*Corpus, error) {
 	return &c, nil
 }
 
+// Only returns the corpus cut down to the programs with these ids.
+func (c *Corpus) Only(ids []string) (*Corpus, error) {
+	out := &Corpus{}
+	for _, id := range ids {
+		found := false
+		for _, p := range c.Programs {
+			if p.ID == id {
+				out.Programs, found = append(out.Programs, p), true
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("no program %q in the corpus", id)
+		}
+	}
+	return out, nil
+}
+
 // Item is one request of the replay.
 type Item struct {
 	Seq     int

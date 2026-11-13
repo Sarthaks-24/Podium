@@ -36,11 +36,17 @@ func main() {
 		timeout  = flag.Duration("timeout", 15*time.Minute, "give up on one request after this long")
 		out      = flag.String("out", "", "directory for verdicts.jsonl")
 		list     = flag.Bool("list", false, "print the request list and stop; no server needed")
+		only     = flag.String("only", "", "send only these program ids, comma separated (for checking one program; a comparison run sends them all)")
 	)
 	flag.Parse()
 	c, err := LoadCorpus(*root, filepath.Join(*root, filepath.FromSlash(*manifest)))
 	if err != nil {
 		fatal(err)
+	}
+	if *only != "" {
+		if c, err = c.Only(strings.Split(*only, ",")); err != nil {
+			fatal(err)
+		}
 	}
 	items := c.Sequence(*rounds)
 	total := time.Duration(*minutes * float64(time.Minute))

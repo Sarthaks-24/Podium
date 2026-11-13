@@ -10,10 +10,11 @@ int main() {
     for (auto &x : v) scanf("%lld", &x);
     long long best = 0;
     for (int i = 0; i < n; i++) {
-        long long next = -1;
+        bool found = false;
+        long long next = 0;
         for (int j = 0; j < n; j++)
-            if (v[j] > v[i] && (next < 0 || v[j] < next)) next = v[j];
-        if (next >= 0 && next - v[i] > best) best = next - v[i];
+            if (v[j] > v[i] && (!found || v[j] < next)) next = v[j], found = true;
+        if (found && next - v[i] > best) best = next - v[i];
     }
     printf("%lld\n", best);
 }

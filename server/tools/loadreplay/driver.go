@@ -217,7 +217,7 @@ func (d *Driver) one(ctx context.Context, s *session, ct *contest, it Item, rush
 		Rush: rush, Expected: p.Expected[it.Kind], SubmittedMS: time.Now().UnixMilli()}
 	deadline := time.Now().Add(d.Timeout)
 	path := fmt.Sprintf("/api/contests/%s/problems/%s/%s", ct.slug, ct.labels[p.Problem], it.Kind)
-	body := map[string]any{"language": p.Language, "source": p.Source}
+	body := map[string]any{"language": p.Language, "source": uniqueSource(p, it.Seq)}
 	if it.Kind == "submit" {
 		body["client_key"] = fmt.Sprintf("replay-%d", it.Seq)
 		body["typed_chars"] = 300
@@ -262,6 +262,9 @@ func (d *Driver) one(ctx context.Context, s *session, ct *contest, it Item, rush
 		if err == nil && code == 200 {
 			if v, ms, final, detail := verdictOf(it.Kind, b); final {
 				rec.Verdict, rec.TimeMS, rec.Detail, rec.DoneMS = v, ms, detail, time.Now().UnixMilli()
+				if v != rec.Expected && detail == "" {
+					rec.Detail = string(b[:min(len(b), 1500)])
+				}
 				return rec
 			}
 		}
@@ -270,6 +273,18 @@ func (d *Driver) one(ctx context.Context, s *session, ct *contest, it Item, rush
 			return rec
 		}
 	}
+}
+
+// uniqueSource ends the program with a comment naming the request, so that
+// no two requests share a compiled binary in the judge's compile cache, as
+// with the slightly different programs of real students. Every request
+// compiles, which is what a compile-time comparison needs.
+func uniqueSource(p *Program, seq int) string {
+	mark := "// replay %d\n"
+	if p.Language == "python3" {
+		mark = "# replay %d\n"
+	}
+	return p.Source + "\n" + fmt.Sprintf(mark, seq)
 }
 
 func sleep(ctx context.Context, d time.Duration) bool {

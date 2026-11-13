@@ -102,3 +102,34 @@ The acceptance target is the 2 GB VM itself (PLAN.md M7: API p95 under 300 ms at
 - `summarize.py` writes `results/console-*.csv` (one row per 5 s: queued and leased jobs, judged per minute, p95 wait for a submission, event streams, database pool waits, heap) and prints the peak queue, the judge's throughput while the queue was long, and how many seconds after the end the queue drained.
 - Record the peak, the drain time and the throughput the run measured in a new dated section of the calibration notes; the docs quote only those numbers. A fixed-start spike of S submissions a minute for T minutes against a judge doing J a minute builds a queue of about (S - J) × T and drains in about that divided by J.
 - The metrics route the monitor reads, `GET /api/admin/metrics`, is described in `docs/OPERATIONS.md`, "Metrics".
+
+## The replay corpus and the comparison (v2.1.0)
+
+The k6 script draws programs at random, so two runs judge different work. For comparing one setting against another (the test VM session of v2.1.0) there is a fixed corpus instead.
+
+| Part | What it is |
+|---|---|
+| `corpus/corpus.json` | 17 programs from the packs in `problems/` and the files in `corpus/`. One round is 30 Runs and 21 submissions (59 percent Runs; the measured mix was 302 of 520 queued jobs). Each program has the expected verdict of a Run (examples only) and of a submission beside it |
+| `server/tools/loadreplay` | Sends rounds of the corpus in a fixed order and at fixed moments (steady, then 3 times as dense in the last `-burst` minutes), waits for every verdict, writes `verdicts.jsonl`, prints the verdicts per program and exits 1 if any differs from the expected one. No k6 |
+| `server/tools/loadcompare` | Reads the runs of two arms and prints pass or fail for J0, J1, J5 or J6 against thresholds written in `compare.go` |
+
+What the corpus holds: C++ that includes `<bits/stdc++.h>` (three programs, "heavy"), C++ without it, wrong answers (an `int` overflow that passes the examples, a constant), a compile error, a run error, brute-force time-outs (C++ on `largest-gap`, Python on `pair-with-sum`), Node and Java, and four programs written to use a set share of their limit (`apb-cpp-near55`, `apb-cpp-near80`, `as-java-near55`, `as-java-near80`: a spin of CPU time before the real answer). The near-limit shares depend on the machine; confirm them on the test VM before relying on the 50 to 90 percent target.
+
+```sh
+# Linux builds (the stack of the section above, plus the two tools)
+cd server && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/linux/ ./tools/loadreplay ./tools/loadcompare && cd ..
+
+# Seed once per stack (the packs, validated on the judge), then replay.
+python3 -I tools/loadtest/seed.py --base http://127.0.0.1:18080 --users 1
+server/bin/linux/loadreplay -base http://127.0.0.1:18080 -rounds 2 -minutes 3 -burst 1 -tail 20s -out run-a1
+```
+
+`-rounds` sets how much work there is, `-minutes` and `-burst` how it is spread; the same flags give the same list at the same moments. The contest closes `-tail` before the end, so the last requests are practice: submissions that are not graded and Runs of students whose time is over (J0 puts those behind graded work). `-list` prints the list without a server; `-only id,id` sends a few programs for checking one.
+
+For the comparison, a run is a directory with three files: `verdicts.jsonl` (the replay), `judge.log` (the judge's JSON log lines, from `journalctl -u podium-judge -o cat`, or the stack's log file; other lines are ignored) and optionally `sampler.log` (JSON lines with a cumulative `slice_oom_kills`). The timing line of a job joins to its request by `kind` and `subject_id`. Run the A/A pair first, then three runs of each arm:
+
+```sh
+server/bin/linux/loadcompare -change j5 -aa aa1,aa2 -base off1,off2,off3 -test on1,on2,on3
+```
+
+It prints PASS, FAIL or SKIP per check and `RESULT J5: ships` or `does not ship`; the exit status is 1 when it does not ship. A verdict that moved, or a program that is missing, fails every change. The thresholds are in `server/tools/loadcompare/compare.go`: change one only with a dated record in the decision log.

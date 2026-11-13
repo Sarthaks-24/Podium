@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -370,5 +371,61 @@ func TestSummarizeAndWrite(t *testing.T) {
 	}
 	if err := writeRecords(filepath.Join(dir, "verdicts.jsonl", "x"), recs); err == nil {
 		t.Error("an impossible directory was accepted")
+	}
+}
+
+func TestOnly(t *testing.T) {
+	c := loadRepoCorpus(t)
+	o, err := c.Only([]string{"apb-ce", "lg-std-ac"})
+	if err != nil || len(o.Programs) != 2 || o.Programs[0].ID != "apb-ce" {
+		t.Fatalf("%v %+v", err, o)
+	}
+	if _, err := c.Only([]string{"nope"}); err == nil {
+		t.Error("an unknown id was accepted")
+	}
+}
+
+func TestUniqueSource(t *testing.T) {
+	cpp := &Program{Language: "cpp17", Source: "int main(){}\n"}
+	py := &Program{Language: "python3", Source: "print(1)\n"}
+	if uniqueSource(cpp, 1) == uniqueSource(cpp, 2) || uniqueSource(cpp, 1) != uniqueSource(cpp, 1) {
+		t.Error("sources must differ per request and repeat for one request")
+	}
+	if !strings.HasPrefix(uniqueSource(cpp, 1), cpp.Source) || !strings.HasSuffix(uniqueSource(cpp, 7), "// replay 7\n") {
+		t.Errorf("cpp: %q", uniqueSource(cpp, 7))
+	}
+	if !strings.HasSuffix(uniqueSource(py, 7), "# replay 7\n") {
+		t.Errorf("python: %q", uniqueSource(py, 7))
+	}
+}
+
+// The driver sends the unique source: two requests of one program reach
+// the server with different text.
+func TestDriverSendsUniqueSources(t *testing.T) {
+	var mu sync.Mutex
+	seen := map[string]bool{}
+	f := &fakeServer{reads: map[string]int{}, verdicts: map[int64]string{}}
+	f.refused.Store(true)
+	h := f.handler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/run") {
+			b, _ := io.ReadAll(r.Body)
+			var body struct{ Source string }
+			json.Unmarshal(b, &body)
+			mu.Lock()
+			seen[body.Source] = true
+			mu.Unlock()
+			r.Body = io.NopCloser(bytes.NewReader(b))
+		}
+		h.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	c := &Corpus{Programs: []Program{{ID: "ok", Problem: "a-plus-b", Language: "cpp17", Source: "// ok\n", Runs: 3, Expected: map[string]string{"run": "AC"}}}}
+	d := &Driver{Base: srv.URL, Origin: "o", Students: 1, Poll: 5 * time.Millisecond, Timeout: 20 * time.Second}
+	if _, err := d.Replay(context.Background(), c, c.Sequence(1), []time.Duration{0, 0, 0}, 3, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 3 {
+		t.Errorf("%d distinct sources for 3 requests", len(seen))
 	}
 }

@@ -3,13 +3,13 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StreamTokenizer;
 
-// Spins for 700 ms before answering. The limit is 2 s for Java (factor 2) and
+// Spins for 1100 ms before answering. The limit is 2 s for Java (factor 2) and
 // the JVM's own start-up adds CPU time, so the total is meant to land between
 // 50 and 90 percent of it. The spin is by wall clock, so on a loaded machine
 // it uses less CPU, never more.
 public class Main {
     public static void main(String[] args) throws IOException {
-        long end = System.nanoTime() + 700L * 1_000_000L;
+        long end = System.nanoTime() + 1100L * 1_000_000L;
         while (System.nanoTime() < end) {}
         StreamTokenizer in = new StreamTokenizer(new BufferedReader(new InputStreamReader(System.in)));
         in.nextToken();
