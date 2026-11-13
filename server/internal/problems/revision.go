@@ -29,12 +29,15 @@ type RevisionNote struct {
 	Reason string
 }
 
-// RevisionSubtask is a subtask as a revision records it.
+// RevisionSubtask is a subtask as a revision records it. GeneratorArgs is nil
+// in a revision made before v2.1.0, which did not record them, and never nil
+// in one made since.
 type RevisionSubtask struct {
-	Idx    int    `json:"idx"`
-	Points int    `json:"points"`
-	Title  string `json:"title"`
-	Tests  string `json:"tests"`
+	Idx           int      `json:"idx"`
+	Points        int      `json:"points"`
+	Title         string   `json:"title"`
+	Tests         string   `json:"tests"`
+	GeneratorArgs []string `json:"generator_args"`
 }
 
 // Revision is one immutable version of a problem.
@@ -106,9 +109,19 @@ func revisionOf(p *Problem) Revision {
 		r.CheckerSHA = SHA([]byte(p.CheckerSource))
 	}
 	for _, st := range p.Subtasks {
-		r.Subtasks = append(r.Subtasks, RevisionSubtask{st.Idx, st.Points, st.Title, st.Tests})
+		r.Subtasks = append(r.Subtasks, RevisionSubtask{st.Idx, st.Points, st.Title, st.Tests, append([]string{}, st.GeneratorArgs...)})
 	}
 	return r
+}
+
+// subtasksEqual compares two revisions' subtasks. Generator arguments are
+// compared only when both revisions recorded them, so a problem whose newest
+// revision predates v2.1.0 is not reported as changed.
+func subtasksEqual(a, b []RevisionSubtask) bool {
+	return slices.EqualFunc(a, b, func(x, y RevisionSubtask) bool {
+		return x.Idx == y.Idx && x.Points == y.Points && x.Title == y.Title && x.Tests == y.Tests &&
+			(x.GeneratorArgs == nil || y.GeneratorArgs == nil || slices.Equal(x.GeneratorArgs, y.GeneratorArgs))
+	})
 }
 
 // sameRevision reports whether two revisions record the same problem:
@@ -121,7 +134,7 @@ func revisionOf(p *Problem) Revision {
 func sameRevision(a, b Revision) bool {
 	return a.ContentHash == b.ContentHash && a.StatementRecorded && b.StatementRecorded &&
 		a.Title == b.Title && a.Statement == b.Statement && a.Generator == b.Generator &&
-		slices.Equal(a.Subtasks, b.Subtasks) && maps.Equal(startersOrEmpty(a.Starters), startersOrEmpty(b.Starters)) &&
+		subtasksEqual(a.Subtasks, b.Subtasks) && maps.Equal(startersOrEmpty(a.Starters), startersOrEmpty(b.Starters)) &&
 		modeOrWhole(a.Mode) == modeOrWhole(b.Mode) && maps.Equal(startersOrEmpty(a.LockedTop), startersOrEmpty(b.LockedTop)) &&
 		maps.Equal(startersOrEmpty(a.LockedBottom), startersOrEmpty(b.LockedBottom))
 }
@@ -129,11 +142,6 @@ func sameRevision(a, b Revision) bool {
 // StatementChanged reports whether the title or statement differ.
 func StatementChanged(a, b *Revision) bool {
 	return a.Title != b.Title || a.StatementHash != b.StatementHash || a.StatementRecorded != b.StatementRecorded
-}
-
-type txQueryer interface {
-	queryer
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 const revisionColumns = `id, problem_id, rev, content_hash, statement_hash, title, statement_md, statement_recorded,
@@ -210,8 +218,9 @@ func latestRevision(ctx context.Context, q queryer, problemID int64) (*Revision,
 
 // writeRevision records p as a new revision unless its newest revision
 // already records it. It returns the revision p now is and whether it was
-// written.
-func writeRevision(ctx context.Context, tx txQueryer, p *Problem, note RevisionNote, now time.Time) (*Revision, bool, error) {
+// written. A new revision also stores the text of each program it holds a
+// hash of, so the version can be brought back later (stage H).
+func writeRevision(ctx context.Context, tx *sql.Tx, blobs Blobs, p *Problem, note RevisionNote, now time.Time) (*Revision, bool, error) {
 	latest, err := latestRevision(ctx, tx, p.ID)
 	if err != nil {
 		return nil, false, err
@@ -250,6 +259,26 @@ func writeRevision(ctx context.Context, tx txQueryer, p *Problem, note RevisionN
 		if _, err := tx.ExecContext(ctx, `INSERT INTO revision_tests (revision_id, idx, kind, input_sha, output_sha, input_size, output_size)
 			VALUES (?, ?, ?, ?, ?, ?, ?)`, r.ID, t.Idx, p.TestKind(t.Idx), t.InputSHA, nullIfEmpty(t.OutputSHA), t.InputSize, t.OutputSize); err != nil {
 			return nil, false, fmt.Errorf("record revision %d tests: %w", r.Rev, err)
+		}
+	}
+	if blobs.Dir == "" {
+		// A job kind built without a file store (ValidateKind may be) has
+		// nowhere to put the texts; a Blobs with no Dir would write them into
+		// the working directory.
+		return &r, true, nil
+	}
+	texts := []string{p.Reference.Source}
+	for _, src := range []*Source{p.Brute, p.Validator, p.Generator} {
+		if src != nil {
+			texts = append(texts, src.Source)
+		}
+	}
+	if p.Checker == CheckerCustom {
+		texts = append(texts, p.CheckerSource)
+	}
+	for _, text := range texts {
+		if _, err := blobs.Put(ctx, tx, []byte(text)); err != nil {
+			return nil, false, fmt.Errorf("record revision %d programs: %w", r.Rev, err)
 		}
 	}
 	return &r, true, nil
@@ -366,7 +395,11 @@ func (s *Service) Revisions(ctx context.Context, problemID int64, limit int) (li
 
 // RevisionTests returns a revision's tests in order.
 func (s *Service) RevisionTests(ctx context.Context, revisionID int64) ([]RevisionTest, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT idx, kind, input_sha, coalesce(output_sha, ''), input_size, output_size
+	return revisionTestsIn(ctx, s.DB, revisionID)
+}
+
+func revisionTestsIn(ctx context.Context, q queryer, revisionID int64) ([]RevisionTest, error) {
+	rows, err := q.QueryContext(ctx, `SELECT idx, kind, input_sha, coalesce(output_sha, ''), input_size, output_size
 		FROM revision_tests WHERE revision_id = ? ORDER BY idx`, revisionID)
 	if err != nil {
 		return nil, err

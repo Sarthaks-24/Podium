@@ -217,6 +217,7 @@ var revisionFreeWrites = map[string]string{
 	"replaceIn":          "origin and solution_by_person after save",
 	"AcceptEdit":         "validated_hash after replaceIn saved the revision (AI edit)",
 	"ReplaceWithRewrite": "validated_hash after replaceIn saved the revision (AI rewrite)",
+	"BringBack":          "validated_hash and solution_by_person after save made the revision (bring back a version)",
 	"copyArchivedIn":     "validation state and archived_slug of the archived copy, which insert and archiveIn made",
 	"Restore":            "archived and slug",
 	"Finish":             "validated_hash after a validation",

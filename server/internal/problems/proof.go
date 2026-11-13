@@ -590,7 +590,7 @@ func (k ValidateKind) saveApplied(ctx context.Context, tx *sql.Tx, p *Problem, n
 		app.Error = errs.Error()
 		return false, nil
 	}
-	err := (&Service{Now: k.Now}).save(ctx, tx, p, note)
+	err := (&Service{Now: k.Now, Blobs: k.Store}).save(ctx, tx, p, note)
 	// ErrDeleted, ErrModeLocked and a slug clash cannot happen here: the row was
 	// loaded in this transaction and closeIfDeleted ran, the mode is unchanged
 	// (store.go checkModeChange) and the slug is the row's own. Any other error

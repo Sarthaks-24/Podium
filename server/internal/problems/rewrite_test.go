@@ -178,8 +178,13 @@ func TestArchivedCopyExportsLikeTheOldProblemAndSurvivesGC(t *testing.T) {
 	same("after gc", r.export(t, cp.ID))
 
 	// Control: with the copy's test rows gone the same run collects them,
-	// so the survival above is the copy's doing.
+	// so the survival above is the copy's doing. The newest revisions of a
+	// problem are kept whole too (stage H), so both problems count as deleted
+	// for the run, which keeps no revision files.
 	if _, err := r.s.DB.Exec("DELETE FROM testcases WHERE problem_id = ?", cp.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.s.DB.Exec("UPDATE problems SET deleted = 1 WHERE id IN (?, ?)", cp.ID, r.old.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.s.Blobs.GC(ctx, r.s.DB, later); err != nil {
