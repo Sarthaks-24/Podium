@@ -225,7 +225,8 @@ test('each provider keeps its own key, a typed model id is accepted, and the lis
 test('the wizard intro uses plain words for what it writes', async ({ page }) => {
   await mockApi(page);
   await page.goto('/admin/ai/new');
-  const lead = page.locator('p.lead');
+  // The intro is the first lead paragraph; stage W added the two after it.
+  const lead = page.locator('p.lead').first();
   await expect(lead).toContainText('statement, subtasks, solutions, a checker for the inputs and a test generator.');
   await expect(lead).not.toContainText('brute force');
 });
