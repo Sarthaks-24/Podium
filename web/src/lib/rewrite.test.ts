@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { confirmText, forgetRewrite, MAX_CHANGE, recallRewrite, rememberRewrite, replacedToast, rewriteHref, rewritePath, rewriteRequest } from './rewrite';
+import { browserZone, confirmText, forgetRewrite, MAX_CHANGE, recallRewrite, rememberRewrite, replacedToast, rewriteHref, rewritePath, rewriteRequest } from './rewrite';
 import type { DraftStorage } from './drafts';
 
 function memory(): DraftStorage & { data: Map<string, string> } {
@@ -98,6 +98,21 @@ describe('the link between a rewrite and the problem it replaces', () => {
     expect(() => rememberRewrite(broken, 1, LINK)).not.toThrow();
     expect(recallRewrite(broken, 1)).toBeNull();
     expect(() => forgetRewrite(broken, 1)).not.toThrow();
+  });
+});
+
+describe('the zone the server dates the copy in', () => {
+  it('is the browser zone, or empty when the browser cannot say', () => {
+    expect(browserZone()).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const real = Intl.DateTimeFormat;
+    Intl.DateTimeFormat = (() => {
+      throw new Error('no Intl');
+    }) as unknown as typeof Intl.DateTimeFormat;
+    try {
+      expect(browserZone()).toBe('');
+    } finally {
+      Intl.DateTimeFormat = real;
+    }
   });
 });
 

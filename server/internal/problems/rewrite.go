@@ -55,8 +55,9 @@ func copyTitle(title string, at time.Time) string {
 // and slug stay), marks it an AI draft that must pass Validate again, and
 // archives the rewrite. A refusal is a *RewriteRefusal; nothing is written.
 // It returns the replaced problem and the archived copy. Validate is queued
-// by the caller.
-func (s *Service) ReplaceWithRewrite(ctx context.Context, oldID, draftID int64, base string, by int64) (replaced, kept *Problem, err error) {
+// by the caller. A copy is dated in loc (the caller's zone), or in the server's own
+// zone when loc is nil.
+func (s *Service) ReplaceWithRewrite(ctx context.Context, oldID, draftID int64, base string, by int64, loc *time.Location) (replaced, kept *Problem, err error) {
 	if oldID == draftID {
 		return nil, nil, FieldErrors{"draft_id": "A problem cannot replace itself."}
 	}
@@ -98,9 +99,11 @@ func (s *Service) ReplaceWithRewrite(ctx context.Context, oldID, draftID int64, 
 	if len(live) > 0 {
 		return nil, nil, refuse("contest_running", copyRewriteRunning, old.Title)
 	}
+	// Only students count: an organiser's own Try as a student is not use.
 	var used bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM submissions WHERE problem_id = ?)
-		OR EXISTS (SELECT 1 FROM drafts WHERE problem_id = ?)`, oldID, oldID).Scan(&used); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM submissions s JOIN users u ON u.id = s.user_id
+			WHERE s.problem_id = ? AND u.role = 'student')
+		OR EXISTS (SELECT 1 FROM drafts d JOIN users u ON u.id = d.user_id WHERE d.problem_id = ? AND u.role = 'student')`, oldID, oldID).Scan(&used); err != nil {
 		return nil, nil, err
 	}
 	if used {
@@ -114,7 +117,7 @@ func (s *Service) ReplaceWithRewrite(ctx context.Context, oldID, draftID int64, 
 		return nil, nil, ErrChecking
 	}
 
-	kept, err = s.copyArchivedIn(ctx, tx, old, by)
+	kept, err = s.copyArchivedIn(ctx, tx, old, by, loc)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -147,10 +150,14 @@ func (s *Service) ReplaceWithRewrite(ctx context.Context, oldID, draftID int64, 
 // copyTitle, with p's content, tests (the same blobs, so they stay out of
 // garbage collection), validation state and original slug, which Restore
 // offers back. p is not changed.
-func (s *Service) copyArchivedIn(ctx context.Context, tx *sql.Tx, p *Problem, by int64) (*Problem, error) {
+func (s *Service) copyArchivedIn(ctx context.Context, tx *sql.Tx, p *Problem, by int64, loc *time.Location) (*Problem, error) {
 	cp := *p
 	cp.ID = 0
-	cp.Title = copyTitle(p.Title, s.now())
+	day := s.now()
+	if loc != nil {
+		day = day.In(loc)
+	}
+	cp.Title = copyTitle(p.Title, day)
 	const suffix = "-before-rewrite"
 	base := p.Slug
 	if len(base) > 64-len(suffix) {
@@ -187,3 +194,7 @@ func RewriteBase(p *Problem) (string, error) {
 	}
 	return snap.Hash, nil
 }
+
+// maxRewriteBase bounds the fingerprint a Replace request carries (a SHA-256
+// in hex is 64 characters).
+const maxRewriteBase = 128

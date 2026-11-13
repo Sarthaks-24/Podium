@@ -22,11 +22,7 @@ export const rewritePath = (id: number) => `/api/admin/problems/${id}/replace-wi
 
 /** The answer to POST .../replace-with-rewrite. */
 export interface Replaced {
-  problem_id: number;
-  copy_id: number;
-  copy_title: string;
   validation_queued: boolean;
-  not_ready: string[];
 }
 
 /**
@@ -40,6 +36,15 @@ export function rewriteRequest(change: string, problemId: number, studentsWrite:
   if ([...text].length > MAX_CHANGE) return { ok: false, fields: { text: `Keep what should change under ${MAX_CHANGE.toLocaleString('en-GB')} characters.` } };
   const choices = studentsWrite === 'function' ? { students_write: 'function' as const, java_lists: javaLists } : {};
   return { ok: true, body: { mode: 'paste', text, rewrite_of: problemId, ...choices } };
+}
+
+/** The browser's IANA zone ("Asia/Kolkata"), which the server dates the archived copy in; "" when it cannot say. */
+export function browserZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
+  } catch {
+    return '';
+  }
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -62,7 +67,7 @@ export function confirmText(title: string, today: Date): { title: string; body: 
 }
 
 /** The toast after a Replace: validation has started only when the server queued it. */
-export function replacedToast(title: string, r: Pick<Replaced, 'validation_queued'>): string {
+export function replacedToast(title: string, r: Replaced): string {
   return r.validation_queued ? `Replaced ${title}. Validation has started.` : `Replaced ${title}. Validate it before you use it.`;
 }
 

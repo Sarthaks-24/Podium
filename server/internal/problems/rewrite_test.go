@@ -61,7 +61,7 @@ func newRewriteRig(t *testing.T) *rewriteRig {
 
 func (r *rewriteRig) replace(t *testing.T) (*Problem, *Problem, error) {
 	t.Helper()
-	return r.s.ReplaceWithRewrite(context.Background(), r.old.ID, r.draft.ID, r.base, 0)
+	return r.s.ReplaceWithRewrite(context.Background(), r.old.ID, r.draft.ID, r.base, 0, nil)
 }
 
 // export is a problem's pack files by name, test data included.
@@ -281,18 +281,18 @@ func TestReplaceRefusals(t *testing.T) {
 func TestReplaceBadInput(t *testing.T) {
 	r := newRewriteRig(t)
 	ctx := context.Background()
-	if _, _, err := r.s.ReplaceWithRewrite(ctx, 9999, r.draft.ID, r.base, 0); !errors.Is(err, ErrNotFound) {
+	if _, _, err := r.s.ReplaceWithRewrite(ctx, 9999, r.draft.ID, r.base, 0, nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing old problem: %v", err)
 	}
-	if _, _, err := r.s.ReplaceWithRewrite(ctx, r.old.ID, 9999, r.base, 0); !errors.Is(err, ErrNotFound) {
+	if _, _, err := r.s.ReplaceWithRewrite(ctx, r.old.ID, 9999, r.base, 0, nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("missing rewrite: %v", err)
 	}
 	var fields FieldErrors
-	if _, _, err := r.s.ReplaceWithRewrite(ctx, r.old.ID, r.old.ID, r.base, 0); !errors.As(err, &fields) || fields["draft_id"] == "" {
+	if _, _, err := r.s.ReplaceWithRewrite(ctx, r.old.ID, r.old.ID, r.base, 0, nil); !errors.As(err, &fields) || fields["draft_id"] == "" {
 		t.Errorf("a problem as its own rewrite: %v", err)
 	}
 	r.s.DB.Exec("UPDATE problems SET origin = 'manual' WHERE id = ?", r.draft.ID)
-	if _, _, err := r.s.ReplaceWithRewrite(ctx, r.old.ID, r.draft.ID, r.base, 0); !errors.As(err, &fields) || fields["draft_id"] == "" {
+	if _, _, err := r.s.ReplaceWithRewrite(ctx, r.old.ID, r.draft.ID, r.base, 0, nil); !errors.As(err, &fields) || fields["draft_id"] == "" {
 		t.Errorf("a rewrite that is not an AI draft: %v", err)
 	}
 	if n := revisionCount(t, r.s, r.old.ID); n != 1 || problemCount(t, r.s) != 2 {
@@ -322,7 +322,7 @@ func TestReplaceInParallelMakesOneRevisionAndOneCopy(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _, err := r.s.ReplaceWithRewrite(context.Background(), r.old.ID, r.draft.ID, r.base, 0)
+			_, _, err := r.s.ReplaceWithRewrite(context.Background(), r.old.ID, r.draft.ID, r.base, 0, nil)
 			results <- err
 		}()
 	}
@@ -414,5 +414,53 @@ func TestReplaceKeepsOneAIDraftTagWithinTheTagLimit(t *testing.T) {
 	}
 	if len(out.Tags) > MaxTags || n != 1 {
 		t.Errorf("tags %v: %d ai draft tags", out.Tags, n)
+	}
+}
+
+// The copy is named with the day in the caller's zone, so it matches the
+// confirm dialog; no zone, or one the server does not know, uses its own.
+func TestCopyIsNamedInTheCallersZone(t *testing.T) {
+	kolkata, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		t.Skipf("no zone database: %v", err)
+	}
+	for _, c := range []struct {
+		name string
+		loc  *time.Location
+		want string
+	}{
+		{"caller's zone", kolkata, "15 Jan 2027"},
+		{"no zone", nil, "14 Jan 2027"},
+	} {
+		r := newRewriteRig(t)
+		r.now = time.Date(2027, 1, 14, 20, 0, 0, 0, time.UTC)
+		_, cp, err := r.s.ReplaceWithRewrite(context.Background(), r.old.ID, r.draft.ID, r.base, 0, c.loc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := r.old.Title + " (before rewrite, " + c.want + ")"; cp.Title != want {
+			t.Errorf("%s: copy title %q, want %q", c.name, cp.Title, want)
+		}
+	}
+}
+
+// Only students count as having used the problem: an organiser's own Try as
+// a student must not block Replace (the mode lock still counts everyone).
+func TestReplaceIgnoresStaffRunsAndDrafts(t *testing.T) {
+	r := newRewriteRig(t)
+	r.s.DB.Exec(`INSERT INTO users (id, email, role, created_at) VALUES (2, 'ta@college.edu', 'organiser', 0), (3, 'own@college.edu', 'owner', 0), (4, 'ad@college.edu', 'admin', 0)`)
+	for _, u := range []int{2, 3, 4} {
+		r.s.DB.Exec(`INSERT INTO submissions (problem_id, user_id, kind, language, source, source_sha, created_at) VALUES (?, ?, 'run', 'cpp17', 'x', 'x', 0)`, r.old.ID, u)
+		r.s.DB.Exec(`INSERT INTO drafts (problem_id, user_id, language, source, updated_at) VALUES (?, ?, 'cpp17', 'x', 0)`, r.old.ID, u)
+	}
+	// A student who only saved code blocks it.
+	r.s.DB.Exec(`INSERT INTO drafts (problem_id, user_id, language, source, updated_at) VALUES (?, 1, 'cpp17', 'x', 0)`, r.old.ID)
+	var ref *RewriteRefusal
+	if _, _, err := r.replace(t); !errors.As(err, &ref) || ref.Code != "in_use" {
+		t.Fatalf("a student's saved code: %v", err)
+	}
+	r.s.DB.Exec(`DELETE FROM drafts WHERE user_id = 1`)
+	if _, _, err := r.replace(t); err != nil {
+		t.Fatalf("staff runs and drafts blocked the replace: %v", err)
 	}
 }

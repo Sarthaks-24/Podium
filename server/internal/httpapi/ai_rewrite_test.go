@@ -293,7 +293,7 @@ func TestReplaceOverHTTPRefusals(t *testing.T) {
 			r.s.db.Exec("UPDATE problems SET statement_md = statement_md || 'x' WHERE id = ?", r.old)
 		}, 409, "changed", title + " changed after this rewrite began. Rewrite it again, or keep this rewrite as its own problem."},
 		{"students used it", func(t *testing.T, r *rewriteRig, _ map[string]any) {
-			r.s.db.Exec(`INSERT INTO drafts (problem_id, user_id, language, source, updated_at) VALUES (?, ?, 'cpp17', 'x', 0)`, r.old, r.org.userID())
+			r.s.db.Exec(`INSERT INTO drafts (problem_id, user_id, language, source, updated_at) VALUES (?, ?, 'cpp17', 'x', 0)`, r.old, r.s.signedIn("asha@college.edu", "Asha").userID())
 		}, 409, "in_use", "Students have submitted or saved code for " + title + ", so it cannot be replaced. Keep this rewrite as its own problem and use it in new contests."},
 		{"archived", func(t *testing.T, r *rewriteRig, _ map[string]any) {
 			if code, _ := r.org.do("DELETE", fmt.Sprintf("/api/admin/problems/%d", r.old), nil, r.s.srv.URL); code != 204 {
@@ -391,4 +391,52 @@ func TestReplaceRouteWantsJSON(t *testing.T) {
 	r := newRewriteRig(t)
 	code, out := r.org.raw("POST", fmt.Sprintf("/api/admin/problems/%d/replace-with-rewrite", r.old), "text/plain", []byte("draft_id=2"), r.s.srv.URL)
 	errIs(t, "not JSON", code, out, 415, "bad_request", "")
+}
+
+func TestReplaceRouteBaseAndZone(t *testing.T) {
+	r := newRewriteRig(t)
+	w := r.rewrite(t, r.old, "Fix it.")
+	oldID, base, _ := rewriteOf(t, w)
+	draftID := r.completeDraft(t)
+	path := fmt.Sprintf("/api/admin/problems/%d/replace-with-rewrite", oldID)
+
+	code, out := r.org.do("POST", path, map[string]any{"draft_id": draftID, "base": strings.Repeat("a", 129)}, r.s.srv.URL)
+	errIs(t, "long base", code, out, 400, "bad_request", "")
+	code, out = r.org.do("POST", path, map[string]any{"draft_id": draftID, "base": base, "tz": strings.Repeat("a", 65)}, r.s.srv.URL)
+	if code != 200 {
+		t.Fatalf("a long zone name must fall back, not fail: %d %v", code, out)
+	}
+}
+
+func TestReplaceRouteNamesTheCopyInTheBrowsersZone(t *testing.T) {
+	for _, c := range []struct {
+		tz   string
+		want string // the copy's date is the day in that zone
+	}{{"Asia/Kolkata", "ist"}, {"No/Such_Zone", "server"}, {"", "server"}} {
+		r := newRewriteRig(t)
+		now := time.Date(2027, 1, 14, 20, 0, 0, 0, time.UTC)
+		r.s.clock.set(now)
+		w := r.rewrite(t, r.old, "Fix it.")
+		oldID, base, _ := rewriteOf(t, w)
+		draftID := r.completeDraft(t)
+		body := map[string]any{"draft_id": draftID, "base": base}
+		if c.tz != "" {
+			body["tz"] = c.tz
+		}
+		code, out := r.org.do("POST", fmt.Sprintf("/api/admin/problems/%d/replace-with-rewrite", oldID), body, r.s.srv.URL)
+		if code != 200 {
+			t.Fatalf("%q: %d %v", c.tz, code, out)
+		}
+		title := out["copy_title"].(string)
+		want := "(before rewrite, " + now.In(time.Local).Format("2 Jan 2006") + ")"
+		if c.want == "ist" {
+			if _, err := time.LoadLocation(c.tz); err != nil {
+				continue
+			}
+			want = "(before rewrite, 15 Jan 2027)"
+		}
+		if !strings.HasSuffix(title, want) {
+			t.Errorf("tz %q: copy title %q, want it to end with %q", c.tz, title, want)
+		}
+	}
 }

@@ -859,16 +859,25 @@ func (d *Handlers) ReplaceWithRewrite(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		DraftID int64  `json:"draft_id"`
 		Base    string `json:"base"`
+		// TZ is the browser's IANA zone, so the copy's date is the day the
+		// organiser saw in the confirm dialog.
+		TZ string `json:"tz"`
 	}
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-	if req.DraftID <= 0 || req.Base == "" {
+	if req.DraftID <= 0 || req.Base == "" || len(req.Base) > maxRewriteBase {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Say which rewrite replaces the problem and what it was made from.")
 		return
 	}
+	var loc *time.Location
+	if req.TZ != "" && len(req.TZ) <= 64 {
+		if l, err := time.LoadLocation(req.TZ); err == nil {
+			loc = l
+		}
+	}
 	u := auth.UserFrom(r.Context())
-	p, kept, err := d.Problems.ReplaceWithRewrite(r.Context(), id, req.DraftID, req.Base, u.ID)
+	p, kept, err := d.Problems.ReplaceWithRewrite(r.Context(), id, req.DraftID, req.Base, u.ID, loc)
 	if err != nil {
 		d.problemError(w, r, err)
 		return

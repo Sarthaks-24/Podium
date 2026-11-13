@@ -306,7 +306,10 @@ test('Replace sends the rewrite and what it was made from, thanks, and opens the
   await page.getByRole('dialog').getByRole('button', { name: `Replace ${OLD_TITLE}`, exact: true }).click();
   await expect(toasts(page)).toContainText(`Replaced ${OLD_TITLE}. Validation has started.`);
   await expect(page).toHaveURL(`/admin/problems/${OLD_ID}`);
-  expect(calls.replaced).toEqual([{ path: `/api/admin/problems/${OLD_ID}/replace-with-rewrite`, body: { draft_id: VALIDATED_DRAFT, base: LINK.base } }]);
+  expect(calls.replaced).toHaveLength(1);
+  expect(calls.replaced[0].path).toBe(`/api/admin/problems/${OLD_ID}/replace-with-rewrite`);
+  // The browser names India's zone Kolkata or, in older tables, Calcutta; the server knows both.
+  expect(calls.replaced[0].body).toEqual({ draft_id: VALIDATED_DRAFT, base: LINK.base, tz: expect.stringMatching(/^Asia\/(Kolkata|Calcutta)$/) });
   expect(await stored(page, VALIDATED_DRAFT)).toBeNull();
 });
 

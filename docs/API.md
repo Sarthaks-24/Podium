@@ -1262,13 +1262,13 @@ The provider's error body is read for the status only; it is never shown or logg
 
 | Request | Response |
 |---|---|
-| `{"draft_id": 41, "base": "<from the run>"}` | 200 `{"problem_id","copy_id","copy_title","validation_queued","not_ready":[...]}` |
+| `{"draft_id": 41, "base": "<from the run, at most 128 characters>", "tz": "Asia/Kolkata"}` (`tz` is optional) | 200 `{"problem_id","copy_id","copy_title","validation_queued","not_ready":[...]}` |
 
 In one transaction it inserts an archived copy of the problem (its content, tests, validation state and original slug, titled "<title> (before rewrite, <d Mon yyyy>)"), saves the draft's content over the problem as one new revision with the reason "Replaced with an AI rewrite" (id, slug, author and history stay), marks it origin `ai` with the `ai draft` tag and withdraws its validation, and archives the draft. After the commit it queues Validate, as Accept does for an AI edit: `validation_queued` is `false` and `not_ready` lists why when the content cannot be validated. Nothing is written when it is refused.
 
 | Status and code | When, and the message |
 |---|---|
-| 400 `bad_request` | `draft_id` or `base` missing; the draft is the problem itself or is not an AI draft (`fields.draft_id`) |
+| 400 `bad_request` | `draft_id` or `base` missing, or `base` longer than 128 characters; the draft is the problem itself or is not an AI draft (`fields.draft_id`) |
 | 404 `not_found` | the problem or the draft does not exist |
 | 409 `not_validated` | the draft has not passed Validate: "Validate this rewrite first." |
 | 409 `rewrite_gone` | the draft is archived or deleted: "This rewrite is archived or deleted, so it cannot replace <title>. Rewrite it again." This is also the answer to a second Replace of the same draft |
@@ -1276,10 +1276,10 @@ In one transaction it inserts an archived copy of the problem (its content, test
 | 409 `archived` | "<title> is archived, so it cannot be replaced. Restore it first, or keep this rewrite as its own problem." |
 | 409 `changed` | the problem's fingerprint is not `base`: "<title> changed after this rewrite began. Rewrite it again, or keep this rewrite as its own problem." |
 | 409 `contest_running` | a running contest pins it: "A contest that is running uses <title>, so it cannot be replaced now. Try again after the contest ends, or keep this rewrite as its own problem." |
-| 409 `in_use` | any submission, Run or saved code exists for the problem: "Students have submitted or saved code for <title>, so it cannot be replaced. Keep this rewrite as its own problem and use it in new contests." |
+| 409 `in_use` | a student has a submission, Run or saved code for the problem (staff rows do not count): "Students have submitted or saved code for <title>, so it cannot be replaced. Keep this rewrite as its own problem and use it in new contests." |
 | 409 `checking` | a language check of the problem is open: "Podium is still checking the languages of this problem." |
 
-<title> is the problem's title when Replace was pressed. A contest that is not running keeps the revision it is pinned to; "Update students now" moves it, and refuses an AI draft that is not confirmed. No migration; the archived copy is an ordinary archived problem, restored with `POST /api/admin/problems/{id}/restore`.
+The copy's date is the day in the zone `tz` names (the browser's IANA zone, so it matches the confirm dialog); a `tz` that is missing, longer than 64 characters or unknown to the server is ignored and the server's own zone is used. <title> is the problem's title when Replace was pressed. A contest that is not running keeps the revision it is pinned to; "Update students now" moves it, and refuses an AI draft that is not confirmed. No migration; the archived copy is an ordinary archived problem, restored with `POST /api/admin/problems/{id}/restore`.
 
 ### Stage H: bring back a version
 

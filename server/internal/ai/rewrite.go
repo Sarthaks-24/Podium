@@ -20,14 +20,8 @@ const rewriteSampleLimit = 4 << 10
 
 // rewriteLink is what a run remembers about the problem it rewrites: the
 // old problem and the fingerprint of its content when the run began, which
-// Replace checks later.
+// Replace checks later. It is also the `rewrite_of` object of a run's JSON.
 type rewriteLink struct {
-	problemID int64
-	base      string
-	title     string
-}
-
-type rewriteJSON struct {
 	ProblemID int64  `json:"problem_id"`
 	Base      string `json:"base"`
 	Title     string `json:"title"`
@@ -118,7 +112,7 @@ func (d *Handlers) rewriteSource(p *problems.Problem) (text string, link *rewrit
 	if err != nil {
 		return "", nil, err
 	}
-	return text, &rewriteLink{problemID: p.ID, base: base, title: p.Title}, nil
+	return text, &rewriteLink{ProblemID: p.ID, Base: base, Title: p.Title}, nil
 }
 
 // copyRewriteArchived is the refusal to rewrite an archived problem.

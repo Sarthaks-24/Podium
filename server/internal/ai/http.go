@@ -88,7 +88,7 @@ type wizardJSON struct {
 	ProblemID *int64           `json:"problem_id,omitempty"`
 	// RewriteOf names the problem a rewrite run started from and the
 	// fingerprint of its content then; absent for any other run.
-	RewriteOf *rewriteJSON `json:"rewrite_of,omitempty"`
+	RewriteOf *rewriteLink `json:"rewrite_of,omitempty"`
 	Provider  string       `json:"provider"`
 	Model     string       `json:"model"`
 	StartedAt int64        `json:"started_at"`
@@ -180,7 +180,7 @@ func (r *wizardRun) json() wizardJSON {
 		Provider: r.provider, Model: r.model,
 		StartedAt: r.startedAt.UnixMilli(), ServerNow: time.Now().UnixMilli()}
 	if r.rewrite != nil {
-		out.RewriteOf = &rewriteJSON{ProblemID: r.rewrite.problemID, Base: r.rewrite.base, Title: r.rewrite.title}
+		out.RewriteOf = r.rewrite
 	}
 	return out
 }

@@ -582,7 +582,7 @@ When Replace is refused, nothing changes and the draft stays as its own problem:
 | The page says | Why |
 |---|---|
 | A contest that is running uses <title>, so it cannot be replaced now. | A running contest holds the problem. Try again after it ends. |
-| Students have submitted or saved code for <title>, so it cannot be replaced. | A submission, a Run or saved code exists. A rewrite can change the function students wrote against. Use the rewrite in new contests. |
+| Students have submitted or saved code for <title>, so it cannot be replaced. | A student has a submission, a Run or saved code. An organiser trying the problem does not count. A rewrite can change the function students wrote against. Use the rewrite in new contests. |
 | <title> is archived (or was deleted), so it cannot be replaced. | Restore the problem first, or keep the rewrite. |
 | <title> changed after this rewrite began. | Someone edited the problem while the AI worked. Rewrite it again, or keep the rewrite. |
 

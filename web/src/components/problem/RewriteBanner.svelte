@@ -21,7 +21,7 @@
   import type { RewriteLink } from '../../lib/ai';
   import { errorText, sendJSON } from '../../lib/api';
   import { draftStorage } from '../../lib/drafts';
-  import { confirmText, forgetRewrite, replacedToast, rewritePath, type Replaced } from '../../lib/rewrite';
+  import { browserZone, confirmText, forgetRewrite, replacedToast, rewritePath, type Replaced } from '../../lib/rewrite';
   import { navigate } from '../../lib/router.svelte';
   import { showToast } from '../../lib/toast.svelte';
 
@@ -46,7 +46,7 @@
     busy = true;
     refusal = '';
     try {
-      const out = await sendJSON<Replaced>('POST', rewritePath(link.problem_id), { draft_id: draftId, base: link.base });
+      const out = await sendJSON<Replaced>('POST', rewritePath(link.problem_id), { draft_id: draftId, base: link.base, tz: browserZone() });
       forgetRewrite(draftStorage(), draftId);
       confirmOpen = false;
       showToast(replacedToast(link.title, out));
