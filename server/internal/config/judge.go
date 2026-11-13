@@ -6,6 +6,8 @@ import (
 	"net"
 	"net/url"
 	"strings"
+
+	"github.com/Sarthaks-24/podium/internal/sizing"
 )
 
 // JudgeVars lists every variable podium-judge reads, in the order it reads
@@ -86,7 +88,7 @@ func LoadWorker(get Getenv) (Judge, error) {
 	}
 	c.IsolatePath = r.str("PODIUM_ISOLATE_PATH")
 	c.Lanes = r.int("PODIUM_JUDGE_LANES", 1, 16)
-	c.BudgetMB = r.int("PODIUM_JUDGE_MEMORY_BUDGET_MB", 256, 1<<20)
+	c.BudgetMB = r.budget()
 	c.BoxBase = r.int("PODIUM_JUDGE_BOX_BASE", 0, MaxBoxBase)
 	if c.Lanes > 0 {
 		if err := CheckBoxRange(c.BoxBase, c.Lanes); err != nil {
@@ -106,12 +108,24 @@ func LoadJudge(get Getenv) (Judge, error) {
 	c := Judge{
 		IsolatePath: r.str("PODIUM_ISOLATE_PATH"),
 		Lanes:       r.int("PODIUM_JUDGE_LANES", 1, 16),
-		BudgetMB:    r.int("PODIUM_JUDGE_MEMORY_BUDGET_MB", 256, 1<<20),
+		BudgetMB:    r.budget(),
 		BoxBase:     r.int("PODIUM_JUDGE_BOX_BASE", 0, MaxBoxBase),
 		CacheDir:    r.str("PODIUM_JUDGE_CACHE_DIR"),
 		LogLevel:    r.level("PODIUM_LOG_LEVEL"),
 	}
 	return c, r.p.err()
+}
+
+// budget reads PODIUM_JUDGE_MEMORY_BUDGET_MB. Under sizing.MinBudgetMB it is
+// refused: the slice cap is the budget plus 76 MB, and isolate lets one Java
+// box take 1,280 MB, so a smaller cap lets the slice kill a correct program.
+func (r *reader) budget() int {
+	n := r.int("PODIUM_JUDGE_MEMORY_BUDGET_MB", 1, 1<<20)
+	if n > 0 && n < sizing.MinBudgetMB {
+		r.p.add("PODIUM_JUDGE_MEMORY_BUDGET_MB=%d is less than the minimum of %d MB, the budget of the smallest machine; raise it or leave it out", n, sizing.MinBudgetMB)
+		return 0
+	}
+	return n
 }
 
 // CheckBoxRange refuses a box range that includes the selftest box. It is

@@ -17,11 +17,33 @@ func TestJudgeSizeSettings(t *testing.T) {
 	if err != nil || c.Lanes != 3 || c.BudgetMB != 3000 {
 		t.Fatalf("hand-set: lanes %d budget %d, %v", c.Lanes, c.BudgetMB, err)
 	}
-	for _, bad := range []string{"255", "0", "-5", "lots", "1048577"} {
+	for _, bad := range []string{"0", "-5", "lots", "1048577"} {
 		_, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_MEMORY_BUDGET_MB": bad}))
-		if err == nil || !strings.Contains(err.Error(), "PODIUM_JUDGE_MEMORY_BUDGET_MB must be a whole number from 256 to 1048576") {
+		if err == nil || !strings.Contains(err.Error(), "PODIUM_JUDGE_MEMORY_BUDGET_MB must be a whole number from 1 to 1048576") {
 			t.Errorf("budget %q: %v", bad, err)
 		}
+	}
+}
+
+// A budget under 1,024 MB, the smallest Size ever gives, would put the
+// slice cap under what one Java box is allowed, so the slice could kill a
+// correct program. It is refused, in the worker and in calibrate's loader.
+func TestAHandSetBudgetUnderTheSmallestIsRefused(t *testing.T) {
+	tok := strings.Repeat("j", 40)
+	for _, bad := range []string{"300", "1023"} {
+		want := "PODIUM_JUDGE_MEMORY_BUDGET_MB=" + bad + " is less than the minimum of 1024 MB"
+		_, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_MEMORY_BUDGET_MB": bad}))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("worker, budget %s: %v", bad, err)
+		}
+		_, err = LoadJudge(env(map[string]string{"PODIUM_JUDGE_MEMORY_BUDGET_MB": bad}))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("judge, budget %s: %v", bad, err)
+		}
+	}
+	c, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_MEMORY_BUDGET_MB": "1024"}))
+	if err != nil || c.BudgetMB != 1024 {
+		t.Errorf("1024: %d %v", c.BudgetMB, err)
 	}
 }
 
