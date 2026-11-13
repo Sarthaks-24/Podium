@@ -34,6 +34,8 @@ var ServerVars = []Var{
 	{Name: "PODIUM_LOG_LEVEL", Default: "info"},
 	{Name: "PODIUM_AI_PROMPT_FILE"},
 	{Name: "PODIUM_QUEUE_END_ORDER", Default: "on"},
+	{Name: "PODIUM_CPU_PROFILE"},
+	{Name: "PODIUM_STANDINGS_ENCODE_ONCE", Default: "off"},
 }
 
 // Server is the validated configuration of podium-server.
@@ -79,6 +81,12 @@ type Server struct {
 	// Run whose author's contest time is over behind every graded
 	// submission; false keeps the order Runs had before v2.1.0.
 	QueueEndOrder bool
+	// CPUProfile is the file PODIUM_CPU_PROFILE names; "" means no profile.
+	// Testing mode only.
+	CPUProfile string
+	// StandingsEncodeOnce is PODIUM_STANDINGS_ENCODE_ONCE: encode a board
+	// once per version and splice it into each response.
+	StandingsEncodeOnce bool
 }
 
 // MaxAIPromptFile is the largest PODIUM_AI_PROMPT_FILE accepted.
@@ -168,19 +176,27 @@ func LoadServer(get Getenv) (Server, error) {
 		c.AIPrompt, c.AIPromptSHA = readPromptFile(r.p, f)
 	}
 	c.QueueEndOrder = r.onOff("PODIUM_QUEUE_END_ORDER")
+	if f := r.str("PODIUM_CPU_PROFILE"); f != "" {
+		if testing {
+			c.CPUProfile = f
+		} else {
+			r.p.add("PODIUM_CPU_PROFILE is set, but a CPU profile is written in testing mode only; set PODIUM_MODE=testing or remove the variable")
+		}
+	}
+	c.StandingsEncodeOnce = r.onOff("PODIUM_STANDINGS_ENCODE_ONCE")
 	return c, r.p.err()
 }
 
-// onOff reads a variable that is "on" or "off".
+// onOff reads a switch: on, 1 or true is on; off, 0, false or empty is off.
 func (r *reader) onOff(name string) bool {
-	switch r.str(name) {
-	case "on":
+	switch strings.ToLower(r.str(name)) {
+	case "on", "1", "true":
 		return true
-	case "off":
+	case "off", "0", "false", "":
 		return false
 	}
 	r.p.add("%s must be on or off", name)
-	return true
+	return false
 }
 
 func randomSecret() []byte {

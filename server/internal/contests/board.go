@@ -31,6 +31,9 @@ type Standings struct {
 	// JudgingRemaining counts submissions made before the end that are
 	// still waiting for the judge ("final in about 6 min").
 	JudgingRemaining int `json:"judging_remaining"`
+	// encOnce guards enc, the labels and rows as JSON (standings_encode.go).
+	encOnce sync.Once
+	enc     []byte
 }
 
 // DefaultBoardEvery is the shortest time between two recomputes of one

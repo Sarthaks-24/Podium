@@ -208,6 +208,9 @@ type Service struct {
 	// transaction: the contest's queued jobs are claimable again, and a judge
 	// holding a claim should look (jobs.Service.Wake).
 	Wake func()
+	// StandingsEncodeOnce (PODIUM_STANDINGS_ENCODE_ONCE) sends a board's labels
+	// and rows from bytes encoded once per board version.
+	StandingsEncodeOnce bool
 	// BoardEvery is the shortest time between two recomputes of a
 	// contest's board (DefaultBoardEvery when zero).
 	BoardEvery time.Duration

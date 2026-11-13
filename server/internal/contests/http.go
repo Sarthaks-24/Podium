@@ -582,6 +582,8 @@ type standingsJSON struct {
 	Rows             []Row    `json:"rows"`
 	Me               int64    `json:"me"`
 	ServerNow        int64    `json:"server_now"`
+	// board is the cached board Rows and Labels came from, for splice.
+	board *Standings
 }
 
 func (d *Handlers) standingsOut(ctx context.Context, c *Contest, variant string, me int64, studentView bool) (*standingsJSON, error) {
@@ -599,7 +601,7 @@ func (d *Handlers) standingsOut(ctx context.Context, c *Contest, variant string,
 		judgingRemaining = 0
 	}
 	out := &standingsJSON{Variant: variant, Version: b.Version, JudgingRemaining: judgingRemaining, Labels: b.Labels,
-		Rows: b.Rows, Me: me, ServerNow: now.UnixMilli(),
+		Rows: b.Rows, Me: me, ServerNow: now.UnixMilli(), board: b,
 		Final: variant == VariantFull && !now.Before(final) && judgingRemaining == 0}
 	if out.Rows == nil {
 		out.Rows = []Row{}
@@ -637,6 +639,20 @@ func (d *Handlers) GetStandings(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		d.internalError(w, r, err)
 		return
+	}
+	d.writeStandings(w, out)
+}
+
+// writeStandings sends a standings response: spliced from the board's
+// encoded rows when PODIUM_STANDINGS_ENCODE_ONCE is on, encoded whole
+// otherwise. Only the board as cached may be sent this way, so the routes
+// that change the rows (AdminStandings adds emails) do not use it.
+func (d *Handlers) writeStandings(w http.ResponseWriter, out *standingsJSON) {
+	if d.Contests.StandingsEncodeOnce {
+		if body, ok := out.splice(); ok {
+			httpx.WriteJSONBytes(w, http.StatusOK, body)
+			return
+		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }

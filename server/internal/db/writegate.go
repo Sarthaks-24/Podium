@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
-	"strings"
 	"sync"
 	"time"
 )
@@ -19,8 +18,9 @@ import (
 // Go, the next writer starts the moment the last one commits.
 //
 // What counts as a write: every transaction that is not read-only (they
-// begin IMMEDIATE anyway), and outside a transaction any statement that does
-// not start with SELECT, WITH, PRAGMA, EXPLAIN or VALUES. Other processes
+// begin IMMEDIATE anyway), and outside a transaction any statement that
+// writeKind (readonly.go) does not call a read. A read-only transaction takes
+// no turn, and a write inside one is refused (ErrWriteInReadOnly). Other processes
 // (the sqlite3 shell, Litestream) still meet the busy timeout as before.
 
 // gateTimeout is how long a writer waits for its turn before failing with
@@ -77,25 +77,7 @@ func (c gatedConnector) Connect(ctx context.Context) (driver.Conn, error) {
 }
 
 // isWrite reports whether a statement run outside a transaction may write.
-func isWrite(query string) bool {
-	q := strings.TrimSpace(query)
-	for strings.HasPrefix(q, "--") {
-		if i := strings.IndexByte(q, '\n'); i >= 0 {
-			q = strings.TrimSpace(q[i+1:])
-		} else {
-			return false
-		}
-	}
-	end := strings.IndexFunc(q, func(r rune) bool { return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') })
-	if end < 0 {
-		end = len(q)
-	}
-	switch strings.ToUpper(q[:end]) {
-	case "SELECT", "WITH", "PRAGMA", "EXPLAIN", "VALUES":
-		return false
-	}
-	return true
-}
+func isWrite(query string) bool { return writeKind(query) != "" }
 
 type gatedConn struct {
 	inner driver.Conn
@@ -104,6 +86,8 @@ type gatedConn struct {
 	// need no turn of their own. database/sql uses a connection from one
 	// goroutine at a time, so it needs no lock.
 	inTx bool
+	// roTx is set while a read-only transaction is open on the connection.
+	roTx bool
 }
 
 func (c *gatedConn) Prepare(query string) (driver.Stmt, error) {
@@ -111,6 +95,10 @@ func (c *gatedConn) Prepare(query string) (driver.Stmt, error) {
 }
 
 func (c *gatedConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	kind := writeKind(query)
+	if c.roTx && kind != "" {
+		return nil, writeInReadOnly(kind)
+	}
 	var s driver.Stmt
 	var err error
 	if p, ok := c.inner.(driver.ConnPrepareContext); ok {
@@ -121,7 +109,7 @@ func (c *gatedConn) PrepareContext(ctx context.Context, query string) (driver.St
 	if err != nil {
 		return nil, err
 	}
-	return &gatedStmt{inner: s, conn: c, write: isWrite(query)}, nil
+	return &gatedStmt{inner: s, conn: c, kind: kind}, nil
 }
 
 func (c *gatedConn) Close() error { return c.inner.Close() }
@@ -136,7 +124,12 @@ func (c *gatedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.
 		return nil, errors.New("sqlite connection cannot begin a transaction with options")
 	}
 	if opts.ReadOnly {
-		return b.BeginTx(ctx, opts)
+		tx, err := b.BeginTx(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		c.roTx = true
+		return &gatedTx{inner: tx, done: func() { c.roTx = false }}, nil
 	}
 	if err := c.gate.acquire(ctx); err != nil {
 		return nil, err
@@ -153,8 +146,8 @@ func (c *gatedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.
 
 // turn takes the gate for a statement outside a transaction that may write,
 // and returns the function that gives it back (a no-op otherwise).
-func (c *gatedConn) turn(ctx context.Context, write bool) (func(), error) {
-	if c.inTx || !write {
+func (c *gatedConn) turn(ctx context.Context, kind string) (func(), error) {
+	if c.inTx || kind == "" {
 		return func() {}, nil
 	}
 	if err := c.gate.acquire(ctx); err != nil {
@@ -168,7 +161,11 @@ func (c *gatedConn) ExecContext(ctx context.Context, query string, args []driver
 	if !ok {
 		return nil, driver.ErrSkip
 	}
-	release, err := c.turn(ctx, isWrite(query))
+	kind := writeKind(query)
+	if c.roTx && kind != "" {
+		return nil, writeInReadOnly(kind)
+	}
+	release, err := c.turn(ctx, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +178,11 @@ func (c *gatedConn) QueryContext(ctx context.Context, query string, args []drive
 	if !ok {
 		return nil, driver.ErrSkip
 	}
-	release, err := c.turn(ctx, isWrite(query))
+	kind := writeKind(query)
+	if c.roTx && kind != "" {
+		return nil, writeInReadOnly(kind)
+	}
+	release, err := c.turn(ctx, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +235,7 @@ func (t *gatedTx) Rollback() error {
 type gatedStmt struct {
 	inner driver.Stmt
 	conn  *gatedConn
-	write bool
+	kind  string // what the statement may write, "" for a read (writeKind)
 }
 
 func (s *gatedStmt) Close() error  { return s.inner.Close() }
@@ -253,7 +254,10 @@ func (s *gatedStmt) ExecContext(ctx context.Context, args []driver.NamedValue) (
 	if !ok {
 		return nil, errors.New("sqlite statement cannot execute with a context")
 	}
-	release, err := s.conn.turn(ctx, s.write)
+	if s.conn.roTx && s.kind != "" {
+		return nil, writeInReadOnly(s.kind)
+	}
+	release, err := s.conn.turn(ctx, s.kind)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +270,10 @@ func (s *gatedStmt) QueryContext(ctx context.Context, args []driver.NamedValue) 
 	if !ok {
 		return nil, errors.New("sqlite statement cannot query with a context")
 	}
-	release, err := s.conn.turn(ctx, s.write)
+	if s.conn.roTx && s.kind != "" {
+		return nil, writeInReadOnly(s.kind)
+	}
+	release, err := s.conn.turn(ctx, s.kind)
 	if err != nil {
 		return nil, err
 	}
