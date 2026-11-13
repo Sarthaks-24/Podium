@@ -468,7 +468,7 @@ test('archiving is in the menu, asks first and returns to the bank', async ({ pa
   await page.goto('/admin/problems/1');
   const menu = page.getByRole('button', { name: 'More' });
   await menu.click();
-  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Edit with AI', 'Rewrite with AI', 'Regenerate all outputs', 'Archive']);
+  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Edit with AI', 'Rewrite with AI', 'Version history', 'Regenerate all outputs', 'Archive']);
   await page.locator('#problem-menu').getByRole('button', { name: 'Archive' }).click();
   const dialog = page.getByRole('dialog', { name: 'Archive A plus B?' });
   await expect(dialog).toContainText('It leaves the list of problems. Contests that used it keep it.');
@@ -664,7 +664,7 @@ test('a problem with no tests offers Upload tests, and no extra checks are in us
   await expect(page.getByRole('button', { name: 'Upload tests' })).toBeVisible();
   await expect(page.getByText('No tests yet. Upload a .zip of numbered input and output files to add them.')).toBeVisible();
   await page.getByRole('button', { name: 'More' }).click();
-  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Restore']);
+  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Version history', 'Restore']);
   await page.keyboard.press('Escape');
   await tabOf(page, 'Checking').click();
   await expect(page.getByRole('list', { name: 'Optional extra checks in use' })).toHaveText('None in use.');
@@ -853,7 +853,7 @@ test('an archived problem has Restore in its menu instead of Archive', async ({ 
   const state = await mockApi(page);
   await page.goto('/admin/problems/3');
   await page.getByRole('button', { name: 'More' }).click();
-  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Restore']);
+  await expect(page.locator('#problem-menu').getByRole('button')).toHaveText(['Download pack', 'Version history', 'Restore']);
   await page.locator('#problem-menu').getByRole('button', { name: 'Restore' }).click();
   await page.getByRole('dialog', { name: 'Restore Old sorting?' }).getByRole('button', { name: 'Restore' }).click();
   await expect(toasts(page)).toContainText('Restored Old sorting');
