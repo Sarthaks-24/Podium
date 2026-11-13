@@ -2,7 +2,9 @@ package judge
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,13 +73,17 @@ func PCHBuildArgs(lang Language, out, header string) []string {
 // input is a one-line file written here that includes the system's header;
 // nothing else reaches the compiler. The file appears atomically.
 func BuildPCH(ctx context.Context, dir string) error {
-	if err := os.MkdirAll(filepath.Join(dir, "bits"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return err
 	}
 	// Root runs this, so the directories must be plain and owned by the
 	// caller: a link planted by someone else would make root write and
-	// chmod elsewhere.
+	// chmod elsewhere. Mkdir, unlike MkdirAll, does not follow a link, and
+	// each level is checked before the next is made inside it.
 	for _, d := range []string{dir, filepath.Join(dir, "bits")} {
+		if err := os.Mkdir(d, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
 		fi, err := os.Lstat(d)
 		if err != nil {
 			return err
