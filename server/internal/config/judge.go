@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"net"
 	"net/url"
@@ -15,7 +16,8 @@ var JudgeVars = []Var{
 	{Name: "PODIUM_SERVER_URL", Default: "http://127.0.0.1:8081"},
 	{Name: "PODIUM_JUDGE_TOKEN", Secret: true},
 	{Name: "PODIUM_ISOLATE_PATH", Default: "/usr/bin/isolate"},
-	{Name: "PODIUM_JUDGE_LANES", Default: "2"},
+	{Name: "PODIUM_JUDGE_LANES"},
+	{Name: "PODIUM_JUDGE_MEMORY_BUDGET_MB"},
 	{Name: "PODIUM_JUDGE_BOX_BASE", Default: "0"},
 	{Name: "PODIUM_JUDGE_CACHE_DIR", Default: "/var/cache/podium-judge"},
 	{Name: "PODIUM_JUDGE_BLOB_CACHE_MB", Default: "2048"},
@@ -35,6 +37,10 @@ type Judge struct {
 	IsolatePath string
 	// Lanes is the number of sandboxes run in parallel; each is one box id.
 	Lanes int
+	// BudgetMB is the memory the runner lets boxes hold at once, set by
+	// hand; zero means package sizing chooses. Lanes is zero for the same
+	// reason when PODIUM_JUDGE_LANES is not set.
+	BudgetMB int
 	// BoxBase is the first lane's isolate box id; lane n uses BoxBase+n,
 	// so a second judge on the same host can take other boxes.
 	BoxBase int
@@ -80,10 +86,12 @@ func LoadWorker(get Getenv) (Judge, error) {
 	}
 	c.IsolatePath = r.str("PODIUM_ISOLATE_PATH")
 	c.Lanes = r.int("PODIUM_JUDGE_LANES", 1, 16)
+	c.BudgetMB = r.int("PODIUM_JUDGE_MEMORY_BUDGET_MB", 256, 1<<20)
 	c.BoxBase = r.int("PODIUM_JUDGE_BOX_BASE", 0, MaxBoxBase)
-	if c.Lanes > 0 && c.BoxBase <= SelfTestBox && c.BoxBase+c.Lanes > SelfTestBox {
-		r.p.add("PODIUM_JUDGE_BOX_BASE and PODIUM_JUDGE_LANES give boxes %d to %d, which include box %d that selftest and calibrate use; choose a base that keeps clear of it",
-			c.BoxBase, c.BoxBase+c.Lanes-1, SelfTestBox)
+	if c.Lanes > 0 {
+		if err := CheckBoxRange(c.BoxBase, c.Lanes); err != nil {
+			r.p.add("%s", err)
+		}
 	}
 	c.CacheDir = r.str("PODIUM_JUDGE_CACHE_DIR")
 	c.BlobCacheMB = r.int("PODIUM_JUDGE_BLOB_CACHE_MB", 64, 1<<20)
@@ -98,8 +106,20 @@ func LoadJudge(get Getenv) (Judge, error) {
 	c := Judge{
 		IsolatePath: r.str("PODIUM_ISOLATE_PATH"),
 		Lanes:       r.int("PODIUM_JUDGE_LANES", 1, 16),
+		BudgetMB:    r.int("PODIUM_JUDGE_MEMORY_BUDGET_MB", 256, 1<<20),
+		BoxBase:     r.int("PODIUM_JUDGE_BOX_BASE", 0, MaxBoxBase),
 		CacheDir:    r.str("PODIUM_JUDGE_CACHE_DIR"),
 		LogLevel:    r.level("PODIUM_LOG_LEVEL"),
 	}
 	return c, r.p.err()
+}
+
+// CheckBoxRange refuses a box range that includes the selftest box. It is
+// called again once the judge has chosen its lane count.
+func CheckBoxRange(base, lanes int) error {
+	if base <= SelfTestBox && base+lanes > SelfTestBox {
+		return fmt.Errorf("PODIUM_JUDGE_BOX_BASE and PODIUM_JUDGE_LANES give boxes %d to %d, which include box %d that selftest and calibrate use; choose a base that keeps clear of it",
+			base, base+lanes-1, SelfTestBox)
+	}
+	return nil
 }

@@ -24,8 +24,10 @@ const (
 	// maxArtifactBytes bounds what a compile may hand to later runs.
 	maxArtifactBytes = 64 << 20
 	// DefaultMemoryBudgetMB is the total --cg-mem the runner lets boxes hold
-	// at once. It stays under the 1100 MB cap on isolate.slice, so one box's
-	// usage can never get a different box OOM-killed.
+	// at once when the worker does not set one (tests, calibrate): the budget
+	// of the 2 GB machine, just under its 1100 MB cap on isolate.slice. The
+	// worker sets the budget from package sizing, which keeps it 76 MB under
+	// the cap so one box's usage can never get a different box OOM-killed.
 	DefaultMemoryBudgetMB = 1024
 )
 

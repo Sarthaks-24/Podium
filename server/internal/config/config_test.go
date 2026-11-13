@@ -111,7 +111,7 @@ func TestLoadJudgeLaneRange(t *testing.T) {
 		t.Error("0 lanes accepted")
 	}
 	c, err := LoadJudge(env(nil))
-	if err != nil || c.Lanes != 2 {
+	if err != nil || c.Lanes != 0 {
 		t.Errorf("default lanes: %v %+v", err, c)
 	}
 }

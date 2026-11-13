@@ -5,6 +5,7 @@
 //	podium-judge work                  claim and run jobs from the server
 //	podium-judge selftest              run the hostile suite here; PASS or FAIL per program
 //	podium-judge calibrate [-reps N]   measure this host and print Markdown
+//	podium-judge size                  print this machine's lanes and caps (the pre-start step reads them)
 //	podium-judge -version              print what this build is
 //
 // Stop the podium-judge service before calibrating: calibrate is a separate
@@ -33,6 +34,7 @@ import (
 	"github.com/Sarthaks-24/podium/internal/config"
 	"github.com/Sarthaks-24/podium/internal/judge"
 	"github.com/Sarthaks-24/podium/internal/judge/calib"
+	"github.com/Sarthaks-24/podium/internal/sizing"
 	"github.com/Sarthaks-24/podium/internal/worker"
 )
 
@@ -54,7 +56,7 @@ func main() {
 	envFile := flag.String("env-file", "", "load variables from this file before reading the environment (local development)")
 	showVersion := flag.Bool("version", false, "print the version, commit, build date, schema and judge protocol, then exit")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: podium-judge [-env-file FILE] work | selftest | calibrate [-reps N]")
+		fmt.Fprintln(os.Stderr, "usage: podium-judge [-env-file FILE] work | selftest | calibrate [-reps N] | size")
 		fmt.Fprintln(os.Stderr, "       podium-judge -version")
 	}
 	flag.Parse()
@@ -74,6 +76,8 @@ func main() {
 		fail(selftest(flag.Args()[1:]))
 	case "calibrate":
 		fail(calibrate(flag.Args()[1:]))
+	case "size":
+		fail(size(os.Stdout, os.Stderr))
 	default:
 		flag.Usage()
 		os.Exit(2)
@@ -164,7 +168,12 @@ func work() error {
 		return err
 	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
-	log.Info("starting podium-judge", append([]any{"version", version, "lanes", cfg.Lanes, "first_box", cfg.BoxBase}, config.Summary(os.Getenv, config.JudgeVars)...)...)
+	plan, foundCap, err := sizeJudge(cfg, sizing.LinuxHost{}, sizing.SliceCapPath)
+	if err != nil {
+		return err
+	}
+	start := append([]any{"version", version, "first_box", cfg.BoxBase}, sizeAttrs(plan, foundCap)...)
+	log.Info("starting podium-judge", append(start, config.Summary(os.Getenv, config.JudgeVars)...)...)
 	stopCtx, stopClaims := context.WithCancel(context.Background())
 	defer stopClaims()
 	ctx, abandon := context.WithCancel(context.Background())
@@ -189,12 +198,12 @@ func work() error {
 		return err
 	}
 	w := &worker.Worker{
-		Runner:    &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}},
+		Runner:    &judge.Runner{Iso: judge.Isolate{Path: cfg.IsolatePath}, MemoryBudgetKB: plan.BudgetMB * 1024},
 		Client:    client,
 		Cache:     &worker.Cache{Dir: blobs, Client: client, MaxBytes: int64(cfg.BlobCacheMB) << 20},
 		Compiled:  &worker.CompileCache{Dir: compiled, MaxBytes: worker.DefaultCompileCacheBytes},
 		Log:       log,
-		Lanes:     cfg.Lanes,
+		Lanes:     plan.Lanes,
 		BoxBase:   cfg.BoxBase,
 		WorkDir:   jobs,
 		Name:      host,

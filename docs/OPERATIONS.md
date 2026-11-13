@@ -254,7 +254,7 @@ Each account is linked to the Google account that first signed in with it. If so
 
 ### podium-judge (`/etc/podium/judge.env`)
 
-Listed in the order the judge reads them, with the same mode columns. `podium-judge calibrate` reads only `PODIUM_ISOLATE_PATH`, `PODIUM_JUDGE_LANES`, `PODIUM_JUDGE_CACHE_DIR` and `PODIUM_LOG_LEVEL`.
+Listed in the order the judge reads them, with the same mode columns. `podium-judge calibrate` reads only `PODIUM_ISOLATE_PATH`, `PODIUM_JUDGE_LANES`, `PODIUM_JUDGE_CACHE_DIR` and `PODIUM_LOG_LEVEL`; `podium-judge size` (the pre-start step) reads the lane, budget and box base settings.
 
 | Variable | testing | dev | production | Default | Purpose |
 |---|---|---|---|---|---|
@@ -262,7 +262,8 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 | `PODIUM_SERVER_URL` | optional | optional | optional | `http://127.0.0.1:8081` | The server's judge API (its `PODIUM_JUDGE_LISTEN`) as a URL with no path. For a remote judge, the local end of the tunnel. Production refuses a plain `http` address that is not loopback, since the token travels in every request. |
 | `PODIUM_JUDGE_TOKEN` | optional | optional | required | testing and dev: the public testing token | The server's `PODIUM_JUDGE_TOKEN`. Production refuses the testing token. Secret. |
 | `PODIUM_ISOLATE_PATH` | optional | optional | optional | `/usr/bin/isolate` | The isolate binary. |
-| `PODIUM_JUDGE_LANES` | optional | optional | optional | `2` | Sandboxes judged in parallel (1 to 16). Two fit a 2 GB VM. Lane n uses isolate box `PODIUM_JUDGE_BOX_BASE` + n; a judge that finds its box busy waits up to about 4 s and then fails the job as a judge error. |
+| `PODIUM_JUDGE_LANES` | optional | optional | optional | one per vCPU | Sandboxes judged in parallel (1 to 16). Left out, the judge runs one lane per vCPU and sizes its memory to the machine (see "Judge sizing"). A value above the machine's vCPUs is refused at start. Lane n uses isolate box `PODIUM_JUDGE_BOX_BASE` + n; a judge that finds its box busy waits up to about 4 s and then fails the job as a judge error. |
+| `PODIUM_JUDGE_MEMORY_BUDGET_MB` | optional | optional | optional | chosen from the machine's memory | Memory in MB the sandboxes may hold at once, 256 to 1048576. Left out, the judge uses the sizing table in "Judge sizing" (1,024 MB on 2 GB, about 3,900 MB on 8 GB, at most 4,096 MB). The pre-start step sets the sandbox slice's cap to this plus 76 MB. A value above half the machine's memory less 196 MB is refused at start, naming the variable, the value and the limit. |
 | `PODIUM_JUDGE_BOX_BASE` | optional | optional | optional | `0` | First isolate box id (0 to 984). Give a second judge on the same host a base past the first one's boxes, so neither cleans up or waits on the other's; the boxes must keep clear of box 80, which `selftest` and `calibrate` use. |
 | `PODIUM_JUDGE_CACHE_DIR` | optional | optional | optional | `/var/cache/podium-judge` | Downloaded tests and sources, per-job work files and compiled programs (see "Judge cache"). |
 | `PODIUM_JUDGE_BLOB_CACHE_MB` | optional | optional | optional | `2048` | Cap on `blobs/` in the cache directory, in MB, 64 to 1048576. Above it the least recently used files no running job holds are removed after each job. Keep it above the largest problem's tests (every test of a problem is fetched to validate it). |
