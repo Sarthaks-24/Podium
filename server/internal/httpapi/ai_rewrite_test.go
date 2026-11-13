@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -369,4 +370,25 @@ func TestReplaceRoutesRolesAndBadInput(t *testing.T) {
 	r.s.db.Exec("UPDATE problems SET origin = 'manual' WHERE id = ?", draftID)
 	code, out := r.replace(t, oldID, draftID, base)
 	errIs(t, "not an AI draft", code, out, 400, "bad_request", "")
+}
+
+func TestRewriteStartFailsCleanlyWhenASampleFileIsGone(t *testing.T) {
+	r := newRewriteRig(t)
+	if err := os.RemoveAll(r.s.bank.Blobs.Dir); err != nil {
+		t.Fatal(err)
+	}
+	code, out := r.startRewrite(t, r.old, "Fix it.")
+	errIs(t, "sample file missing", code, out, 500, "internal", "")
+	r.stand.mu.Lock()
+	n := len(r.stand.posts)
+	r.stand.mu.Unlock()
+	if n != 0 {
+		t.Errorf("a failed start made %d model requests", n)
+	}
+}
+
+func TestReplaceRouteWantsJSON(t *testing.T) {
+	r := newRewriteRig(t)
+	code, out := r.org.raw("POST", fmt.Sprintf("/api/admin/problems/%d/replace-with-rewrite", r.old), "text/plain", []byte("draft_id=2"), r.s.srv.URL)
+	errIs(t, "not JSON", code, out, 415, "bad_request", "")
 }

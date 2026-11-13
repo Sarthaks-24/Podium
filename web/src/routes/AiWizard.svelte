@@ -13,6 +13,13 @@
   "Checking each language" and, once the round ends, a Languages block that
   says which languages are offered and why one is not. One status line is a
   live region; nothing else announces.
+
+  With ?rewrite=<problem id> (the problem page's "Rewrite with AI") the page
+  is the same wizard in paste mode for that problem: a note names it, the
+  form is "Students write" (set to the problem's choice) and "What should
+  change", and the server sends the AI the problem's statement, settings,
+  reference solution and sample tests, never a hidden test. The run reports
+  which problem it rewrote, and the page keeps that for the draft's banner.
 -->
 <script lang="ts">
   import { organises } from '../lib/roles';
@@ -46,7 +53,9 @@
   } from '../lib/ai';
   import { checkingLine, notOffered, notOfferedLine, offeredNames, proofPaths, referenceBanner, roundFinished, type ProofState } from '../lib/proof';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
-  import { problemPath, type Validation } from '../lib/problems';
+  import { problemPath, type Problem, type Validation } from '../lib/problems';
+  import { draftStorage } from '../lib/drafts';
+  import { rememberRewrite, rewriteHref, rewriteRequest } from '../lib/rewrite';
   import type { Generation } from '../lib/workspace';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
@@ -70,6 +79,11 @@
   let mode = $state<'brief' | 'paste'>('brief');
   let brief = $state<Brief>({ topic: '', difficulty: 'medium', constraints: '', subtasks: '' });
   let text = $state('');
+  // Rewrite with AI (stage W): the problem to write again, read from the address, and what should change.
+  let rewriteId = $state<number | null>(null);
+  let rewriteOld = $state<{ title: string } | null>(null);
+  let rewriteError = $state('');
+  let change = $state('');
   let studentsWrite = $state<StudentsWrite>('program');
   let javaLists = $state<JavaLists>('array');
   let fields = $state<Record<string, string>>({});
@@ -78,6 +92,9 @@
 
   let wizard = $state<Wizard | null>(null);
   let lostWizard = $state(false);
+  const rewriteTitle = $derived(rewriteOld?.title ?? wizard?.rewrite_of?.title ?? '');
+  /** The page is for a rewrite: the address named a problem, or the run being followed is one. */
+  const rewriting = $derived(rewriteId !== null || !!wizard?.rewrite_of);
 
   // Unknown until the status loads; then the wizard needs a key and a model.
   const blocker = $derived(wizardBlocker(keyStatus));
@@ -147,6 +164,8 @@
     if (!wizard || String(w.id) !== String(wizard.id)) return;
     wizard = w;
     if (!wizardPending(w)) {
+      // The draft of a rewrite remembers what it rewrites, for its banner.
+      if (w.problem_id && w.rewrite_of) rememberRewrite(draftStorage(), w.problem_id, w.rewrite_of);
       stopWatch();
       if (w.problem_id && chainStarted === 0) {
         chainStarted = Date.now();
@@ -288,12 +307,15 @@
     if (forbidden) return;
     loadKey();
     const resume = router.query.get('wizard');
+    const rewrite = Number(router.query.get('rewrite'));
     if (resume) {
       wizard = { id: resume, state: 'thinking' };
       void pollWizard().then(() => {
         // Left before the first answer: the cleanup below already ran.
         if (alive && wizardPending(wizard)) startWatch();
       });
+    } else if (Number.isInteger(rewrite) && rewrite > 0) {
+      void loadRewrite(rewrite);
     }
     return () => {
       alive = false;
@@ -302,11 +324,30 @@
     };
   });
 
+  /** Reads the problem to rewrite: its title for the page and its "Students write" choice for the form. */
+  async function loadRewrite(id: number) {
+    rewriteId = id;
+    rewriteOld = null;
+    rewriteError = '';
+    try {
+      const p = await getJSON<Problem>(problemPath(id));
+      if (!alive) return;
+      if (p.archived) {
+        rewriteError = `${p.title} is archived. Restore it first, then rewrite it.`;
+        return;
+      }
+      rewriteOld = { title: p.title };
+      studentsWrite = p.mode === 'function' ? 'function' : 'program';
+    } catch (e) {
+      if (!handleAuth(e)) rewriteError = errorText(e);
+    }
+  }
+
   async function generate(event: SubmitEvent) {
     event.preventDefault();
     requestError = null;
     lostWizard = false;
-    const built = wizardRequest(mode, brief, text, studentsWrite, javaLists);
+    const built = rewriteId !== null ? rewriteRequest(change, rewriteId, studentsWrite, javaLists) : wizardRequest(mode, brief, text, studentsWrite, javaLists);
     if (!built.ok) {
       fields = built.fields;
       await focusFirstInvalid('.wizard-form');
@@ -355,11 +396,13 @@
     proofError = false;
     chainSlow = false;
     functionRun = null;
+    const again = rewriteId ?? wizard?.rewrite_of?.problem_id ?? null;
     wizard = null;
     requestError = null;
-    navigate('/admin/ai/new', { replace: true });
+    navigate(again !== null ? rewriteHref(again) : '/admin/ai/new', { replace: true });
+    if (again !== null && rewriteOld === null) await loadRewrite(again);
     await tick();
-    document.getElementById(mode === 'brief' ? 'topic' : 'paste-text')?.focus();
+    document.getElementById(again !== null ? 'change-text' : mode === 'brief' ? 'topic' : 'paste-text')?.focus();
   }
 
   function described(key: string, help = ''): string | undefined {
@@ -393,10 +436,28 @@
       <p class="muted custom-prompt">This site uses a custom prompt.</p>
     {/if}
 
-    <p class="lead">
-      The model writes a draft: statement, subtasks, solutions, a checker for the inputs and a test generator. Nothing reaches
-      students until you have read it and it passes validation.
-    </p>
+    {#if rewriteTitle !== ''}
+      <div class="banner banner-info lead">
+        <p><strong>Rewriting: {rewriteTitle}</strong></p>
+        <p>
+          The AI writes this problem again from what you say should change. It sees the statement, settings, reference solution and sample tests,
+          never the hidden tests. Nothing changes on {rewriteTitle} until you press Replace.
+        </p>
+      </div>
+    {:else if rewriteError !== ''}
+      <div class="banner banner-error lead" role="alert">
+        <p>{rewriteError}</p>
+      </div>
+    {:else if rewriteId !== null && !wizard}
+      <p class="lead muted" role="status">Loading problem</p>
+    {:else}
+      <p class="lead">
+        The model writes a draft: statement, subtasks, solutions, a checker for the inputs and a test generator. Nothing reaches
+        students until you have read it and it passes validation.
+      </p>
+      <p class="lead">Starting from a problem you already have? Use Edit with AI or Rewrite with AI on its page.</p>
+    {/if}
+    <p class="lead muted">Edit with AI changes part of this problem and keeps its tests. Rewrite with AI writes it again with new tests. New problem with AI starts from nothing.</p>
 
     {#if lostWizard}
       <div class="banner banner-info lead" role="status">
@@ -510,9 +571,10 @@
       </section>
     {/if}
 
-    {#if !wizard || wizard.state === 'error'}
+    {#if (!wizard || wizard.state === 'error') && !(rewriting && rewriteOld === null)}
       <form class="wizard-form" novalidate onsubmit={generate} aria-labelledby="request-heading">
         <h2 id="request-heading" class="visually-hidden">Request</h2>
+        {#if !rewriting}
         <fieldset class="modes">
           <legend>Start from</legend>
           <label class="mode" class:selected={mode === 'brief'}>
@@ -530,6 +592,7 @@
             </span>
           </label>
         </fieldset>
+        {/if}
 
         <fieldset class="modes">
           <legend>Students write</legend>
@@ -563,7 +626,22 @@
           </fieldset>
         {/if}
 
-        {#if mode === 'brief'}
+        {#if rewriting}
+          <div class="field">
+            <label for="change-text">What should change</label>
+            <textarea
+              id="change-text"
+              aria-required="true"
+              class="input paste"
+              rows="8"
+              bind:value={change}
+              aria-invalid={fields.text ? 'true' : undefined}
+              aria-describedby="change-help{fields.text ? ' text-error' : ''}"
+            ></textarea>
+            <p id="change-help" class="field-help">For example: the limits are wrong, the statement is unclear, or the tests miss a case.</p>
+            {#if fields.text}<p id="text-error" class="field-error">{fields.text}</p>{/if}
+          </div>
+        {:else if mode === 'brief'}
           <div class="field">
             <label for="topic">Topic</label>
             <input
@@ -636,7 +714,7 @@
 
         <div class="actions">
           <button type="submit" class="btn {keyActive ? 'btn-primary' : 'btn-secondary'}" disabled={sending || !keyActive} aria-describedby={keyActive ? undefined : 'generate-help'}>
-            {sending ? 'Writing the draft' : 'Generate draft'}
+            {sending ? 'Writing the draft' : rewriting ? 'Rewrite the problem' : 'Generate draft'}
           </button>
           {#if !keyActive}<span id="generate-help" class="field-help">{keyStatus ? (keyStatus.active ? 'Choose a model in the form above first.' : 'Add a key in the form above first.') : blocker}</span>{/if}
         </div>

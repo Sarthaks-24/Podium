@@ -1254,6 +1254,33 @@ The provider's error body is read for the status only; it is never shown or logg
 
 ### Stage W: rewrite with AI
 
+**`POST /api/admin/ai/wizard`** takes one more optional field, `rewrite_of` (a problem id). It is read in paste mode only; with `mode` `brief` it is 400 `bad_request` "Choose paste to rewrite a problem.". `text` is then what should change, not a problem: it must have text (400 `bad_request` "Say what should change.") and at most 4,000 characters (400 "Keep what should change under 4000 characters."). The server reads the problem and sends the AI its title, limits, checker, difficulty, tags, mode, statement, reference solution and sample tests (the tests listed in `samples`, each cut at 4 KB), never a hidden test. `students_write` and `java_lists` work as for any run; a request without `rewrite_of` behaves as before. A problem that does not exist is 404 `not_found`, a deleted one 409 `deleted`, an archived one 409 `archived` "<title> is archived. Restore it first, then rewrite it.". Roles as for the wizard (organiser and above).
+
+**`GET /api/admin/ai/wizard/{id}`** and the `wizard` event carry `"rewrite_of": {"problem_id", "base", "title"}` for a rewrite run and leave the field out for any other run. `base` is a fingerprint of the old problem's pack files (without test data) and test hashes when the run began; the web app keeps it with the draft and sends it back to Replace. The run itself is the ordinary wizard run: its result is a draft problem with its own slug.
+
+**`POST /api/admin/problems/{id}/replace-with-rewrite`** puts a rewrite on problem `{id}`. Organiser and above; a student is 403, no session 401.
+
+| Request | Response |
+|---|---|
+| `{"draft_id": 41, "base": "<from the run>"}` | 200 `{"problem_id","copy_id","copy_title","validation_queued","not_ready":[...]}` |
+
+In one transaction it inserts an archived copy of the problem (its content, tests, validation state and original slug, titled "<title> (before rewrite, <d Mon yyyy>)"), saves the draft's content over the problem as one new revision with the reason "Replaced with an AI rewrite" (id, slug, author and history stay), marks it origin `ai` with the `ai draft` tag and withdraws its validation, and archives the draft. After the commit it queues Validate, as Accept does for an AI edit: `validation_queued` is `false` and `not_ready` lists why when the content cannot be validated. Nothing is written when it is refused.
+
+| Status and code | When, and the message |
+|---|---|
+| 400 `bad_request` | `draft_id` or `base` missing; the draft is the problem itself or is not an AI draft (`fields.draft_id`) |
+| 404 `not_found` | the problem or the draft does not exist |
+| 409 `not_validated` | the draft has not passed Validate: "Validate this rewrite first." |
+| 409 `rewrite_gone` | the draft is archived or deleted: "This rewrite is archived or deleted, so it cannot replace <title>. Rewrite it again." This is also the answer to a second Replace of the same draft |
+| 409 `deleted` | "<title> was deleted, so it cannot be replaced. Keep this rewrite as its own problem." |
+| 409 `archived` | "<title> is archived, so it cannot be replaced. Restore it first, or keep this rewrite as its own problem." |
+| 409 `changed` | the problem's fingerprint is not `base`: "<title> changed after this rewrite began. Rewrite it again, or keep this rewrite as its own problem." |
+| 409 `contest_running` | a running contest pins it: "A contest that is running uses <title>, so it cannot be replaced now. Try again after the contest ends, or keep this rewrite as its own problem." |
+| 409 `in_use` | any submission, Run or saved code exists for the problem: "Students have submitted or saved code for <title>, so it cannot be replaced. Keep this rewrite as its own problem and use it in new contests." |
+| 409 `checking` | a language check of the problem is open: "Podium is still checking the languages of this problem." |
+
+<title> is the problem's title when Replace was pressed. A contest that is not running keeps the revision it is pinned to; "Update students now" moves it, and refuses an AI draft that is not confirmed. No migration; the archived copy is an ordinary archived problem, restored with `POST /api/admin/problems/{id}/restore`.
+
 ### Stage H: bring back a version
 
 ### Stage J: judge protocol

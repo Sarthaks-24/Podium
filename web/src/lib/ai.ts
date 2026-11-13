@@ -233,7 +233,19 @@ export type StudentsWrite = 'program' | 'function';
 export type JavaLists = 'array' | 'arraylist' | 'either';
 
 /** The body of POST /api/admin/ai/wizard. */
-export type WizardRequest = ({ mode: 'brief'; brief: Brief } | { mode: 'paste'; text: string }) & { students_write?: 'function'; java_lists?: JavaLists };
+export type WizardRequest = ({ mode: 'brief'; brief: Brief } | { mode: 'paste'; text: string }) & {
+  students_write?: 'function';
+  java_lists?: JavaLists;
+  /** Paste mode only: the problem to write again; `text` then says what should change (stage W). */
+  rewrite_of?: number;
+};
+
+/** The problem a rewrite run started from, and the fingerprint of its content then. */
+export interface RewriteLink {
+  problem_id: number;
+  base: string;
+  title: string;
+}
 
 export type WizardRequestResult = { ok: true; body: WizardRequest } | { ok: false; fields: Record<string, string> };
 
@@ -271,6 +283,8 @@ export interface Wizard {
   state: WizardState | string;
   error?: { code: string; message: string; reasons?: string[] } | null;
   problem_id?: number | null;
+  /** Present when the run rewrites a problem; absent for any other run and from an older server. */
+  rewrite_of?: RewriteLink | null;
   /** The provider and model that made the draft or the solution. */
   provider?: string;
   model?: string;

@@ -7,7 +7,9 @@ package problems
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -369,5 +371,48 @@ func TestCopyTitleFitsTheTitleLimit(t *testing.T) {
 	}
 	if got := copyTitle("Two sum", time.UnixMilli(1_800_000_000_000)); got != "Two sum (before rewrite, 15 Jan 2027)" {
 		t.Errorf("short title: %q", got)
+	}
+}
+
+// A language check that is open drops its result if the problem changes, so
+// Replace waits for it, as an AI edit does.
+func TestReplaceWaitsForAnOpenLanguageCheck(t *testing.T) {
+	r := newRewriteRig(t)
+	payload := fmt.Sprintf(`{"problem_id": %d, "proof": {"round": "r1"}}`, r.old.ID)
+	if _, err := r.s.DB.Exec(`INSERT INTO jobs (kind, priority, state, payload, created_at) VALUES ('validate', ?, 'queued', ?, 0)`, ProofPriority, payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.replace(t); !errors.Is(err, ErrChecking) {
+		t.Fatalf("replace during a language check: %v", err)
+	}
+	if n := revisionCount(t, r.s, r.old.ID); n != 1 || problemCount(t, r.s) != 2 {
+		t.Error("a refused replace changed the bank")
+	}
+}
+
+// A rewrite already has the ai draft tag; the problem it replaces keeps
+// exactly one, whatever the tag count was.
+func TestReplaceKeepsOneAIDraftTagWithinTheTagLimit(t *testing.T) {
+	r := newRewriteRig(t)
+	tags := []string{"ai draft"}
+	for i := 0; i < MaxTags; i++ {
+		tags = append(tags, fmt.Sprintf("topic-%d", i))
+	}
+	list, _ := json.Marshal(tags)
+	if _, err := r.s.DB.Exec("UPDATE problems SET tags = ? WHERE id = ?", string(list), r.draft.ID); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := r.replace(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, tag := range out.Tags {
+		if isAIDraftTag(tag) {
+			n++
+		}
+	}
+	if len(out.Tags) > MaxTags || n != 1 {
+		t.Errorf("tags %v: %d ai draft tags", out.Tags, n)
 	}
 }
