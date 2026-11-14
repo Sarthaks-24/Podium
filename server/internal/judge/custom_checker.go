@@ -79,6 +79,10 @@ func (r *Runner) RunChecker(ctx context.Context, box int, checker Program, input
 		res.Verdict, res.Message = InternalError, "The judge could not run the checker."
 	case meta.OOMKilled || meta.Status == "TO" || meta.Status == "SG" || meta.ExitSig != 0:
 		res.Verdict, res.Message = InternalError, "The checker crashed or ran out of time or memory."
+	case meta.ExitCode == 127 && strings.HasPrefix(res.Message, "execve("):
+		// isolate could not start the checker. 127 also lies in testlib's
+		// partial range, so without this a start failure reads as wrong answer.
+		res.Verdict, res.Message = InternalError, "The judge could not start the checker."
 	case meta.ExitCode == testlibOK:
 		res.Verdict = Accepted
 	case meta.ExitCode == testlibWA, meta.ExitCode == testlibPE, meta.ExitCode == testlibDirt,

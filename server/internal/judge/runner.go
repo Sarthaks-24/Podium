@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -450,12 +451,19 @@ func copyRegularFiles(src, dst string, skip map[string]bool) error {
 }
 
 // copyFile copies src to dst through openBoxFile; limit < 0 means no limit.
+//
+// The fork lock is held while dst is open for writing. A child forked in
+// that time (another lane starting isolate) would hold the descriptor until
+// it execs, and a sandbox that starts dst meanwhile fails with "text file
+// busy": a correct program or checker would get a wrong verdict.
 func copyFile(src, dst string, perm os.FileMode, limit int64) error {
 	in, err := openBoxFile(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
+	syscall.ForkLock.RLock()
+	defer syscall.ForkLock.RUnlock()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
 		return err
