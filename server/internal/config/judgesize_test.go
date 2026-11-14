@@ -96,7 +96,7 @@ func TestJudgePCHSetting(t *testing.T) {
 	for _, tc := range []struct {
 		value string
 		want  bool
-	}{{"", false}, {"off", false}, {"on", true}} {
+	}{{"", true}, {"off", false}, {"on", true}} {
 		c, err := LoadWorker(env(map[string]string{"PODIUM_JUDGE_TOKEN": tok, "PODIUM_JUDGE_PCH": tc.value}))
 		if err != nil || c.PCH != tc.want {
 			t.Errorf("PODIUM_JUDGE_PCH=%q: %v, %v; want %v", tc.value, c.PCH, err, tc.want)

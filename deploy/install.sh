@@ -378,8 +378,8 @@ install_app_files() {
 # builds it, from the system's own headers, with the options of its C++
 # compile command, and the files are root-owned. It is rebuilt on every
 # upgrade, since a new g++ makes the old file useless (GCC then ignores it,
-# so nothing breaks in between). A failure is a warning: the setting is off
-# by default and falls back to normal compiles. A rollback leaves the
+# so nothing breaks in between). A failure is a warning: the judge then
+# falls back to normal compiles. A rollback leaves the
 # directory alone; the previous judge never looks at it.
 build_pch() {
   if ! /usr/local/bin/podium-judge pch build; then

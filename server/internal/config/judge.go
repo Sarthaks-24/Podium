@@ -24,7 +24,7 @@ var JudgeVars = []Var{
 	{Name: "PODIUM_JUDGE_CACHE_DIR", Default: "/var/cache/podium-judge"},
 	{Name: "PODIUM_JUDGE_BLOB_CACHE_MB", Default: "2048"},
 	{Name: "PODIUM_JUDGE_ASYNC_REPORTS", Default: "off"},
-	{Name: "PODIUM_JUDGE_PCH", Default: "off"},
+	{Name: "PODIUM_JUDGE_PCH", Default: "on"},
 	{Name: "PODIUM_LOG_LEVEL", Default: "info"},
 }
 
