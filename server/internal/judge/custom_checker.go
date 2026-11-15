@@ -2,6 +2,7 @@ package judge
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -81,8 +82,10 @@ func (r *Runner) RunChecker(ctx context.Context, box int, checker Program, input
 		res.Verdict, res.Message = InternalError, "The checker crashed or ran out of time or memory."
 	case meta.ExitCode == 127 && strings.HasPrefix(res.Message, "execve("):
 		// isolate could not start the checker. 127 also lies in testlib's
-		// partial range, so without this a start failure reads as wrong answer.
-		res.Verdict, res.Message = InternalError, "The judge could not start the checker."
+		// partial range, so without this a start failure reads as wrong
+		// answer. It is an error, not a verdict: the job fails and the
+		// server gives it to a lane again when its lease runs out.
+		return CheckerResult{}, fmt.Errorf("checker in box %d did not start: %s", box, res.Message)
 	case meta.ExitCode == testlibOK:
 		res.Verdict = Accepted
 	case meta.ExitCode == testlibWA, meta.ExitCode == testlibPE, meta.ExitCode == testlibDirt,

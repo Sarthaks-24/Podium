@@ -27,7 +27,8 @@ var pairChecker []byte
 // copied into its box, another lane forked while that file was still open
 // for writing, and the sandbox could not start it ("text file busy", exit
 // 127, which read as wrong answer). Before the fix this test failed about
-// ten times in 3,000 runs on two CPUs. PODIUM_STRESS_N sets the runs a lane.
+// ten times in 1,500 runs on two CPUs (about 22 s). PODIUM_STRESS_N sets the
+// runs a lane.
 func TestARightOutputIsAcceptedWhileOtherLanesStartSandboxes(t *testing.T) {
 	n := 750
 	if v, err := strconv.Atoi(os.Getenv("PODIUM_STRESS_N")); err == nil && v > 0 {
