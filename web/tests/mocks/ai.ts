@@ -199,6 +199,8 @@ export interface MockOptions {
    * everything and stops; 'forever' never finishes; 'error' answers 500.
    */
   proof?: 'pass' | 'java_fail' | 'java_form_fail' | 'java_compile' | 'reference_fail' | 'forever' | 'error' | 'changed' | 'gone' | 'apply_error';
+  /** With `proof`: the reference did not compile, so the output generation ends with a problem and the server queues nothing after it. */
+  outputs?: 'no_compile';
 }
 
 const LANG_IDS = ['cpp17', 'java21', 'python3', 'node22'];
@@ -421,6 +423,8 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
         if (opts.proof && id === 20 && method === 'GET') {
           const script = proofScript(opts.proof);
           if (rest === '/input-generation') return json(route, 200, { id: 1, state: 'done', planned: 4, results: [], summary: null, error: null });
+          if (rest === '/generation' && opts.outputs === 'no_compile')
+            return json(route, 200, { id: 1, state: 'done', results: [], compile_output: "main.cpp:11:12: error: stray '\\' in program", summary: { applied: 0, problems: ['The reference solution does not compile, so no outputs were generated.'] }, error: null });
           if (rest === '/generation') return json(route, 200, { id: 1, state: 'done', results: [], summary: { applied: 4, problems: [] }, error: null });
           if (rest === '/proof') {
             state.proofGets++;

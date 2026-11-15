@@ -315,7 +315,8 @@ export interface WizardStep {
 }
 
 /** A judge job's state as the chain needs it; null when the problem never had one. */
-type Job = { state: string } | null;
+/** A job of the draft's chain; `summary` is set once it is done. */
+type Job = { state: string; summary?: { applied?: number; problems?: string[]; generating_outputs?: boolean } | null } | null;
 
 /**
  * The wizard page's steps from the request to a validated draft, so
@@ -335,9 +336,16 @@ export function draftChainSteps(
 ): { steps: WizardStep[]; done: boolean; outcome: '' | 'passed' | 'failed' | 'tests_failed' | 'reference_failed' | 'reference_unchecked' | 'proof_stopped' } {
   const busy = (j: Job) => j !== null && (j.state === 'queued' || j.state === 'running');
   const broke = (j: Job) => j !== null && (j.state === 'error' || j.state === 'failed');
+  // A generation that finished but queued nothing after it ends the chain: inputs
+  // that did not go on to outputs, or outputs with a problem (the reference did
+  // not compile, a test got no output), after which the server queues nothing.
+  const stopped = (j: Job, next: 'outputs' | 'checks') =>
+    j !== null && j.state === 'done' && !!j.summary &&
+    (next === 'outputs' ? j.summary.generating_outputs === false : (j.summary.problems?.length ?? 0) > 0 || j.summary.applied === 0);
   const failed = w.state === 'error';
   const created = !failed && (w.state === 'draft_created' || w.state === 'done' || !!w.problem_id);
-  const testsFailed = created && (broke(inputs) || broke(outputs));
+  const testsFailed =
+    created && (broke(inputs) || broke(outputs) || (validation === null && ((outputs === null && stopped(inputs, 'outputs')) || stopped(outputs, 'checks'))));
   const testsDone = created && !testsFailed && (validation !== null || (outputs !== null && outputs.state === 'done' && !busy(inputs)));
   const isFunction = forFunction || (proof !== null && proof.languages.length > 0);
   const kept = proof?.applied?.kept;

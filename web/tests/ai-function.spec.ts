@@ -201,6 +201,20 @@ test('when the AI own solution fails the banner says so and the draft is not val
   expect(proofRequests(state.requestedUrls)).toBe(n);
 });
 
+test('a reference that does not compile stops the wizard at the tests instead of waiting for the languages', async ({ page }) => {
+  // Found on the laptop test server (2026-11-15): the server ends the output generation with a problem and
+  // queues no language check, so the page must stop here rather than wait for a round that never starts.
+  const state = await runBrief(page, { proof: 'forever', outputs: 'no_compile' });
+  await expect(page.getByText('The tests could not be generated. Open the draft to see why.')).toBeVisible({ timeout: 15_000 });
+  await expect(progress(page).getByRole('listitem').nth(2)).toContainText(', failed');
+  await expect(progress(page).getByRole('listitem').nth(3)).toContainText(', not started');
+  await expect(languages(page)).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open the draft in the editor' })).toBeVisible();
+  const n = proofRequests(state.requestedUrls);
+  await page.waitForTimeout(4500);
+  expect(proofRequests(state.requestedUrls)).toBe(n);
+});
+
 test('polling stops when the round ends', async ({ page }) => {
   const state = await runBrief(page, { proof: 'pass' });
   await expect(languages(page)).toBeVisible({ timeout: 15_000 });

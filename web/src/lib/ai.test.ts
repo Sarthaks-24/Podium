@@ -339,6 +339,21 @@ describe('draftChainSteps', () => {
     expect(failed.outcome).toBe('failed');
     expect(states(draftChainSteps({ state: 'error' }, null, null, null))).toEqual(['failed', 'waiting', 'waiting', 'waiting']);
   });
+
+  it('stops when a generation finished without going on to the next step', () => {
+    // The reference did not compile: outputs are done with a problem and nothing is queued after them.
+    const noCompile = { state: 'done', summary: { applied: 0, problems: ['The reference solution does not compile, so no outputs were generated.'] } };
+    expect(draftChainSteps(draft, { state: 'done' }, noCompile, null)).toMatchObject({ done: true, outcome: 'tests_failed' });
+    expect(states(draftChainSteps(draft, { state: 'done' }, noCompile, null, null, true))).toEqual(['done', 'done', 'failed', 'waiting', 'waiting']);
+    // Inputs made but outputs never queued.
+    const inputsOnly = { state: 'done', summary: { applied: 4, problems: [], generating_outputs: false } };
+    expect(draftChainSteps(draft, inputsOnly, null, null)).toMatchObject({ done: true, outcome: 'tests_failed' });
+    // The usual chain is not stopped early.
+    const chained = { state: 'done', summary: { applied: 4, problems: [], generating_outputs: true } };
+    expect(draftChainSteps(draft, chained, null, null)).toMatchObject({ done: false, outcome: '' });
+    const applied = { state: 'done', summary: { applied: 4, problems: [] } };
+    expect(draftChainSteps(draft, chained, applied, null).done).toBe(false);
+  });
 });
 
 describe('the wizard request for one function', () => {
