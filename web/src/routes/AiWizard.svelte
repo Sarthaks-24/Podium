@@ -964,6 +964,8 @@
 
   .languages {
     display: grid;
+    /* A long compiler line scrolls inside its box and must not widen the page. */
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-2);
   }
 
@@ -973,6 +975,7 @@
 
   .not-offered {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-2);
   }
 

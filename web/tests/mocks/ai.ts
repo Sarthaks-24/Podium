@@ -240,7 +240,7 @@ export function proofScript(kind: NonNullable<MockOptions['proof']>): Json[] {
   }
   const java =
     kind === 'java_compile'
-      ? { offered: false, result: 'failed', reason: 'compile_error', compiler: 'Main.java:7: error: cannot find symbol\n  symbol: variable lenn\n  location: class Solution', total: 0 }
+      ? { offered: false, result: 'failed', reason: 'compile_error', compiler: 'Main.java:4: error: class Solution is public, should be declared in a file named Solution.java\nMain.java:7: error: cannot find symbol\n  symbol: variable lenn\n  location: class Solution', total: 0 }
       : { offered: false, result: 'failed', reason: 'wrong_answer', failed: 3, total: 12, tests: [{ idx: 4, verdict: 'WA' }], ...(kind === 'java_form_fail' ? { variant: 'ArrayList<Integer>' } : {}) };
   return [...lead, { checking: false, languages: proofLanguages({ ...passedAll(), java21: java }), applied: { removed: ['java21'], validating: true }, server_now: T0 }];
 }
