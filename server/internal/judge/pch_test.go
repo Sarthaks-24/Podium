@@ -103,6 +103,13 @@ func TestCheckPCHFiles(t *testing.T) {
 	if err := os.WriteFile(gch, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	stub := filepath.Join(dir, "bits", "stdc++.h")
+	if err := CheckPCHFiles(dir, uid); err == nil || !strings.Contains(err.Error(), "stdc++.h") {
+		t.Errorf("a header without its stub: %v", err)
+	}
+	if err := os.WriteFile(stub, []byte(pchStub), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if runtime.GOOS == "windows" {
 		t.Skip("owner and mode checks need Unix")
 	}
@@ -112,7 +119,7 @@ func TestCheckPCHFiles(t *testing.T) {
 	if err := CheckPCHFiles(dir, uid+1); err == nil || !strings.Contains(err.Error(), "owned by") {
 		t.Errorf("another owner: %v", err)
 	}
-	for name, path := range map[string]string{"file": gch, "bits": filepath.Dir(gch), "dir": dir} {
+	for name, path := range map[string]string{"file": gch, "stub": stub, "bits": filepath.Dir(gch), "dir": dir} {
 		st, _ := os.Stat(path)
 		os.Chmod(path, st.Mode()|0o020)
 		if err := CheckPCHFiles(dir, uid); err == nil || !strings.Contains(err.Error(), "writable") {
@@ -129,6 +136,7 @@ func TestCheckPCHFilesRefusesSymlinks(t *testing.T) {
 		dir := t.TempDir()
 		os.MkdirAll(filepath.Join(dir, "bits"), 0o755)
 		os.WriteFile(filepath.Join(dir, "bits", "stdc++.h.gch"), []byte("x"), 0o644)
+		os.WriteFile(filepath.Join(dir, "bits", "stdc++.h"), []byte(pchStub), 0o644)
 		return dir
 	}
 	link := func(target, name string) bool {
@@ -158,6 +166,12 @@ func TestCheckPCHFilesRefusesSymlinks(t *testing.T) {
 	link(filepath.Join(real, "bits", "stdc++.h.gch"), filepath.Join(d, "bits", "stdc++.h.gch"))
 	if err := CheckPCHFiles(d, uid); err == nil || !strings.Contains(err.Error(), "symbolic link") {
 		t.Errorf("symlinked file: %v", err)
+	}
+	d = good()
+	os.Remove(filepath.Join(d, "bits", "stdc++.h"))
+	link(filepath.Join(real, "bits", "stdc++.h"), filepath.Join(d, "bits", "stdc++.h"))
+	if err := CheckPCHFiles(d, uid); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("symlinked stub: %v", err)
 	}
 }
 

@@ -275,7 +275,7 @@ Listed in the order the judge reads them, with the same mode columns. `podium-ju
 
 ### Precompiled header
 
-Most of a small C++ program's compile time is GCC reading the standard library for `#include <bits/stdc++.h>`. With `PODIUM_JUDGE_PCH=on` the judge gives the C++ compile `-I /usr/local/lib/podium-pch`, which holds only `bits/stdc++.h.gch`: that header already parsed. The real header stays where the system keeps it; the directory is not `/usr/include`, which apt owns.
+Most of a small C++ program's compile time is GCC reading the standard library for `#include <bits/stdc++.h>`. With `PODIUM_JUDGE_PCH=on` the judge gives the C++ compile `-I /usr/local/lib/podium-pch`, which holds `bits/stdc++.h.gch`, that header already parsed, and a one-line `bits/stdc++.h` (`#include_next <bits/stdc++.h>`). GCC needs the second file when it finds the precompiled one but may not use it, for example when a program includes the header twice; without it that compile fails with "No such file or directory". The real header stays where the system keeps it; the directory is not `/usr/include`, which apt owns.
 
 | Topic | How it works |
 |---|---|

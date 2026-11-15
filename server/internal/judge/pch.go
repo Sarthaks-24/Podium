@@ -21,8 +21,9 @@ import (
 // offered to the compiler as -I PCHDir and as a read-only isolate directory.
 //
 // GCC uses it only when it is the first include and no macro defined before
-// it conflicts with the header, and otherwise reads the real header: the
-// verdict of a program never depends on it. If the header is missing or from
+// it conflicts with the header, and otherwise reads the real header through
+// a one-line stub beside it (pchStub): the verdict of a program never
+// depends on it. If the header is missing or from
 // another GCC the compiler ignores it; if the file is damaged GCC stops with
 // an error, and Compile then compiles again without it.
 
@@ -32,6 +33,13 @@ const PCHDir = "/usr/local/lib/podium-pch"
 const (
 	pchFile   = "bits/stdc++.h.gch"
 	pchSource = "#include <bits/stdc++.h>\n"
+	// pchStubFile sits beside the header. When GCC finds the .gch but may
+	// not use it (a second include of <bits/stdc++.h>, for one), it reads
+	// the plain file of the same name in that directory instead, and fails
+	// with "No such file or directory" if there is none. The stub passes the
+	// include on to the system's own header.
+	pchStubFile = "bits/stdc++.h"
+	pchStub     = "#include_next <bits/stdc++.h>\n"
 	// pchFaultMarker is what GCC says when it cannot read a header file it
 	// has found.
 	pchFaultMarker = "while reading precompiled header"
@@ -117,6 +125,17 @@ func BuildPCH(ctx context.Context, dir string) error {
 	if err := os.Chmod(out, 0o644); err != nil {
 		return err
 	}
+	// The stub goes first, so a header is never in place without it.
+	stub := filepath.Join(tmp, "stub.h")
+	if err := os.WriteFile(stub, []byte(pchStub), 0o644); err != nil {
+		return err
+	}
+	if err := os.Chmod(stub, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(stub, filepath.Join(dir, pchStubFile)); err != nil {
+		return err
+	}
 	return os.Rename(out, filepath.Join(dir, pchFile))
 }
 
@@ -127,16 +146,19 @@ func tail(s string, n int) string {
 	return s
 }
 
-// CheckPCHFiles checks that the header exists and that only uid can change
-// it: the directory, its bits folder and the file are owned by uid and not
-// writable by the group or others. The judge refuses to use a header
+// CheckPCHFiles checks that the header and its stub exist and that only uid
+// can change them: the directory, its bits folder and both files are owned
+// by uid and not writable by the group or others. A header directory built
+// before the stub existed fails here until `podium-judge pch build` runs. The judge refuses to use a header
 // anyone else could replace.
 func CheckPCHFiles(dir string, uid int) error {
-	gch := filepath.Join(dir, pchFile)
-	if _, err := os.Lstat(gch); err != nil {
-		return fmt.Errorf("precompiled header: %w", err)
+	gch, stub := filepath.Join(dir, pchFile), filepath.Join(dir, pchStubFile)
+	for _, p := range []string{gch, stub} {
+		if _, err := os.Lstat(p); err != nil {
+			return fmt.Errorf("precompiled header: %w", err)
+		}
 	}
-	for _, p := range []string{dir, filepath.Join(dir, "bits"), gch} {
+	for _, p := range []string{dir, filepath.Join(dir, "bits"), gch, stub} {
 		fi, err := os.Lstat(p)
 		if err != nil {
 			return fmt.Errorf("precompiled header: %w", err)

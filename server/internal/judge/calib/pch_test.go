@@ -26,6 +26,9 @@ const (
 	conflictDef  = "#define _GLIBCXX_DEBUG\n" + withInclude
 	pragmaFirst  = "#pragma GCC optimize(\"O3\")\n" + withInclude
 	otherInclude = "#include <cstdio>\n" + withInclude
+	// A function problem's locked top often includes the header, and the
+	// student's code or the AI's reference includes it again.
+	twiceInclude = "#include <bits/stdc++.h>\n" + withInclude
 )
 
 func pchRunner(t *testing.T) (*judge.Runner, string) {
@@ -100,6 +103,7 @@ func TestThePrecompiledHeaderChangesNoVerdict(t *testing.T) {
 		{"a conflicting define before it", conflictDef, false, "_GLIBCXX_DEBUG"},
 		{"a pragma before it", pragmaFirst, false, ""},
 		{"another include before it", otherInclude, false, ""},
+		{"included twice", twiceInclude, true, ""},
 		{"no bits/stdc++.h at all", noInclude, false, ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {

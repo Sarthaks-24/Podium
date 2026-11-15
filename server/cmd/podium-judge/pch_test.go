@@ -22,6 +22,9 @@ func pchDir(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(dir, "bits", "stdc++.h.gch"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dir, "bits", "stdc++.h"), []byte("#include_next <bits/stdc++.h>\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return dir
 }
 
