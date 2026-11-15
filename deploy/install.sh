@@ -11,7 +11,8 @@
 #                                  not wanted)
 #   sudo ./install.sh upgrade      install this release over the running one
 #                                  (drain, backup, keep the previous
-#                                  binaries, install, verify). No deploy
+#                                  binaries, install, build the C++
+#                                  precompiled header, verify). No deploy
 #                                  within 48 hours of a contest: that rule
 #                                  is in docs/RUNBOOK.md, not in code.
 #   sudo ./install.sh rollback     put the previous release back
@@ -24,6 +25,8 @@
 # backup alerts caddy. caddy comes last and skips itself while
 # PODIUM_BASE_URL is a placeholder or its DNS name does not point at this
 # VM, so a fresh install always reaches the end.
+# The app step also builds the precompiled header (podium-judge pch build);
+# a failure there is a warning.
 #
 # The script never writes secrets. It creates /etc/podium/*.env from the
 # example files only when they do not exist yet, and the owner fills in the

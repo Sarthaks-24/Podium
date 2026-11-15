@@ -2,7 +2,7 @@
 
 What to check before a contest, what to watch and do during it, and what to finish afterwards, with the commands. Installation, configuration and backups are in `docs/OPERATIONS.md`; the routes behind every button are in `docs/API.md`. The last two sections are the restore procedure and the dry run with real students that should come before the first large contest.
 
-Status (2026-10-30): no contest has run on the VM and none of the drills in "Proving the safety net" has run. The checklists come from the code, the WSL2 tests and the load test on a desktop. Sections that depend on a drill are marked "not yet proven on the VM"; tick a box here only from a real contest or a drill note.
+Status (2026-11-15): releases `v2.0.0` to `v2.0.2` have run on the production VM; no real contest has run on it yet, and the drills in "Proving the safety net" are marked "not yet proven on the VM" where they have not run. The checklists come from the code, the WSL2 tests and the load test on a desktop. Sections that depend on a drill are marked "not yet proven on the VM"; tick a box here only from a real contest or a drill note.
 
 Two people make contest day easy: one on the contest's Live tab in the browser (clarifications, announcements, the board), one with an SSH session on the VM (the metrics, the logs, the services). One person can do both for a small class. Organisers, admins and owners run contests; students never see an organiser screen.
 

@@ -2,9 +2,9 @@
 
 A self-hosted platform for weekly programming contests at a college. Students sign in with their college Google account, solve problems in C++, Java, Python or JavaScript, and get IOI-style partial scores from a sandboxed judge. A live leaderboard freezes near the end and is revealed afterwards. Organisers write problems by hand, from a problem pack, or with an AI assistant that uses a temporary key. Only people on the sign-in list get in; admins and the owner keep that list on the Dashboard.
 
-Everything runs on one small Linux VM (Ubuntu 24.04, amd64 or arm64, 2 GB RAM is the design target) and is built to serve 700+ students in one contest.
+Everything runs on one small Linux VM (Ubuntu 24.04, amd64 or arm64). The design floor is 2 GB of RAM, so every dependency has to fit there; production is a Google Cloud e2-standard-2 with 2 vCPUs and 8 GB. A 700 student k6 load test on a 2 vCPU, 8 GB test VM (2026-11-14) gave a p95 of 276 ms with no failed requests (`docs/OPERATIONS.md`, "Replay corpus and speed comparison").
 
-Status (2026-11-05): the first release, `v2.0.0` Billota (V4-27), is tagged and runs on a Google Cloud VM with its own domain (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"). `v2.0.1` (archive and restore, import conflicts, contacts, resizable panes, themes) is being built on `main`. `CHANGELOG.md` lists what changed, and `docs/` describes the code on `main`.
+Status (2026-11-15): `v2.0.2` Billota is live on a Google Cloud VM at podium-sst.tech (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"). `v2.1.0` is built and not yet shipped. `CHANGELOG.md` lists what changed in each release, and `docs/` describes the code on `main`.
 
 **Version names.** Releases are numbered from `v2.0.0`. The builds before it were never released, and the docs give them `v1.x` names:
 

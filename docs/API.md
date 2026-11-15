@@ -999,7 +999,7 @@ Used only by `podium-judge work`. It is served on its own listener, `PODIUM_JUDG
 
 - **Auth.** Every request sends `Authorization: Bearer <PODIUM_JUDGE_TOKEN>`. The server compares SHA-256 digests of the two tokens in constant time; anything else is `401 unauthorized`.
 - **Bodies.** JSON with no unknown fields; at most 64 KB for a claim or toolchain report and 1 MB for a report; a malformed body is `400 bad_request`. An unknown route is `404 not_found`. The one non-JSON body is an uploaded output, at most 16 MB.
-- **Protocol 3.** A judge and server of different protocols refuse each other with `426 protocol`. A run input may carry `"open": true` and a submit payload `"reveal": true`; the v1.2 server never sends `open`, and sends `reveal` only for practice and the organisers' workspace, when the judge reports `output` (the first 4 KB) on the first failing hidden test. The server refuses output on any other submit result.
+- **Protocol 4.** A judge and server of different protocols refuse each other with `426 protocol`. A run input may carry `"open": true` and a submit payload `"reveal": true`; the v1.2 server never sends `open`, and sends `reveal` only for practice and the organisers' workspace, when the judge reports `output` (the first 4 KB) on the first failing hidden test. The server refuses output on any other submit result.
 
 ### `POST /api/judge/claim` (judge)
 
@@ -1039,7 +1039,7 @@ Payloads, in `judgeapi`:
 
 ### `POST /api/judge/toolchain` (judge)
 
-Sent once when the judge starts. Request: `{"protocol":3,"toolchain":{"gcc","java","python","node","isolate","kernel"}}`: the first line of each tool's version output, `missing` when the tool cannot run, each at most 200 bytes of UTF-8.
+Sent once when the judge starts. Request: `{"protocol":4,"toolchain":{"gcc","java","python","node","isolate","kernel"}}`: the first line of each tool's version output, `missing` when the tool cannot run, each at most 200 bytes of UTF-8.
 
 | Status | Body |
 |---|---|
