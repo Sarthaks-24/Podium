@@ -115,7 +115,7 @@ sudo -u judge env PODIUM_JUDGE_CACHE_DIR=/tmp podium-judge selftest
 sudo systemctl start podium-judge
 ```
 
-It prints `PASS` or `FAIL` for each of the 18 hostile programs and a hello world in each of the four languages, then `PASS: all 22 programs` and exit 0, or the count that failed and exit 1. Do not judge on the host until it passes. Stopping the worker first keeps the test's box out of the worker's memory budget; it uses box 80, clear of the lanes.
+It prints `PASS` or `FAIL` for each of the 18 hostile programs and a hello world in each of the four languages, then, with `PODIUM_JUDGE_PCH=on` (the default), one line for the precompiled header, then `PASS: all 23 programs` (22 with the header off) and exit 0, or the count that failed and exit 1. Do not judge on the host until it passes. Stopping the worker first keeps the test's box out of the worker's memory budget; it uses box 80, clear of the lanes.
 
 For the timing tables as well, with the worker stopped (calibrate has its own memory budget and must not overlap the worker's boxes):
 

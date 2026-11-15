@@ -36,8 +36,7 @@ type group struct {
 	name              string
 	cpuPath, peakPath string
 	curPath           string
-	noPeak            bool    // memory.peak is absent (kernels before 6.5): use memory.current
-	maxCur            int64   // largest memory.current seen, when noPeak
+	maxCur            int64   // largest memory.current seen, used when memory.peak is absent (kernels before 6.5)
 	prevUsec          int64   // cpu.stat usage_usec at the last good reading, -1 before one
 	cpuPct            float64 // this tick's result, -1 when unreadable
 	peakMB            int64   // this tick's result, -1 when unreadable

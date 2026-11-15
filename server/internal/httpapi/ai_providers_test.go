@@ -242,12 +242,10 @@ func TestAIKeyNeverStored(t *testing.T) {
 	fixID := importFunction(t, s, owner, true)
 	rewriteID := s.importProblem(owner, "rewrite-leak")
 	var keys []string
-	var stands []*standIn
 	for _, c := range cases {
 		key := newKey(c.prefix)
 		keys = append(keys, key)
 		stand := &standIn{provider: c.provider, key: key, answer: string(answer)}
-		stands = append(stands, stand)
 		api := httptest.NewServer(stand)
 		defer api.Close()
 		s.ai.BaseURLs[c.provider] = api.URL + c.base

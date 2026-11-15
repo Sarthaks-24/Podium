@@ -186,7 +186,6 @@ type fakeServer struct {
 	verdicts map[int64]string // by id: what the job says
 	refused  atomic.Bool
 	closeAt  time.Time
-	failCE   bool
 }
 
 func (f *fakeServer) handler() http.Handler {
@@ -322,7 +321,7 @@ func TestDriverMarksPracticeAfterTheClose(t *testing.T) {
 
 func TestDriverReportsWhatItCannotDo(t *testing.T) {
 	// A server that is not in testing mode.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "no", 403) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "no", http.StatusForbidden) }))
 	defer srv.Close()
 	d := &Driver{Base: srv.URL, Students: 1, Poll: time.Millisecond, Timeout: time.Second}
 	if _, err := d.Replay(context.Background(), &Corpus{}, nil, nil, 0, time.Minute); err == nil || !strings.Contains(err.Error(), "testing-mode") {
