@@ -4,9 +4,9 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
 
-## v2.1.0 Billota (unreleased)
+## v2.1.0 Billota (2026-11-15)
 
-Not released yet. Each stage adds plain-English entries and known limits under its own heading.
+v2.1.0 makes the judge faster and sized to its machine, adds Edit with AI fixes, function problems from the wizard, two more AI providers, Rewrite with AI, bringing back an earlier version of a problem, and keeping people signed in. It upgrades v2.0.2 with migration 0016 and judge protocol 4: see "Upgrading to v2.1.0" in `docs/OPERATIONS.md`.
 
 ### v2.1.0 stage A: AI edit
 
