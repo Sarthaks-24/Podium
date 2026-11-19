@@ -463,8 +463,9 @@ var joinedArg = regexp.MustCompile(`^[A-Za-z0-9_.:+-]+=[A-Za-z0-9_.:+-]+$`)
 // repairGeneratorArgs splits an argument a model wrote as n=2000,k=2000 into
 // one argument per pair, which is what a generator parses (Appendix A of the
 // v2.1.1 plan). An argument is split only when every piece is a pair, so a
-// value such as range=1,5 stays whole.
-func repairGeneratorArgs(subtasks []WizardSubtask) {
+// value such as range=1,5 stays whole. It returns a note for each split.
+func repairGeneratorArgs(subtasks []WizardSubtask) []string {
+	var notes []string
 	for i := range subtasks {
 		var out []string
 		for _, a := range subtasks[i].GeneratorArgs {
@@ -475,12 +476,14 @@ func repairGeneratorArgs(subtasks []WizardSubtask) {
 			}
 			if whole {
 				out = append(out, pieces...)
+				notes = append(notes, fmt.Sprintf("Subtask %d: generator argument %s was split into %s.", i+1, a, strings.Join(pieces, " and ")))
 			} else {
 				out = append(out, a)
 			}
 		}
 		subtasks[i].GeneratorArgs = out
 	}
+	return notes
 }
 
 // generateChecked is the loop of Generate and GenerateFunction: validate the
@@ -508,8 +511,9 @@ func generateChecked[T any](req Request, call func(Request) (*T, error), check f
 		if len(reasons) == 0 {
 			return pack, nil
 		}
-		answer, _ := json.Marshal(pack)
-		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: reasons, answer: string(answer)}
+		// What the model sent, not the repaired pack, so a person reviewing
+		// the answer sees the model's own text.
+		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: reasons, answer: answerText(pack, nil)}
 	})
 }
 

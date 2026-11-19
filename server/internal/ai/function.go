@@ -358,8 +358,7 @@ func GenerateFunction(ctx context.Context, p Provider, req Request) (*FunctionPa
 	return generateChecked(req, func(r Request) (*FunctionPack, error) {
 		pack, err := p.GenerateFunction(ctx, r)
 		if err == nil {
-			repairFunctionPack(pack)
-			repairGeneratorArgs(pack.Subtasks)
+			repairFunction(pack)
 		}
 		return pack, err
 	}, CheckFunction)

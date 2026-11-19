@@ -207,6 +207,7 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("POST /api/admin/ai/wizard", organiser(wizard.StartWizard))
 		mux.HandleFunc("GET /api/admin/ai/wizard/{id}", organiser(wizard.GetWizard))
 		mux.HandleFunc("GET /api/admin/ai/wizard/{id}/answer", organiser(wizard.GetWizardAnswer))
+		mux.HandleFunc("POST /api/admin/ai/drafts", organiser(slowBody(wizard.PostDraft)))
 		mux.HandleFunc("POST /api/admin/problems/{id}/ai-edit", organiser(wizard.AIEdit))
 		mux.HandleFunc("POST /api/admin/problems/{id}/ai-edit/{draft}/accept", organiser(wizard.AIEditAccept))
 		mux.HandleFunc("DELETE /api/admin/problems/{id}/ai-edit/{draft}", organiser(wizard.AIEditReject))

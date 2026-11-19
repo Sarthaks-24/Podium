@@ -28,6 +28,8 @@ const (
 	wizardThinking = "thinking"
 	wizardDraft    = "draft_created"
 	wizardFailed   = "error"
+	// wizardReview is a run with review whose answer waits for the person.
+	wizardReview = "review"
 )
 
 const (
@@ -80,6 +82,12 @@ type wizardRun struct {
 	// who started the run can read it, and never through the wizard event.
 	answer    string
 	answerCut bool
+	// function, javaLists and review are what the run was asked for. reasons
+	// is why a review run's answer failed the checks, nil when it passed.
+	function  bool
+	javaLists string
+	review    bool
+	reasons   []string
 }
 
 type wizardErrorJSON struct {
@@ -185,8 +193,15 @@ func (a *Wizard) view(id string, userID int64) (wizardJSON, bool) {
 	return r.json(), true
 }
 
+// mark records what a run was asked for, before its goroutine starts.
+func (a *Wizard) mark(run *wizardRun, function bool, javaLists string, review bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	run.function, run.javaLists, run.review = function, javaLists, review
+}
+
 // keptAnswer returns the kept answer of a run userID started, with the run's
-// error reasons. found is false for a missing run, another person's run or a
+// reasons. found is false for a missing run, another person's run or a
 // run that ended more than wizardKeep ago; finished is false while it runs.
 func (a *Wizard) keptAnswer(id string, userID int64) (out wizardAnswerJSON, found, finished bool) {
 	a.mu.Lock()
@@ -198,9 +213,16 @@ func (a *Wizard) keptAnswer(id string, userID int64) (out wizardAnswerJSON, foun
 	if r.finishedAt.IsZero() {
 		return out, true, false
 	}
-	out = wizardAnswerJSON{Text: r.answer, Cut: r.answerCut, Reasons: []string{}}
-	if r.err != nil {
-		out.Reasons = r.err.Reasons
+	out = wizardAnswerJSON{Text: r.answer, Cut: r.answerCut, Reasons: []string{}, Kind: StudentsWriteProgram,
+		Repairs: []string{}, RewriteOf: r.rewrite, review: r.review}
+	if r.function {
+		out.Kind, out.JavaLists = StudentsWriteFunction, r.javaLists
+	}
+	switch {
+	case r.err != nil:
+		out.Reasons = httpx.NonNil(r.err.Reasons)
+	case r.reasons != nil:
+		out.Reasons = r.reasons
 	}
 	return out, true, true
 }
@@ -209,6 +231,15 @@ type wizardAnswerJSON struct {
 	Text    string   `json:"text"`
 	Cut     bool     `json:"cut"`
 	Reasons []string `json:"reasons"`
+	// Kind is program or function and JavaLists the run's Java lists choice
+	// (empty for a program). RewriteOf is the rewrite's link, so the page can
+	// keep it. Repairs says what Create draft will change in the answer; it
+	// is filled for a review run only.
+	Kind      string       `json:"kind"`
+	JavaLists string       `json:"java_lists"`
+	RewriteOf *rewriteLink `json:"rewrite_of,omitempty"`
+	Repairs   []string     `json:"repairs"`
+	review    bool
 }
 
 // json must be called with a.mu held.
@@ -544,6 +575,9 @@ type wizardRequestJSON struct {
 	// RewriteOf, in paste mode, is the problem to write again: Text then
 	// says what should change (stage W).
 	RewriteOf *int64 `json:"rewrite_of"`
+	// Review keeps the model's answer for the person to read and edit before
+	// any problem is created. Absent means false.
+	Review bool `json:"review"`
 }
 
 // StartWizard asks the model for a problem in the background. The answer
@@ -637,7 +671,8 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	run := d.Wizard.start("generate", u.ID, 0, entry, rewrite)
-	d.Log.Info("ai wizard started", "user_id", u.ID, "wizard_id", run.id, "mode", body.Mode, "function", function, "rewrite", rewrite != nil, "provider", entry.Provider, "model", entry.Model)
+	d.Wizard.mark(run, function, req.JavaLists, body.Review)
+	d.Log.Info("ai wizard started", "user_id", u.ID, "wizard_id", run.id, "mode", body.Mode, "function", function, "review", body.Review, "rewrite", rewrite != nil, "provider", entry.Provider, "model", entry.Model)
 	go func() {
 		defer release()
 		d.publishWizard(u.ID, d.runGenerate(run, prov, req, function, u.ID, entry.Key))
@@ -660,7 +695,11 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 	// The key goes before the cut, so no part of it survives at the cut point.
 	keep := func(r *wizardRun) {
 		text := key.scrub(answer)
-		r.answer, r.answerCut = clipText(text, maxKeptAnswer), len(text) > maxKeptAnswer
+		limit := maxKeptAnswer
+		if r.review {
+			limit = maxReviewAnswer
+		}
+		r.answer, r.answerCut = clipText(text, limit), len(text) > limit
 	}
 	var pack *answerPack
 	var err error
@@ -676,6 +715,18 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 		}
 	}
 	cancel()
+	if run.review {
+		// Nothing is created: the answer waits for the person. A failed
+		// answer that carries text waits too, so it can be corrected.
+		var aiErr *Error
+		switch {
+		case err == nil:
+			return d.finishReview(run, nil, keep)
+		case errors.As(err, &aiErr) && aiErr.Code == CodeInvalidAnswer && answer != "":
+			d.Log.Info("ai request ended in review with a failed answer", "user_id", userID, "wizard_id", run.id)
+			return d.finishReview(run, httpx.NonNil(aiErr.Reasons), keep)
+		}
+	}
 	if err != nil {
 		return d.failWizard(run, err, key, keep)
 	}
@@ -687,6 +738,12 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 	}
 	d.Log.Info("ai draft made by wizard", "user_id", userID, "wizard_id", run.id, "problem_id", id)
 	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.problemID = wizardDraft, id; keep(r) })
+}
+
+// finishReview ends a review run: its answer waits for the person, with the
+// reasons the checks gave, or none.
+func (d *Handlers) finishReview(run *wizardRun, reasons []string, keep func(*wizardRun)) wizardJSON {
+	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.reasons = wizardReview, reasons; keep(r) })
 }
 
 // createFromPack makes the draft for a checked answer and queues input
@@ -770,6 +827,12 @@ func (d *Handlers) GetWizardAnswer(w http.ResponseWriter, r *http.Request) {
 	case !finished:
 		httpx.WriteError(w, http.StatusConflict, "not_finished", "The AI request has not finished yet.")
 	default:
+		if v.review && !v.Cut && v.Text != "" {
+			// What Create draft will change, from the text as it stands.
+			if _, notes, _, _ := loadAnswer(v.Text, v.Kind, v.JavaLists); notes != nil {
+				v.Repairs = notes
+			}
+		}
 		httpx.WriteJSON(w, http.StatusOK, v)
 	}
 }
