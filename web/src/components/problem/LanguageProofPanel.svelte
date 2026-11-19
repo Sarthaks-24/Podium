@@ -293,6 +293,8 @@
 
   .fail {
     display: grid;
+    /* One track no wider than the banner, so a long compiler line scrolls in its own box. */
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-2);
     width: 100%;
     max-width: var(--measure-form);

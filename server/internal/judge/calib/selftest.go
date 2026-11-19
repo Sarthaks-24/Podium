@@ -27,6 +27,16 @@ func SelfTest(ctx context.Context, r *judge.Runner, box int, w io.Writer) (faile
 	if err := r.Iso.Cleanup(ctx, box); err != nil {
 		return 0, fmt.Errorf("clean box %d: %w", box, err)
 	}
+	// Hello worlds first: they load every runtime into the file cache, so a
+	// contained hostile Node program is not timed on a cold start (PF-19).
+	for _, id := range []string{"cpp17", "java21", "python3", "node22"} {
+		if err := helloWorld(ctx, r, box, work, id); err != nil {
+			failed++
+			fmt.Fprintf(w, "FAIL hello world (%s): %v\n", judge.Languages[id].Name, err)
+		} else {
+			fmt.Fprintf(w, "PASS hello world (%s)\n", judge.Languages[id].Name)
+		}
+	}
 	for _, c := range Hostile {
 		o, err := RunCase(ctx, r, box, work, c)
 		switch {
@@ -38,14 +48,6 @@ func SelfTest(ctx context.Context, r *judge.Runner, box int, w io.Writer) (faile
 		default:
 			failed++
 			fmt.Fprintf(w, "FAIL %s: got %s, want one of %v; %s\n", c.Name, o.Got, c.Want, o.Detail)
-		}
-	}
-	for _, id := range []string{"cpp17", "java21", "python3", "node22"} {
-		if err := helloWorld(ctx, r, box, work, id); err != nil {
-			failed++
-			fmt.Fprintf(w, "FAIL hello world (%s): %v\n", judge.Languages[id].Name, err)
-		} else {
-			fmt.Fprintf(w, "PASS hello world (%s)\n", judge.Languages[id].Name)
 		}
 	}
 	return failed, nil

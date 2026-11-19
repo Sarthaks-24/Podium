@@ -407,6 +407,18 @@ async function fits(page: Page, name: string, theme: string) {
 
 const noScroll = (l: Locator) => l.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
 
+test('a 400 character compiler line scrolls inside its box at 375 px', async ({ page }) => {
+  const long = `Main.java:1: error: ${'x'.repeat(380)}`;
+  const javaCompile = { offered: false, result: 'failed', reason: 'compile_error', failed: 0, total: 12, compiler: long };
+  await setup(page, { script: [{ checking: false, languages: lang({ ...passed(), java21: javaCompile }) }] });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await openFold(page);
+  await row(page, 'Java').locator('details', { hasText: 'Details' }).locator('summary').click();
+  await expect(row(page, 'Java')).toContainText('x'.repeat(40));
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
     test.use({ colorScheme: theme });
