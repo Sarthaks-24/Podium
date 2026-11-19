@@ -157,6 +157,10 @@
   let bankLoaded = $state(false);
   let addId = $state('');
   let problemsError = $state('');
+  /** The problem ids of the list last loaded or saved; the server refuses a save made from an older list (V211-66). */
+  let loadedProblemIds = $state<number[]>([]);
+  /** Problems were added elsewhere since this page loaded: the unsaved list stays and Reload fetches theirs. */
+  let problemsStale = $state(false);
   /** The letters (as the save normalises them) that the last refusal names. */
   let badLetters = $state<string[]>([]);
   let problemsBusy = $state(false);
@@ -331,7 +335,11 @@
   function adopt(c: AdminContest) {
     contest = c;
     // An AI problem waiting for its reason is not saved yet, so the list stays.
-    if (aiLabels.length === 0) picked = (c.problems ?? []).map((p) => ({ ...p }));
+    if (aiLabels.length === 0) {
+      picked = (c.problems ?? []).map((p) => ({ ...p }));
+      loadedProblemIds = picked.map((p) => p.problem_id);
+      problemsStale = false;
+    }
     setTitle(routeTitle('admin-contest'), c.title);
   }
 
@@ -707,9 +715,26 @@
     picked = (contest?.problems ?? []).map((p) => ({ ...p }));
   }
 
+  /** Fetches the contest again for its problem list; settings typed in the form stay. */
+  async function reloadProblems() {
+    problemsBusy = true;
+    try {
+      aiLabels = [];
+      aiReason = '';
+      aiError = '';
+      problemsError = '';
+      adopt(await getJSON<AdminContest>(base));
+    } catch (e) {
+      if (!isSignedOut(e)) problemsError = errorText(e);
+    } finally {
+      problemsBusy = false;
+    }
+  }
+
   /** Sends the problem list; true when the server took it. On a refusal the list goes back to what is saved. */
   async function putProblems(reason: string, done: string, action?: ToastAction): Promise<boolean> {
     problemsError = '';
+    problemsStale = false;
     badLetters = [];
     const labels = picked.map((p) => p.label.trim().toUpperCase());
     if (labels.some((l) => !/^[A-Z]{1,3}$/.test(l))) {
@@ -727,11 +752,14 @@
       const value = await sendJSON<AdminContest>(
         'PUT',
         `${base}/problems`,
-        picked.map((p, i) =>
-          reason !== '' && aiLabels.includes(labels[i])
-            ? { problem_id: p.problem_id, label: labels[i], ai_reason: reason }
-            : { problem_id: p.problem_id, label: labels[i] },
-        ),
+        {
+          problems: picked.map((p, i) =>
+            reason !== '' && aiLabels.includes(labels[i])
+              ? { problem_id: p.problem_id, label: labels[i], ai_reason: reason }
+              : { problem_id: p.problem_id, label: labels[i] },
+          ),
+          loaded_problem_ids: loadedProblemIds,
+        },
       );
       aiLabels = [];
       aiReason = '';
@@ -747,6 +775,12 @@
         problemsError = reason !== '' ? '' : e.message;
         await tick();
         document.getElementById('ai-reason')?.focus();
+        return false;
+      }
+      if (e instanceof ApiError && e.code === 'problems_changed') {
+        // Keep what the organiser arranged; Reload shows the added problems.
+        problemsError = e.message;
+        problemsStale = true;
         return false;
       }
       problemsError = e instanceof ApiError && e.problems.length > 0 ? `${e.message} ${e.problems.join(' ')}` : errorText(e);
@@ -1044,7 +1078,12 @@
           {:else if bankLoaded && candidates.length === 0}
             <p class="muted small">Every validated problem is in this contest. <a href="/admin/problems">Go to the problem bank</a> to validate more.</p>
           {/if}
-          {#if problemsError}<p id="problems-error" class="field-error" role="alert">{problemsError}</p>{/if}
+          {#if problemsError}
+            <p id="problems-error" class="field-error" role="alert">
+              {problemsError}
+              {#if problemsStale}<button type="button" class="btn btn-link btn-compact" disabled={problemsBusy} onclick={reloadProblems}>Reload</button>{/if}
+            </p>
+          {/if}
           {#if aiLabels.length > 0}
             <div class="ai-confirm" role="group" aria-label="Grade as the AI wrote it">
               <div class="field">

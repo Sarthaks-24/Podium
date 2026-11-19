@@ -27,6 +27,7 @@
   import { aiImport } from '../lib/aiImport.svelte';
   import DeletedProblems from '../components/problem/DeletedProblems.svelte';
   import Badge from '../components/Badge.svelte';
+  import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onMount, tick, untrack } from 'svelte';
   import { focusFirstInvalid, refocusRow } from '../lib/focus';
@@ -35,6 +36,7 @@
   import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
   import { newKey } from '../lib/workspace';
   import { formatDateTime } from '../lib/format';
+  import { ADD_REFUSAL_TEXT, addProblemsToContest, type AdminContestSummary } from '../lib/contests';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { loader } from '../lib/loader.svelte';
@@ -104,6 +106,77 @@
     );
   });
 
+  // Add to contest (V211-66): tick validated problems, pick a contest, add.
+  /** A problem the bar can add: validated, not archived and not an AI draft (the server refuses a draft until it is saved in the editor). */
+  function addable(p: ProblemSummary): boolean {
+    return p.validated && !p.archived && !isAIDraft(p.tags);
+  }
+
+  let picked = $state<ReadonlySet<number>>(new Set());
+  let addContests = $state<AdminContestSummary[] | null>(null);
+  let addContestsError = $state(false);
+  let addTo = $state('');
+  let addBusy = $state(false);
+  let addConfirm = $state(false);
+  let addError = $state('');
+  let addResult = $state<{ contest: AdminContestSummary; added: { title: string; label: string }[]; refused: { id: number; title: string; reason: string }[] } | null>(null);
+
+  const pickedIds = $derived(sorted.filter((p) => picked.has(p.id) && addable(p)).map((p) => p.id));
+  const anyAddable = $derived(problems.some(addable));
+  const addTarget = $derived(addContests?.find((c) => String(c.id) === addTo) ?? null);
+
+  function titleOf(id: number): string {
+    const p = problems.find((x) => x.id === id);
+    return p ? (p.title.trim() !== '' ? p.title : p.slug) : `Problem ${id}`;
+  }
+
+  function togglePick(id: number, on: boolean) {
+    picked = new Set(on ? [...picked, id] : [...picked].filter((x) => x !== id));
+    addResult = null;
+    if (on && addContests === null && !addContestsError) void loadAddContests();
+  }
+
+  async function loadAddContests() {
+    addContestsError = false;
+    try {
+      const data = await getJSON<{ contests: AdminContestSummary[] }>('/api/admin/contests');
+      addContests = (data.contests ?? []).filter((c) => !c.archived);
+      if (addTo === '' && addContests.length > 0) addTo = String(addContests[0].id);
+    } catch (err) {
+      if (!handleAuth(err)) addContestsError = true;
+    }
+  }
+
+  function startAdd() {
+    if (!addTarget || pickedIds.length === 0) return;
+    addError = '';
+    if (addTarget.state === 'live' || addTarget.state === 'frozen') addConfirm = true;
+    else void runAdd();
+  }
+
+  async function runAdd() {
+    const target = addTarget;
+    if (!target) return;
+    addBusy = true;
+    addError = '';
+    try {
+      const out = await addProblemsToContest(target.id, pickedIds);
+      addConfirm = false;
+      addResult = {
+        contest: target,
+        added: out.added.map((a) => ({ title: titleOf(a.problem_id), label: a.label })),
+        refused: out.refused.map((r) => ({ id: r.problem_id, title: titleOf(r.problem_id), reason: r.reason })),
+      };
+      picked = new Set(out.refused.map((r) => r.problem_id));
+      void loadAddContests();
+    } catch (err) {
+      addConfirm = false;
+      if (!handleAuth(err)) addError = errorText(err);
+    } finally {
+      addBusy = false;
+    }
+  }
+
   function difficultyLabel(d: ProblemSummary['difficulty']): string {
     return d === '' ? '' : (DIFFICULTIES.find((x) => x.id === d)?.label ?? d);
   }
@@ -135,6 +208,7 @@
     try {
       const data = await getJSON<{ problems: ProblemSummary[] }>(`/api/admin/problems${showArchived ? '?archived=1' : ''}`);
       if (page.live) problems = data.problems ?? [];
+      picked = new Set([...picked].filter((id) => problems.some((p) => p.id === id && addable(p))));
     } catch (err) {
       handleAuth(err);
     }
@@ -498,6 +572,45 @@
     {#if shown.length === 0}
       <p class="lead muted" role="status">No problem matches "{filter.trim()}". Try another word.</p>
     {:else}
+      {#if pickedIds.length > 0}
+        <div class="add-bar" role="group" aria-label="Add the selected problems to a contest">
+          <span class="add-count" role="status">{pickedIds.length} selected</span>
+          {#if addContestsError}
+            <p class="field-error" role="alert">Contests did not load. <button type="button" class="btn btn-link btn-compact" onclick={loadAddContests}>Retry</button></p>
+          {:else if addContests === null}
+            <span class="muted" role="status">Loading contests</span>
+          {:else if addContests.length === 0}
+            <span class="muted">Make a contest first. <a href="/admin/contests">Go to Contests</a></span>
+          {:else}
+            <div class="field add-contest">
+              <label for="add-contest-select">Contest</label>
+              <select id="add-contest-select" class="select" bind:value={addTo}>
+                {#each addContests as c (c.id)}<option value={String(c.id)}>{c.title}</option>{/each}
+              </select>
+            </div>
+            <button type="button" class="btn btn-primary" disabled={addBusy || !addTarget} onclick={startAdd}>Add to contest</button>
+          {/if}
+          <button type="button" class="btn btn-quiet" onclick={() => (picked = new Set())}>Clear selection</button>
+        </div>
+      {/if}
+      {#if addError}<p class="field-error add-note" role="alert">{addError}</p>{/if}
+      {#if addResult}
+        <div class="add-note" role="status">
+          {#if addResult.added.length > 0}
+            <p>Added to {addResult.contest.title}: {addResult.added.map((a) => `${a.title} as ${a.label}`).join(', ')}.</p>
+          {/if}
+          {#if addResult.refused.length > 0}
+            <p>Not added:</p>
+            <ul>
+              {#each addResult.refused as r (r.id)}
+                <li>
+                  {r.title}: {ADD_REFUSAL_TEXT[r.reason] ?? r.reason}{#if r.reason === 'needs_ai_reason'}. <a href="/admin/contests/{addResult.contest.id}">Open the contest editor</a>{/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      {/if}
       <div class="table-wrap list">
         <table class="table table-stack">
           <thead>
@@ -518,7 +631,7 @@
               {@const word = statusOf(p)}
               <tr data-focus-row="problem-{p.id}">
                 <th scope="row" class="title">
-                  <a class="row-link" data-focus-title href="/admin/problems/{p.id}">{name}</a>{#if p.archived && p.archived_slug}<span class="orig-slug mono">{p.archived_slug}</span>{/if}{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}{#if p.shown_in_practice}<span class="ai-draft"><Badge text="Hidden tests shown in practice" /></span>{/if}
+                  {#if anyAddable}<label class="pick">{#if addable(p)}<input type="checkbox" aria-label="Select {name}" checked={picked.has(p.id)} onchange={(e) => togglePick(p.id, e.currentTarget.checked)} />{/if}</label>{/if}<a class="row-link" data-focus-title href="/admin/problems/{p.id}">{name}</a>{#if p.archived && p.archived_slug}<span class="orig-slug mono">{p.archived_slug}</span>{/if}{#if isAIDraft(p.tags)}<span class="ai-draft"><Badge tone="wait" text="AI draft" /></span>{/if}{#if p.shown_in_practice}<span class="ai-draft"><Badge text="Hidden tests shown in practice" /></span>{/if}
                 </th>
                 <td class="difficulty">{difficultyLabel(p.difficulty)}</td>
                 <td class="tags">{withoutAIDraft(p.tags).join(', ')}</td>
@@ -546,6 +659,16 @@
   {/if}
   {/if}
 {/if}
+
+<ConfirmDialog
+  open={addConfirm}
+  title="Add to {addTarget?.title ?? 'this contest'}?"
+  body="This contest is running. Students see the new {pickedIds.length === 1 ? 'problem' : 'problems'} as soon as {pickedIds.length === 1 ? 'it is' : 'they are'} added."
+  confirmLabel="Add to contest"
+  busy={addBusy}
+  onconfirm={runAdd}
+  oncancel={() => (addConfirm = false)}
+/>
 
 {#if conflict}
   <ImportConflictDialog
@@ -696,6 +819,54 @@
 
   .list {
     margin-top: var(--space-5);
+  }
+
+  .add-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3) var(--space-4);
+    margin-top: var(--space-5);
+    padding: var(--space-3) var(--space-4);
+    border: var(--rule) solid var(--line);
+    background: var(--surface);
+  }
+
+  .add-count {
+    align-self: center;
+    font-weight: 500;
+  }
+
+  .add-contest {
+    min-width: 12rem;
+  }
+
+  .add-note {
+    max-width: var(--measure-form);
+    margin-top: var(--space-3);
+  }
+
+  .add-note ul {
+    margin-top: var(--space-1);
+    padding-left: var(--space-5);
+  }
+
+  .pick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--control-h);
+    min-height: var(--control-h);
+    margin: calc(var(--space-2) * -1) var(--space-1) calc(var(--space-2) * -1) calc(var(--space-2) * -1);
+    vertical-align: middle;
+    cursor: pointer;
+  }
+
+  .pick input {
+    width: var(--space-4);
+    height: var(--space-4);
+    margin: 0;
+    accent-color: var(--act);
   }
 
   .title {

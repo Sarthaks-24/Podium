@@ -14,9 +14,12 @@ test('a quick Add then Move sends the second save only after the first has been 
   let firstReleased = false;
   const secondSawRelease: boolean[] = [];
   const puts: { problem_id: number; label: string }[][] = [];
+  const loaded: number[][] = [];
   await page.route('**/api/admin/contests/4/problems', async (route) => {
     if (route.request().method() !== 'PUT') return route.fallback();
-    puts.push(route.request().postDataJSON());
+    const body = route.request().postDataJSON() as { problems: { problem_id: number; label: string }[]; loaded_problem_ids: number[] };
+    puts.push(body.problems);
+    loaded.push(body.loaded_problem_ids);
     if (puts.length === 1) await held;
     else secondSawRelease.push(firstReleased);
     return route.fallback();
@@ -32,6 +35,9 @@ test('a quick Add then Move sends the second save only after the first has been 
   await expect.poll(() => puts.length).toBe(2);
   expect(secondSawRelease).toEqual([true]);
   expect(puts[0].map((p) => p.label)).toEqual(['A', 'B']);
+  // The editor always names the problems it last loaded or saved: the first save the loaded list, the next the one just saved.
+  expect(loaded[0]).toEqual([11]);
+  expect(loaded[1]).toEqual(puts[0].map((p) => p.problem_id));
   expect(puts[1].map((p) => `${p.label}:${p.problem_id}`)).toEqual([`A:${puts[0][1].problem_id}`, `B:${puts[0][0].problem_id}`]);
 });
 
@@ -194,3 +200,44 @@ for (const theme of THEMES) {
     });
   }
 }
+
+test('a save refused because problems were added keeps the list on screen and Reload fetches theirs', async ({ page }) => {
+  await mockApi(page, { who: 'organiser', phase: 'upcoming' });
+  const message = 'Problems were added to this contest after you opened it. Reload to see them, then make your change again.';
+  let refuse = true;
+  const bodies: { problems: { problem_id: number; label: string }[]; loaded_problem_ids: number[] }[] = [];
+  await page.route('**/api/admin/contests/4/problems', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    bodies.push(route.request().postDataJSON());
+    if (refuse) return apiError(route, 409, 'problems_changed', message);
+    return route.fallback();
+  });
+  await page.goto('/admin/contests/4');
+  await page.getByLabel('Add a validated problem').selectOption({ label: 'Interval covering (100 points)' });
+  await page.getByRole('button', { name: 'Add problem' }).click();
+  const alert = page.getByRole('alert').filter({ hasText: message });
+  await expect(alert).toBeVisible();
+  // What the organiser arranged stays, and nothing was saved.
+  await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('B');
+  expect(bodies[0].loaded_problem_ids).toEqual([11]);
+  refuse = false;
+  await alert.getByRole('button', { name: 'Reload' }).click();
+  await expect(alert).toHaveCount(0);
+  // The reload shows the saved list; the same change now goes through with the new loaded list.
+  await expect(page.getByLabel('Letter for Interval covering')).toHaveCount(0);
+  await page.getByLabel('Add a validated problem').selectOption({ label: 'Interval covering (100 points)' });
+  await page.getByRole('button', { name: 'Add problem' }).click();
+  await expect(page.getByLabel('Letter for Interval covering')).toHaveValue('B');
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1].loaded_problem_ids).toEqual([11]);
+});
+
+test('an empty contest still sends loaded_problem_ids as an empty list', async ({ page }) => {
+  const api = await mockApi(page, { who: 'organiser', phase: 'upcoming' });
+  api.adminProblems.length = 0;
+  await page.goto('/admin/contests/4');
+  await page.getByLabel('Add a validated problem').selectOption({ label: 'A plus B (100 points)' });
+  await page.getByRole('button', { name: 'Add problem' }).click();
+  await expect.poll(() => api.problemBodies.length).toBe(1);
+  expect((api.problemBodies[0] as { loaded_problem_ids: number[] }).loaded_problem_ids).toEqual([]);
+});

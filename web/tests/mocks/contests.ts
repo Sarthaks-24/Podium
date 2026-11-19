@@ -221,6 +221,8 @@ export async function mockApi(page: Page, options: Options = {}) {
     // Organiser side.
     settingsPuts: [] as Json[],
     problemPuts: [] as unknown[],
+    /** The raw body of each problem save: the editor sends { problems, loaded_problem_ids } (V211-66). */
+    problemBodies: [] as unknown[],
     pauses: 0,
     resumes: 0,
     extends: [] as Json[],
@@ -640,7 +642,10 @@ export async function mockApi(page: Page, options: Options = {}) {
         return json(route, 200, adminContest());
       }
       if (path === '/api/admin/contests/4/problems' && method === 'PUT') {
-        const body = req.postDataJSON() as { problem_id: number; label: string; ai_reason?: string }[];
+        type Row = { problem_id: number; label: string; ai_reason?: string };
+        const raw = req.postDataJSON() as Row[] | { problems: Row[]; loaded_problem_ids: number[] };
+        state.problemBodies.push(raw);
+        const body = Array.isArray(raw) ? raw : raw.problems;
         state.problemPuts.push(body);
         // contests/store.go (C2-014): a published contest that showed hidden tests keeps its problems.
         const dropped = state.adminProblems.find((p) => !body.some((b) => b.problem_id === p.problem_id));
