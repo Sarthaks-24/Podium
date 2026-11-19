@@ -11,7 +11,7 @@
   region's accessible name, for example "Asha Rao's program").
 -->
 <script lang="ts">
-  import { codeLines, type Span } from '../lib/review';
+  import { codeLines, type Span } from '../lib/codeSpans';
 
   interface Props {
     source: string;

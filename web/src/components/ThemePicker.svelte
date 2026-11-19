@@ -25,7 +25,14 @@
   import type { ThemeInput } from '../lib/theme-engine';
   import { CUSTOM_START, PRESETS } from '../lib/theme-presets';
   import { showToast } from '../lib/toast.svelte';
-  import CustomThemeBuilder from './CustomThemeBuilder.svelte';
+
+  // The custom builder loads when Custom is the chosen theme, not with every picker.
+  let CustomThemeBuilder = $state<typeof import('./CustomThemeBuilder.svelte').default | null>(null);
+  $effect(() => {
+    if (current.theme === CUSTOM_ID && CustomThemeBuilder === null) {
+      void import('./CustomThemeBuilder.svelte').then((m) => (CustomThemeBuilder = m.default));
+    }
+  });
 
   const current = $derived(preferences.current);
   // Each picker has its own radio names, so two on one page never interfere.
@@ -135,7 +142,7 @@
       </span>
       <span class="name">Custom <span class="hint">Choose a background and an accent</span></span>
     </label>
-    {#if current.theme === CUSTOM_ID}
+    {#if current.theme === CUSTOM_ID && CustomThemeBuilder}
       <CustomThemeBuilder value={customValue} onchange={editCustom} />
     {/if}
   </div>

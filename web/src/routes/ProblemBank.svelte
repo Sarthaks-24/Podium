@@ -36,7 +36,8 @@
   import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
   import { newKey } from '../lib/workspace';
   import { formatDateTime } from '../lib/format';
-  import { ADD_REFUSAL_TEXT, addProblemsToContest, type AdminContestSummary } from '../lib/contests';
+  import { ADD_REFUSAL_TEXT, addProblemsToContest } from '../lib/contestAdd';
+import type { AdminContestSummary } from '../lib/contests';
   import { setTitle } from '../lib/head';
   import { routeTitle } from '../lib/routing';
   import { loader } from '../lib/loader.svelte';

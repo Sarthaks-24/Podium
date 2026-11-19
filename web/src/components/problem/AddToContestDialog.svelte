@@ -11,7 +11,8 @@
 <script lang="ts">
   import Dialog from '../Dialog.svelte';
   import { ApiError, errorText, getJSON } from '../../lib/api';
-  import { ADD_REFUSAL_TEXT, addProblemsToContest, type AdminContestSummary } from '../../lib/contests';
+  import { ADD_REFUSAL_TEXT, addProblemsToContest } from '../../lib/contestAdd';
+import type { AdminContestSummary } from '../../lib/contests';
   import { formatDayTime } from '../../lib/format';
 
   interface Props {

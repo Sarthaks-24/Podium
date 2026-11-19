@@ -13,7 +13,6 @@
  * the console's opening sentence, and the templates and standard answers
  * the console offers.
  */
-import { sendJSON } from './api';
 import { countOf, formatDateTime } from './format';
 import type { ProblemPin } from './history';
 import { LANGUAGES, type Language } from './problems';
@@ -483,29 +482,6 @@ export interface AdminContestSummary {
  * first by their end, so an extended contest never drops among the past
  * ones; then upcoming soonest first; then the rest newest first.
  */
-/** What `POST /api/admin/contests/{id}/problems/add` answers (V211-66). */
-export interface AddProblemsResult {
-  added: { problem_id: number; label: string }[];
-  refused: { problem_id: number; reason: string }[];
-}
-
-/** The page's sentence for each refusal code of an add; `needs_ai_reason` also links to the contest's editor. */
-export const ADD_REFUSAL_TEXT: Record<string, string> = {
-  already_added: 'Already in this contest',
-  not_found: 'No longer available',
-  deleted: 'Deleted',
-  not_validated: 'Validate it first',
-  being_checked: 'Its languages are being checked. Try again when that finishes',
-  ai_draft: 'Read it and save it in the editor first',
-  needs_ai_reason: 'Add it from the contest editor, where you can give the required reason',
-  limit: 'The contest already has 26 problems',
-};
-
-/** Adds bank problems to a contest under the next free letters. */
-export function addProblemsToContest(contestId: number, problemIds: number[]): Promise<AddProblemsResult> {
-  return sendJSON<AddProblemsResult>('POST', `/api/admin/contests/${contestId}/problems/add`, { problem_ids: problemIds });
-}
-
 export function organiserOrder<T extends Pick<AdminContestSummary, 'state' | 'starts_at' | 'ends_at'>>(list: readonly T[]): T[] {
   const live = list.filter((c) => c.state === 'live' || c.state === 'frozen').sort((a, b) => a.ends_at - b.ends_at);
   const upcoming = list.filter((c) => c.state === 'upcoming').sort((a, b) => a.starts_at - b.starts_at);
