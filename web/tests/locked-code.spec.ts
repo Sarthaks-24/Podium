@@ -320,6 +320,8 @@ for (const [scheme, theme] of SCHEMES) {
     );
     await clickCode(page);
     await page.keyboard.press('Control+a');
+    // CodeMirror draws the selection layer on its next measure pass, not at once.
+    await expect(page.locator('.cm-selectionBackground').first()).toBeVisible();
     const result = await page.evaluate(() => {
       const alpha = (css: string) => {
         const m = /\/\s*([\d.]+%?)\s*\)/.exec(css) ?? /^rgba\([^)]*,\s*([\d.]+)\)/.exec(css);
