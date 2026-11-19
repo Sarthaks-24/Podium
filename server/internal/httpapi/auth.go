@@ -336,6 +336,19 @@ func (d Deps) authenticate(ctx context.Context, token string) (u auth.User, rene
 	return u, renewed, err
 }
 
+// checkSession is authenticate without renewing a kept session, with the
+// same knownSessions bookkeeping.
+func (d Deps) checkSession(ctx context.Context, token string) (auth.User, error) {
+	u, err := d.Auth.CheckSession(ctx, token)
+	switch {
+	case err == nil:
+		d.known.add(token)
+	case errors.Is(err, auth.ErrNoSession):
+		d.known.forget(token)
+	}
+	return u, err
+}
+
 // setKeep is PUT /api/me/keep-signed-in: the account menu's switch, which
 // turns the current session into a kept one or back into an ordinary one
 // for a person whose role is set to "Each person chooses". The cookie is

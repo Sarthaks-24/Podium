@@ -223,14 +223,15 @@ const pchProbeEvery = time.Minute
 // program can see whether the header directory is in its box, fail with
 // the fault text when it is and compile cleanly in the retry. A pass is
 // remembered for pchProbeEvery, so repeating that costs no further probes.
-// A probe that fails for another reason (a timeout under load) also turns
-// the header off, which only gives up the speed-up until the next start.
+// Only a probe that fails with the header fault text turns the header off; a
+// probe that fails for another reason (a time-out under load) leaves it on
+// and is not remembered as a pass (S4).
 func (r *Runner) pchBroken(ctx context.Context, box int) bool {
 	if time.Since(time.Unix(0, r.pchGood.Load())) < pchProbeEvery {
 		return false
 	}
 	if _, _, err := r.ProbePCH(ctx, box); err != nil {
-		return true
+		return isPCHFault(err)
 	}
 	r.pchGood.Store(time.Now().UnixNano())
 	return false

@@ -487,11 +487,11 @@ func TestSignInKeepsACleanName(t *testing.T) {
 	long := strings.Repeat("é", 300)
 	var userID int64
 	for _, c := range []struct{ raw, want string }{
-		{"Ada ‮ecalovoL", "Ada ecalovoL"},
-		{"Ze​ro‍ Width", "Zero Width"},
+		{"Ada \u202eecalovoL", "Ada ecalovoL"},
+		{"Ze\u200bro\u200d Width", "Zero Width"},
 		{"  Many    spaces\tand\nlines ", "Many spaces and lines"},
 		{long, strings.Repeat("é", 80)},
-		{"​‮  ", ""},
+		{"\u200b\u202e  ", ""},
 	} {
 		in := id("named@college.edu")
 		in.Name = c.raw
@@ -515,5 +515,14 @@ func TestSignInKeepsACleanName(t *testing.T) {
 	}
 	if userID == 0 {
 		t.Fatal("no sign-in")
+	}
+	// Staff keep an empty name: organiser lists fall back to the email.
+	if _, err := s.GrantRole(asOwner(ctx), "named@college.edu", auth.Organiser); err != nil {
+		t.Fatal(err)
+	}
+	in := id("named@college.edu")
+	in.Name = "\u200b"
+	if u, _, _, err := s.SignIn(ctx, in, "", ""); err != nil || u.Name != "" {
+		t.Errorf("nameless organiser: %q %v", u.Name, err)
 	}
 }

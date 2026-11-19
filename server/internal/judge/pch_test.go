@@ -2,6 +2,7 @@ package judge
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -195,5 +196,20 @@ func TestBuildPCHRefusesSymlinks(t *testing.T) {
 	}
 	if ents, _ := os.ReadDir(elsewhere); len(ents) != 0 {
 		t.Errorf("something was written through the link: %v", ents)
+	}
+}
+
+func TestOnlyTheHeaderFaultTextProvesTheHeaderBroken(t *testing.T) {
+	fault := &pchProbeError{Output: "cc1plus: error: one or more PCH files were found, but they were invalid\nfatal error: while reading precompiled header: No such file"}
+	other := &pchProbeError{Output: "probe.cpp:1:1: error: expected unqualified-id"}
+	timeout := fmt.Errorf("the probe compile failed: %s", "")
+	if !isPCHFault(fault) || !isPCHFault(fmt.Errorf("wrapped: %w", fault)) {
+		t.Error("the fault text was not taken as a header fault")
+	}
+	if isPCHFault(other) || isPCHFault(timeout) || isPCHFault(nil) {
+		t.Error("another failure was taken as a header fault")
+	}
+	if !strings.HasPrefix(fault.Error(), "the probe compile failed: ") {
+		t.Errorf("error text %q", fault.Error())
 	}
 }

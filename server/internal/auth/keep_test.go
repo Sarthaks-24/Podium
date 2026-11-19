@@ -658,3 +658,24 @@ func TestKeepTurningOffAfter12HoursEndsTheSession(t *testing.T) {
 		t.Errorf("sessions %d, ended %v; want the row deleted and its keys forgotten", f.sessions(), f.ended)
 	}
 }
+
+func TestKeepCheckSessionNeverRenews(t *testing.T) {
+	f := newKeepFixture(t)
+	f.policy(all(auth.KeepEveryone))
+	start := f.c.t
+	tok, _ := f.signIn(auth.Student, false)
+	ctx := context.Background()
+	f.c.t = start.Add(2 * time.Hour)
+	if u, err := f.s.CheckSession(ctx, tok); err != nil || u.ID == 0 {
+		t.Fatalf("check: %+v %v", u, err)
+	}
+	if _, _, seen := f.row(tok); *seen != start.UnixMilli() {
+		t.Error("the check renewed the session")
+	}
+	if _, renewed, _ := f.s.Authenticate(ctx, tok); renewed.IsZero() {
+		t.Error("a request after the check did not renew")
+	}
+	if _, err := f.s.CheckSession(ctx, "nope"); !errors.Is(err, auth.ErrNoSession) {
+		t.Errorf("unknown token: %v", err)
+	}
+}

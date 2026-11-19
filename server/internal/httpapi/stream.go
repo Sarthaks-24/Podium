@@ -147,6 +147,7 @@ func (d Deps) sessionLive(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	u, _, err := d.authenticate(r.Context(), c.Value)
+	// No renewal: a fresh cookie cannot reach the browser on an open stream.
+	u, err := d.checkSession(r.Context(), c.Value)
 	return err == nil && u.ID == auth.UserFrom(r.Context()).ID
 }

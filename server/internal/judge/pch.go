@@ -199,6 +199,22 @@ func PCHNotUsedBecause(out string) string {
 	return ""
 }
 
+// pchProbeError is a probe compile that ran to the end and failed, with its
+// output. A time-out or another sandbox stop is a plain error instead.
+type pchProbeError struct{ Output string }
+
+func (e *pchProbeError) Error() string {
+	return "the probe compile failed: " + tail(e.Output, 300)
+}
+
+// isPCHFault reports whether err is a probe compile that failed with the
+// header fault text: the only probe failure that proves the header broken
+// (S4). A time-out under load proves nothing.
+func isPCHFault(err error) bool {
+	var p *pchProbeError
+	return errors.As(err, &p) && strings.Contains(p.Output, pchFaultMarker)
+}
+
 // ProbePCH compiles a program that includes <bits/stdc++.h> in box, with
 // the exact command and directory rules a student compile gets plus -H and
 // -Winvalid-pch, and reports whether the header was used (and if not, why).
@@ -238,7 +254,10 @@ func (r *Runner) ProbePCHSource(ctx context.Context, box int, source string) (us
 		return false, "", err
 	}
 	out, _ := readBoxHead(filepath.Join(dir, "compile.txt"), 1<<20)
-	if meta.Status != "" || meta.ExitCode != 0 {
+	if meta.Status == "" && meta.ExitCode != 0 {
+		return false, "", &pchProbeError{Output: string(out)}
+	}
+	if meta.Status != "" {
 		return false, "", fmt.Errorf("the probe compile failed: %s", tail(string(out), 300))
 	}
 	return PCHUsed(string(out)), PCHNotUsedBecause(string(out)), nil

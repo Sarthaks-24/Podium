@@ -234,7 +234,13 @@ func (s *Service) SignInKeep(ctx context.Context, id Identity, ip, userAgent str
 	}
 
 	now := s.now()
-	u := User{ID: userID, Name: cleanName(id.Name, userID), AvatarURL: safeAvatar(id.Picture)}
+	// A nameless student gets "Student <id>" on the public board; nameless staff
+	// keep the email fallback organiser lists already show (V211-59).
+	fallback := ""
+	if role == Student {
+		fallback = fmt.Sprintf("Student %d", userID)
+	}
+	u := User{ID: userID, Name: cleanName(id.Name, fallback), AvatarURL: safeAvatar(id.Picture)}
 	var custom string
 	// The row keeps the address as it was listed; a dotted Gmail spelling
 	// from Google does not rename it.
@@ -261,6 +267,19 @@ func (s *Service) SignInKeep(ctx context.Context, id Identity, ip, userAgent str
 // an hour after the last renewal moves its expiry forward: renewed is then
 // the new expiry, for the caller to put in a fresh cookie.
 func (s *Service) Authenticate(ctx context.Context, token string) (u User, renewed time.Time, err error) {
+	return s.authenticate(ctx, token, true)
+}
+
+// CheckSession is Authenticate without the renewal: an ended or disabled
+// session is still deleted, but a use never moves a kept session's expiry.
+// The event stream's periodic check uses it, because no fresh cookie can
+// reach the browser on an open stream (S1).
+func (s *Service) CheckSession(ctx context.Context, token string) (User, error) {
+	u, _, err := s.authenticate(ctx, token, false)
+	return u, err
+}
+
+func (s *Service) authenticate(ctx context.Context, token string, renew bool) (u User, renewed time.Time, err error) {
 	if token == "" || len(token) > 100 {
 		return User{}, time.Time{}, ErrNoSession
 	}
@@ -300,7 +319,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (u User, renew
 		}
 		return User{}, time.Time{}, ErrNoSession
 	}
-	if u.Remembered && now.UnixMilli()-lastSeen >= renewEvery.Milliseconds() {
+	if renew && u.Remembered && now.UnixMilli()-lastSeen >= renewEvery.Milliseconds() {
 		// Best effort: a failed write leaves the session as it was, still
 		// valid until its stored expiry.
 		next := now.Add(idle)
@@ -565,8 +584,8 @@ const maxName = 80
 // cleanName is the display name Podium keeps from Google's: printable
 // characters only, so a name cannot hide or reverse text on the public board
 // (L2), with runs of spaces collapsed and at most maxName characters. A name
-// left empty becomes "Student <id>", never blank and never the email.
-func cleanName(raw string, userID int64) string {
+// left empty becomes fallback.
+func cleanName(raw, fallback string) string {
 	kept := strings.Map(func(r rune) rune {
 		switch {
 		case unicode.IsSpace(r):
@@ -583,7 +602,7 @@ func cleanName(raw string, userID int64) string {
 	if out := strings.TrimSpace(string(name)); out != "" {
 		return out
 	}
-	return fmt.Sprintf("Student %d", userID)
+	return fallback
 }
 
 // safeAvatar keeps only https avatar URLs from Google's image host, which
