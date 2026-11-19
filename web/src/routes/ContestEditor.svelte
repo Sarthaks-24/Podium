@@ -335,9 +335,9 @@
   function adopt(c: AdminContest) {
     contest = c;
     // An AI problem waiting for its reason is not saved yet, so the list stays.
+    loadedProblemIds = (c.problems ?? []).map((p) => p.problem_id);
     if (aiLabels.length === 0) {
       picked = (c.problems ?? []).map((p) => ({ ...p }));
-      loadedProblemIds = picked.map((p) => p.problem_id);
       problemsStale = false;
     }
     setTitle(routeTitle('admin-contest'), c.title);

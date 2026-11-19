@@ -58,6 +58,17 @@ func TestAddProblemsRoute(t *testing.T) {
 	if code, out := owner.do("PUT", put, []map[string]any{{"problem_id": first, "label": "A"}}, s.srv.URL); code != 200 {
 		t.Fatalf("bare array save: %d %v", code, out)
 	}
+	for _, body := range []map[string]any{{}, {"loaded_problem_ids": []int64{}}} {
+		if code, out := owner.do("PUT", put, body, s.srv.URL); code != 400 {
+			t.Errorf("object without problems %v: %d %v", body, code, out)
+		}
+	}
+	if code, out := owner.do("PUT", put, map[string]any{"problems": []map[string]any{}}, s.srv.URL); code != 200 {
+		t.Errorf("explicit empty list: %d %v", code, out)
+	}
+	if code, out := owner.do("PUT", put, []map[string]any{{"problem_id": first, "label": "A"}}, s.srv.URL); code != 200 {
+		t.Fatalf("restore: %d %v", code, out)
+	}
 	tooMany := make([]int64, 27)
 	if code, out := owner.do("POST", add, map[string]any{"problem_ids": tooMany}, s.srv.URL); code != 400 || fmt.Sprint(out["error"]) == "" {
 		t.Errorf("27 ids: %d %v", code, out)

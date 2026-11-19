@@ -765,11 +765,6 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		}
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM contest_problems WHERE contest_id = ?", id); err != nil {
-		// A writer that committed first leaves this transaction unable to
-		// write; with a guard that means problems were added meanwhile.
-		if loaded != nil && isBusy(err) {
-			return nil, ErrProblemsChanged
-		}
 		return nil, err
 	}
 	after := []pin{}
@@ -940,8 +935,10 @@ func refusalError(code, label string) error {
 		msg = fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", label)
 	case RefuseLimit:
 		msg = "Use at most 26 problems."
-	default:
+	case RefuseAlreadyAdded:
 		msg = "A problem appears twice."
+	default:
+		return fmt.Errorf("unexpected problem refusal %q for label %s", code, label)
 	}
 	return FieldErrors{"problems": msg}
 }
@@ -1050,12 +1047,6 @@ func (s *Service) AddProblems(ctx context.Context, id int64, ids []int64, by Act
 	}
 	s.changed(id)
 	return res, nil
-}
-
-// isBusy reports a SQLite busy or locked failure.
-func isBusy(err error) bool {
-	m := err.Error()
-	return strings.Contains(m, "SQLITE_BUSY") || strings.Contains(m, "database is locked")
 }
 
 func nonNilPins(p []pin) []pin {

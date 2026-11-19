@@ -250,7 +250,4 @@ func TestSetProblemsGuardRaceWithAdd(t *testing.T) {
 	if !errors.Is(err, ErrProblemsChanged) {
 		t.Fatalf("save after a committed add: %v", err)
 	}
-	if !isBusy(errors.New("database is locked (5) (SQLITE_BUSY)")) || isBusy(errors.New("other")) {
-		t.Error("isBusy misreads errors")
-	}
 }

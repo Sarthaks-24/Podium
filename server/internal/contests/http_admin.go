@@ -397,13 +397,19 @@ func (d *Handlers) SetContestProblems(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if t := bytes.TrimSpace(raw); len(t) > 0 && t[0] == '{' {
 		var obj struct {
-			Problems []row    `json:"problems"`
+			Problems *[]row   `json:"problems"`
 			Loaded   *[]int64 `json:"loaded_problem_ids"`
 		}
 		dec := json.NewDecoder(bytes.NewReader(t))
 		dec.DisallowUnknownFields()
 		err = dec.Decode(&obj)
-		req, loaded = obj.Problems, obj.Loaded
+		if err == nil && obj.Problems == nil {
+			err = errors.New("missing problems")
+		}
+		if obj.Problems != nil {
+			req = *obj.Problems
+		}
+		loaded = obj.Loaded
 	} else {
 		err = json.Unmarshal(t, &req)
 	}
