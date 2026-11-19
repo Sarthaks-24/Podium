@@ -53,6 +53,7 @@ type lineShape struct {
 	num      int
 	keep     int // group whose end starts the replaced text; 0 replaces from the match start
 	echoNext bool
+	cut      bool // a locked match drops the rest of the line (it quotes locked code)
 	locked   func(n int) string
 }
 
@@ -64,7 +65,7 @@ var (
 	gppShape = lineShape{re: regexp.MustCompile(`^(\s*(?:In file included from |from )?)((?:[\w./-]*/)?main\.cpp):(\d{1,9})((?::\d{1,9})?)`),
 		num: 3, keep: 1, locked: lockedText}
 	// g++ runtime: an assert names the file after the program name.
-	gppRuntime = lineShape{re: regexp.MustCompile(`^(\S+: )((?:[\w./-]*/)?main\.cpp):(\d{1,9})`), num: 3, keep: 1, locked: lockedText}
+	gppRuntime = lineShape{re: regexp.MustCompile(`^(\S+: )((?:[\w./-]*/)?main\.cpp):(\d{1,9})`), num: 3, keep: 1, cut: true, locked: lockedText}
 	// Node runtime: a stack frame, "at f (/box/main.js:7:11)".
 	nodeFrame = lineShape{re: regexp.MustCompile(`^(\s*at [^\n(]*\(?)((?:[\w./-]*/)?main\.js):(\d{1,9})(?::\d{1,9})?`), num: 3, keep: 1, locked: lockedText}
 	// Java runtime: a stack frame, "at Main.f(Main.java:12)".
@@ -74,8 +75,9 @@ var (
 	// The lines g++ prints under a gutter line: "      |     ^~~".
 	gppBar = regexp.MustCompile(`^\s*\|`)
 	// A caret line under an echoed source line: only spaces, ^ and ~.
-	caretLine  = regexp.MustCompile(`^[ \t]*[\^~][ \t^~]*$`)
-	javacShape = lineShape{re: regexp.MustCompile(`^((?:[\w./-]*/)?Main\.java):(\d{1,9})`), num: 2, echoNext: true, locked: lockedText}
+	pythonFileLine = regexp.MustCompile(`^\s*File `)
+	caretLine      = regexp.MustCompile(`^[ \t]*[\^~][ \t^~]*$`)
+	javacShape     = lineShape{re: regexp.MustCompile(`^((?:[\w./-]*/)?Main\.java):(\d{1,9})`), num: 2, echoNext: true, locked: lockedText}
 	// Python: a frame, anywhere on the line (py_compile prints it after
 	// "PyCompileError: "), and the bare form at the end of a message.
 	pythonShape = lineShape{re: regexp.MustCompile(`File "((?:[^"\n]*/)?main\.py)", line (\d{1,9})`), num: 2, echoNext: true, locked: lockedText}
@@ -111,16 +113,22 @@ func (m lineMap) rewrite(out, lang string) string {
 	}
 	in := strings.Split(out, "\n")
 	lines := make([]string, 0, len(in))
-	echo, dropEcho, dropCaret, dropBars := false, false, false, false
+	echo, dropEcho, dropCaret, dropBars, dropDeep := false, false, false, false, false
 	for _, line := range in {
 		if echo {
 			echo = false
 			if dropEcho {
-				dropEcho, dropCaret = false, true
+				dropEcho, dropCaret, dropDeep = false, true, lang == "python3"
 				continue
 			}
 			lines = append(lines, line)
 			continue
+		}
+		if dropDeep {
+			if strings.HasPrefix(line, "    ") && !pythonFileLine.MatchString(line) {
+				continue
+			}
+			dropDeep = false
 		}
 		if dropCaret {
 			dropCaret = false
@@ -175,6 +183,9 @@ func (m lineMap) replace(line string, loc []int, sh lineShape) (string, bool) {
 	start := loc[0]
 	if sh.keep > 0 {
 		start = loc[2*sh.keep+1]
+	}
+	if sh.cut {
+		return line[:start] + sh.locked(at) + ": assertion failed.", true
 	}
 	return line[:start] + sh.locked(at) + line[loc[1]:], true
 }

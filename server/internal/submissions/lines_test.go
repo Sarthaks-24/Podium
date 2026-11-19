@@ -257,8 +257,26 @@ var hideCases = []struct {
 	{"cpp runtime", "cpp17",
 		"prog: main.cpp:7: int main(): Assertion `x > 0' failed.\n" +
 			"prog: main.cpp:4: long long twice(long long): Assertion `m' failed.\n",
-		"prog: locked code, line 2: int main(): Assertion `x > 0' failed.\n" +
+		"prog: locked code, line 2: assertion failed.\n" +
 			"prog: main.cpp:2: long long twice(long long): Assertion `m' failed.\n", true},
+	{"cpp assert text of locked code", "cpp17",
+		"prog: /box/main.cpp:12: int main(): Assertion 'x == y' failed.\n",
+		"prog: locked code, line 7: assertion failed.\n", true},
+	{"python multi-line echo", "python3",
+		"Traceback (most recent call last):\n" +
+			"  File \"/box/main.py\", line 7, in <module>\n" +
+			"    return a(b(\n" +
+			"           ~^^^\n" +
+			"    c)\n" +
+			"    ^^^^\n" +
+			"  File \"/box/main.py\", line 4, in twice\n" +
+			"    return 1 // 0\n" +
+			"ZeroDivisionError: x\n",
+		"Traceback (most recent call last):\n" +
+			"  locked code, line 2, in <module>\n" +
+			"  File \"/box/main.py\", line 2, in twice\n" +
+			"    return 1 // 0\n" +
+			"ZeroDivisionError: x\n", true},
 	{"java compile", "java21",
 		"Main.java:7: error: cannot find symbol\n" +
 			"        foo();\n" +
