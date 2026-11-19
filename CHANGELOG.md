@@ -17,7 +17,7 @@ v2.1.1 fixes what the v2.1.0 runs on the laptop test server and production showe
 - The key form says that models load after the key is saved. The sign-out confirm says "kept signed in", which is true under every setting.
 - Fixed: one KaTeX font was blocked by the page's font rule because it was built into the page. Fonts are now always separate files, and the build fails if one is not.
 - Fixed: a long compiler line no longer widens the problem page on a phone.
-- The judge selftest runs the hello worlds first, so a contained Node program is not timed on a cold start (PF-19).
+- Fixed: the judge selftest and the sandbox suite no longer fail when the 100-thread Node program is stopped at its time limit. Its threads add up CPU time across cores, and a time-limit stop contains it as well as an error does (PF-19). The selftest also runs the hello worlds first.
 - Known limits: a name made only of characters that print as blank (for example the Hangul filler) is kept; look-alike names are not detected. A precompiled header check that times out is tried again at the next compile that shows the header fault text.
 
 ## v2.1.0 Billota (2026-11-15)
