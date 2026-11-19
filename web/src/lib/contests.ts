@@ -589,7 +589,7 @@ export interface AdminContest extends ContestSettings {
 }
 
 /** A person who can still be added as an organiser (GET .../organisers/candidates). */
-export type OrganiserCandidate = ContestOrganiser;
+export type OrganiserCandidate = Omit<ContestOrganiser, 'added_at'>;
 
 export interface ContestOrganiser { user_id: number; email: string; name: string; role: string; added_at: number }
 

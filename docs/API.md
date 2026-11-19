@@ -847,7 +847,7 @@ Every route here needs the organiser role and manage access to the contest. List
 | `POST /api/admin/contests` | `ContestEdit` and `client_key` | 201 `AdminContest`, unpublished; a repeated `client_key` (v1.3) answers with the contest the first request made |
 | `GET /api/admin/contests/{id}` | | 200 `AdminContest` |
 | `GET /api/admin/contests/{id}/organisers` | | 200 `{organisers:[{user_id,email,name,role,added_at}], server_now}` |
-| `GET /api/admin/contests/{id}/organisers/candidates` | read-rate-limited | 200 `{candidates:[{user_id,email,name,role,added_at}]}`: enabled organisers, admins and owners not yet listed on the contest, by email without case; `added_at` is 0. Same role and contest check as the other organiser routes |
+| `GET /api/admin/contests/{id}/organisers/candidates` | read-rate-limited | 200 `{candidates:[{user_id,email,name,role}]}`: enabled organisers, admins and owners not yet listed on the contest, by email without case. Same role and contest check as the other organiser routes |
 | `POST /api/admin/contests/{id}/organisers` | `{"email":"person@example.edu"}`; resolves listed addresses with the same Gmail dot matching as sign-in; only enabled organiser, admin or owner accounts qualify | 200 organiser row; an existing member is left unchanged |
 | `DELETE /api/admin/contests/{id}/organisers/{user}` | | 204; removing membership takes effect on the next request. Adding and removing write `organiser_added` and `organiser_removed` audit rows `{user_id, email}` |
 | `GET /api/admin/contests/{id}/invites` | | 200 `{audience, invites:[{user_id,name,email,invited_at}], locked, server_now}`; `locked` is true while removing invites is refused (from the start until the final close, extra time included) |

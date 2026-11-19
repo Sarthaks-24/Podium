@@ -41,10 +41,18 @@ func (s *Service) Organisers(ctx context.Context, contestID int64) ([]Organiser,
 	return out, rows.Err()
 }
 
+// OrganiserCandidate is one person who can still be listed as an organiser.
+type OrganiserCandidate struct {
+	UserID int64  `json:"user_id"`
+	Email  string `json:"email"`
+	Name   string `json:"name"`
+	Role   string `json:"role"`
+}
+
 // OrganiserCandidates lists the enabled organisers, admins and owners who
 // are not yet listed on the contest, by email. Students and disabled
 // people are left out.
-func (s *Service) OrganiserCandidates(ctx context.Context, contestID int64) ([]Organiser, error) {
+func (s *Service) OrganiserCandidates(ctx context.Context, contestID int64) ([]OrganiserCandidate, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT u.id,u.email,u.name,u.role FROM users u
 		WHERE u.disabled = 0 AND u.role IN ('organiser', 'admin', 'owner')
 		AND NOT EXISTS (SELECT 1 FROM contest_organisers o WHERE o.contest_id = ? AND o.user_id = u.id)
@@ -53,9 +61,9 @@ func (s *Service) OrganiserCandidates(ctx context.Context, contestID int64) ([]O
 		return nil, err
 	}
 	defer rows.Close()
-	out := []Organiser{}
+	out := []OrganiserCandidate{}
 	for rows.Next() {
-		var o Organiser
+		var o OrganiserCandidate
 		if err := rows.Scan(&o.UserID, &o.Email, &o.Name, &o.Role); err != nil {
 			return nil, err
 		}

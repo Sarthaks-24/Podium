@@ -1534,8 +1534,8 @@ test('setup can add and remove a listed co-organiser (C2)', async ({ page }) => 
   await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   let people = [{ user_id: 1, email: 'owner@college.edu', name: 'Owner', role: 'owner', added_at: 1 }];
   let candidates = [
-    { user_id: 9, email: 'asha@college.edu', name: 'Asha', role: 'organiser', added_at: 0 },
-    { user_id: 10, email: 'bare@college.edu', name: '', role: 'admin', added_at: 0 },
+    { user_id: 9, email: 'asha@college.edu', name: 'Asha', role: 'organiser' },
+    { user_id: 10, email: 'bare@college.edu', name: '', role: 'admin' },
   ];
   await page.route('**/api/admin/contests/4/organisers**', async (route) => {
     const req = route.request();
@@ -1548,7 +1548,7 @@ test('setup can add and remove a listed co-organiser (C2)', async ({ page }) => 
     }
     if (req.method() === 'DELETE') {
       people = people.filter((p) => p.user_id !== 9);
-      candidates = [{ user_id: 9, email: 'asha@college.edu', name: 'Asha', role: 'organiser', added_at: 0 }, ...candidates];
+      candidates = [{ user_id: 9, email: 'asha@college.edu', name: 'Asha', role: 'organiser' }, ...candidates];
       return route.fulfill({ status: 204, body: '' }); }
     return route.continue();
   });
