@@ -206,7 +206,9 @@ export function checkKeyForm(form: KeyForm, provider?: Pick<ProviderOption, 'has
   const fields: Record<string, string> = {};
   if (form.provider === '') fields.provider = 'Choose a provider.';
   const model = cleanModelId(form.model);
-  if (model.length > MAX_MODEL_ID) fields.model = `A model id is at most ${MAX_MODEL_ID} characters.`;
+  // A key pasted into the model field never leaves the page (the server refuses it too).
+  if (/^(sk-|gsk_|AIza)/.test(model)) fields.model = 'That looks like an API key. Paste it in API key, not in Model id.';
+  else if (model.length > MAX_MODEL_ID) fields.model = `A model id is at most ${MAX_MODEL_ID} characters.`;
   else if (!(provider?.other ? MODEL_ID_OTHER : MODEL_ID).test(model)) fields.model = 'A model id has only letters, digits and . _ - : in it. Copy it from the provider.';
   else if (model === '' && provider?.has_list === false) fields.model = 'Enter the model id.';
   if (needsKey(form.provider) && form.key.trim() === '' && !provider?.has_key) fields.key = 'Paste your API key.';

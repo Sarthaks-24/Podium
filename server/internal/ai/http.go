@@ -417,6 +417,11 @@ func (d *Handlers) PutAIKey(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if LooksLikeKey(req.Model) {
+		req.Model = ""
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", KeyInModelField)
+		return
+	}
 	model, ok := CleanModelIDFor(req.Provider, req.Model)
 	if !ok {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "A model id has only letters, digits and . _ - : and at most 128 characters.")

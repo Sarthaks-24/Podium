@@ -402,8 +402,11 @@ func TestRepairCode(t *testing.T) {
 	for _, c := range []struct{ lang, in, want string }{
 		{"cpp17", `#include <x>\nint a;\n`, "#include <x>\nint a;\n"},
 		{"cpp17", `printf("%d\n", x);`, `printf("%d\n", x);`},
-		{"cpp17", `cout << \"a\n\";\n`, "cout << \"a\n\";\n"},
-		{"cpp17", "int a;\nputs(\"x\n\");", "int a;\nputs(\"x\n\");"},
+		{"cpp17", `cout << \"a\\n\";\n`, "cout << \"a\\n\";\n"},
+		{"cpp17", "int a;\nputs(\"x\\n\");", "int a;\nputs(\"x\\n\");"},
+		// Groq GPT OSS 120B, 2026-11-19: line breaks written as text, the string's own \n plain.
+		{"cpp17", `int main(){\n    cout<<res<<"\n";\n    return 0;\n}`, "int main(){\n    cout<<res<<\"\\n\";\n    return 0;\n}"},
+		{"python3", `x = 1\nprint('a\tb')\n`, "x = 1\nprint('a\\tb')\n"},
 		{"python3", `import sys\n\tx = 1`, "import sys\n\tx = 1"},
 		{"java21", "public class Solution {\n}", "class Solution {\n}"},
 		{"java21", "  public  class Solution extends Base {}", "  class Solution extends Base {}"},

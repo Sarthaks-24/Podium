@@ -203,6 +203,24 @@ const MaxModelID = 128
 
 var modelIDRe = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
+// keyPrefixes start the API keys of the providers Podium offers.
+var keyPrefixes = []string{"sk-", "gsk_", "AIza"}
+
+// LooksLikeKey reports whether a typed model id is an API key pasted into
+// the wrong field. Such an id is refused before it is logged or echoed.
+func LooksLikeKey(id string) bool {
+	id = strings.TrimSpace(id)
+	for _, p := range keyPrefixes {
+		if strings.HasPrefix(id, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// KeyInModelField is the refusal of a model id that looks like an API key.
+const KeyInModelField = "That looks like an API key. Paste it in API key, not in Model id."
+
 // CleanModelIDFor trims a typed model id and drops Gemini's "models/" prefix.
 // It reports false for an id with characters no provider uses, which
 // keeps a typed id from changing the path of the provider request. A table

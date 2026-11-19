@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -213,4 +215,27 @@ func TestForgetSessionsDropsKeysByTokenHash(t *testing.T) {
 	}
 	(*Wizard)(nil).ForgetSessions([]string{"x"})
 	(&Wizard{}).ForgetSessions([]string{"x"})
+}
+
+// A key pasted into the model field is refused before anything logs or
+// echoes it (found on the laptop test server, 2026-11-19).
+func TestAKeyInTheModelFieldIsRefused(t *testing.T) {
+	for _, id := range []string{"gsk_abcdefghijklmnopqrstuvwx", "sk-proj-abcdefghijklmnop", "sk-ant-api03-abcdefgh", "AIzaSyAbcdefghijklmnop", "sk-or-v1-abcdefghijkl"} {
+		if !LooksLikeKey(id) {
+			t.Errorf("%s was not taken for a key", id[:5])
+		}
+	}
+	for _, id := range []string{"", "openai/gpt-oss-120b", "gemini-3.5-flash", "claude-opus-5-5", "gpt-x-mini", "sky-model"} {
+		if LooksLikeKey(id) {
+			t.Errorf("%q was taken for a key", id)
+		}
+	}
+	d := &Handlers{Wizard: &Wizard{Keys: &Keys{}}, Log: slog.New(slog.DiscardHandler), SessionToken: func(*http.Request) string { return "s" }}
+	r := httptest.NewRequest(http.MethodPut, "/api/admin/ai/key", strings.NewReader(`{"provider":"groq","model":"gsk_abcdefghijklmnopqrstuvwx","key":"x"}`))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	d.PutAIKey(w, r)
+	if w.Code != http.StatusBadRequest || strings.Contains(w.Body.String(), "gsk_") || !strings.Contains(w.Body.String(), "API key") {
+		t.Errorf("key in the model field: %d %s", w.Code, w.Body)
+	}
 }

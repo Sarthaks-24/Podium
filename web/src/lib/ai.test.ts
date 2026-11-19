@@ -78,6 +78,9 @@ describe('the key form', () => {
     expect(checkKeyForm({ provider: 'anthropic', model: '', key: '  ' })).toEqual({ key: 'Paste your API key.' });
     expect(checkKeyForm({ provider: 'openai', model: 'gpt-x-mini', key: '' }, { has_key: true })).toEqual({});
     expect(checkKeyForm({ provider: 'fake', model: 'canned', key: '' })).toEqual({});
+    expect(checkKeyForm({ provider: 'groq', model: ' gsk_abcdefghijklmnop', key: '' }, { has_key: true, other: true }).model).toBe(
+      'That looks like an API key. Paste it in API key, not in Model id.',
+    );
   });
 
   it('takes any model id the server would, typed or empty', () => {

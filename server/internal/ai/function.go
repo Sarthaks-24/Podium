@@ -381,7 +381,14 @@ var unescapeCode = strings.NewReplacer(`\\`, `\`, `\n`, "\n", `\t`, "\t", `\"`, 
 func repairCode(language, name string, part *string) []string {
 	var notes []string
 	if *part != "" && !strings.Contains(*part, "\n") && escapedNewline(*part) {
-		*part = unescapeCode.Replace(*part)
+		if strings.Contains(*part, `\"`) {
+			// The quotes are escaped too: the whole part was escaped once.
+			*part = unescapeCode.Replace(*part)
+		} else {
+			// Plain quotes: only the line breaks were written as text, so a
+			// string's own \n or \t stays as written.
+			*part = unescapeOutsideQuotes(*part)
+		}
 		notes = append(notes, language+" "+name+": line breaks written as \\n were turned into real line breaks.")
 	}
 	if language == "java21" && javaPublicSolution.MatchString(*part) {
@@ -410,6 +417,37 @@ func escapedNewline(s string) bool {
 		}
 	}
 	return false
+}
+
+// unescapeOutsideQuotes turns \n and \t outside quoted strings into a line
+// break and a tab, using the same quote rules as escapedNewline.
+func unescapeOutsideQuotes(s string) string {
+	var b strings.Builder
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '\\' && i+1 < len(s):
+			next := s[i+1]
+			switch {
+			case quote == 0 && next == 'n':
+				b.WriteByte('\n')
+			case quote == 0 && next == 't':
+				b.WriteByte('\t')
+			default:
+				b.WriteByte(c)
+				b.WriteByte(next)
+			}
+			i++
+			continue
+		case quote == 0 && (c == '"' || c == '\''):
+			quote = c
+		case c == quote:
+			quote = 0
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 // repairFunctionPack runs repairCode on every language part and solution of
