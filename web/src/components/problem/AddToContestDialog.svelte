@@ -3,16 +3,15 @@
   problem has passed validation. Each opening lists the contests that can
   still take a problem, drafts and upcoming ones (GET
   /api/admin/contests), leaving out any that already have this problem.
-  Adding reads the contest's problems and sends them back with this one
-  under the next free letter, through the same PUT .../problems the
-  contest's setup uses, so the server makes the same checks. A refusal is
-  shown inside the dialog. Props: `open`, `problemId`, `title` (the
+  Adding posts to .../problems/add, where the server gives the problem the
+  next free letter and makes the same checks as the problem bank's add.
+  A refusal is shown inside the dialog, in the bank's words. Props: `open`, `problemId`, `title` (the
   problem's), `onclose` and `ondone(contest title, letter)`.
 -->
 <script lang="ts">
   import Dialog from '../Dialog.svelte';
-  import { ApiError, errorText, getJSON, sendJSON } from '../../lib/api';
-  import { labelFor, type AdminContest, type AdminContestSummary } from '../../lib/contests';
+  import { ApiError, errorText, getJSON } from '../../lib/api';
+  import { ADD_REFUSAL_TEXT, addProblemsToContest, type AdminContestSummary } from '../../lib/contests';
   import { formatDayTime } from '../../lib/format';
 
   interface Props {
@@ -68,16 +67,14 @@
     error = '';
     busy = true;
     try {
-      const base = `/api/admin/contests/${target.id}`;
-      const contest = await getJSON<AdminContest>(base);
-      const used = new Set(contest.problems.map((p) => p.label));
-      let i = 0;
-      while (used.has(labelFor(i))) i++;
-      const label = labelFor(i);
-      await sendJSON<AdminContest>('PUT', `${base}/problems`, [
-        ...contest.problems.map((p) => ({ problem_id: p.problem_id, label: p.label })),
-        { problem_id: problemId, label },
-      ]);
+      const out = await addProblemsToContest(target.id, [problemId]);
+      const added = out.added[0];
+      if (!added) {
+        const reason = out.refused[0]?.reason ?? '';
+        error = ADD_REFUSAL_TEXT[reason] ?? 'The problem was not added. Try again.';
+        return;
+      }
+      const label = added.label;
       ondone(target.title, label);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return;

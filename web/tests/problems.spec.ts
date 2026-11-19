@@ -196,7 +196,7 @@ test('proof: a problem imported, a test given a new role from the select, saved,
   await expect(dialog.getByLabel('Contest').locator('option')).toHaveText(['Week 7, draft', /^Week 8, starts /]);
   await dialog.getByRole('button', { name: 'Add to contest' }).click();
   await expect(toasts(page).getByText('Added to Week 7 as problem B', { exact: true })).toBeVisible();
-  expect(state.contestPuts).toEqual([{ id: 7, body: [{ problem_id: 2, label: 'A' }, { problem_id: 10, label: 'B' }] }]);
+  expect(state.contestAdds).toEqual([{ id: 7, body: { problem_ids: [10] } }]);
   await page.screenshot({ path: `${shots()}problem-editor-proof-1440-light.png`, fullPage: true });
 });
 
@@ -758,7 +758,7 @@ test('keyboard only: an organiser opens a problem, edits the statement, saves wi
   await expect(dialog.getByLabel('Contest')).toHaveValue('8');
   await activate(page, dialog.getByRole('button', { name: 'Add to contest' }));
   await expect(toasts(page).getByText('Added to Week 8 as problem A', { exact: true })).toBeVisible();
-  expect(state.contestPuts.at(-1)).toEqual({ id: 8, body: [{ problem_id: 1, label: 'A' }] });
+  expect(state.contestAdds.at(-1)).toEqual({ id: 8, body: { problem_ids: [1] } });
 
   // The shortcut list names the editor keys for organisers.
   await page.locator('main h1').focus();
@@ -952,4 +952,17 @@ test('creating a problem warns when its title exists, with Open it or Restore it
 
   await title.fill('Something new');
   await expect(notice).toHaveCount(0);
+});
+
+test('a refusal from the add route shows the bank wording inside the dialog and nothing is added', async ({ page }) => {
+  await mockApi(page);
+  await page.route('**/api/admin/contests/*/problems/add', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ added: [], refused: [{ problem_id: 1, reason: 'being_checked' }] }) }),
+  );
+  await page.goto('/admin/problems/1');
+  await page.getByRole('button', { name: 'Add to contest' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add A plus B to a contest' });
+  await dialog.getByRole('button', { name: 'Add to contest' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Its languages are being checked. Try again when that finishes');
+  await expect(toasts(page).getByText(/^Added to/)).toHaveCount(0);
 });

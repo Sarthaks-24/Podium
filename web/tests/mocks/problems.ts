@@ -344,6 +344,8 @@ export async function mockApi(page: Page, who: 'organiser' | 'student' = 'organi
       { id: 6, slug: 'week-6', title: 'Week 6', starts_at: T0 - 7 * 86400000, ends_at: T0 - 7 * 86400000 + 7200000, state: 'ended', published: true, problems: [] },
     ] as Json[],
     contestPuts: [] as { id: number; body: Json[] }[],
+    /** Bodies of POST .../problems/add, with the contest they went to. */
+    contestAdds: [] as { id: number; body: Json }[],
   };
   Object.assign(state.problems[1], revisionsFixture());
 
@@ -361,6 +363,26 @@ export async function mockApi(page: Page, who: 'organiser' | 'student' = 'organi
         return apiError(route, 403, 'forbidden', 'You do not have access to this. Ask an admin or an owner if you need it.');
       }
 
+      const add = path.match(/^\/api\/admin\/contests\/(\d+)\/problems\/add$/);
+      if (add && method === 'POST') {
+        const c = state.contests.find((x) => x.id === Number(add[1]));
+        if (!c) return apiError(route, 404, 'not_found', 'There is no contest with that id.');
+        const body = req.postDataJSON() as { problem_ids: number[] };
+        state.contestAdds.push({ id: c.id as number, body });
+        const have = c.problems as Json[];
+        const added: Json[] = [];
+        const refused: Json[] = [];
+        for (const pid of body.problem_ids) {
+          if (have.some((x) => x.problem_id === pid)) {
+            refused.push({ problem_id: pid, reason: 'already_added' });
+            continue;
+          }
+          const label = String.fromCharCode(65 + have.length);
+          have.push({ problem_id: pid, label, title: String(state.problems[pid]?.title ?? '') });
+          added.push({ problem_id: pid, label });
+        }
+        return json(route, 200, { added, refused });
+      }
       if (path === '/api/admin/problems' && method === 'GET') {
         const all = Object.values(state.problems);
         const list = url.searchParams.get('archived') === '1' ? all : all.filter((p) => !p.archived);
