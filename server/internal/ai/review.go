@@ -13,6 +13,7 @@ import (
 	"mime"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Sarthaks-24/podium/internal/auth"
@@ -193,6 +194,114 @@ func decodeReviewBody(w http.ResponseWriter, r *http.Request, v any) bool {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "The request body is not valid JSON for this action.")
 	}
 	return false
+}
+
+// Answer files. Save as file writes this wrapper; the open route reads it.
+const (
+	answerFileFormat  = "podium-ai-answer"
+	answerFileVersion = 1
+)
+
+type answerFileJSON struct {
+	Format    string `json:"format"`
+	Version   int    `json:"version"`
+	Kind      string `json:"kind"`
+	JavaLists string `json:"java_lists"`
+	Answer    string `json:"answer"`
+}
+
+type openRequestJSON struct {
+	Text      string `json:"text"`
+	Kind      string `json:"kind"`
+	JavaLists string `json:"java_lists"`
+}
+
+type openResponseJSON struct {
+	Answer    string   `json:"answer"`
+	Kind      string   `json:"kind"`
+	JavaLists string   `json:"java_lists"`
+	Repairs   []string `json:"repairs"`
+	Reasons   []string `json:"reasons"`
+}
+
+// PostOpenAnswer checks a saved answer file, or pasted text, and returns the
+// answer for the review screen. It writes nothing. An answer that fails the
+// decode or the checks still comes back, with its reasons, so the person can
+// correct it. Neither the body nor the answer text is logged.
+func (d *Handlers) PostOpenAnswer(w http.ResponseWriter, r *http.Request) {
+	var body openRequestJSON
+	if !decodeReviewBody(w, r, &body) {
+		return
+	}
+	answer, kind, lists := body.Text, body.Kind, body.JavaLists
+	if isAnswerFile(body.Text) {
+		var f answerFileJSON
+		dec := json.NewDecoder(strings.NewReader(body.Text))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&f); err != nil || dec.More() {
+			refuseFile(w, "The file has a field this version does not know, or a field of the wrong type.")
+			return
+		}
+		if f.Format != answerFileFormat {
+			refuseFile(w, "The file is not a Podium AI answer.")
+			return
+		}
+		if f.Version != answerFileVersion {
+			refuseFile(w, "The file is version "+strconv.Itoa(f.Version)+". This server opens version 1.")
+			return
+		}
+		answer, kind, lists = f.Answer, f.Kind, f.JavaLists
+	}
+	switch kind {
+	case StudentsWriteProgram:
+		lists = ""
+	case StudentsWriteFunction:
+		if lists == "" {
+			lists = JavaListsArray
+		}
+		if lists != JavaListsArray && lists != JavaListsArrayList && lists != JavaListsEither {
+			refuseFile(w, "The Java lists choice must be arrays, ArrayList or either.")
+			return
+		}
+	default:
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "Choose a whole program or one function.")
+		return
+	}
+	if len(answer) > maxReviewAnswer {
+		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "answer_too_large", "The answer is longer than 2 MB. Shorten it and try again.")
+		return
+	}
+	if hasKeyShape(answer) {
+		refuseFile(w, "The answer contains text that looks like an API key. Remove it and try again.")
+		return
+	}
+	out := openResponseJSON{Answer: answer, Kind: kind, JavaLists: lists, Repairs: []string{}, Reasons: []string{}}
+	_, notes, reasons, err := loadAnswer(answer, kind, lists)
+	if err != nil {
+		reasons = reasonsOf(err)
+	}
+	if notes != nil {
+		out.Repairs = notes
+	}
+	if reasons != nil {
+		out.Reasons = reasons
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// isAnswerFile is true when the text is a JSON object with a "format" key.
+func isAnswerFile(text string) bool {
+	var top map[string]json.RawMessage
+	if json.Unmarshal([]byte(text), &top) != nil {
+		return false
+	}
+	_, ok := top["format"]
+	return ok
+}
+
+func refuseFile(w http.ResponseWriter, reason string) {
+	httpx.WriteJSON(w, http.StatusBadRequest, draftErrorJSON{"error": {Code: "invalid_answer_file",
+		Message: "The file could not be opened. Fix what is listed and try again.", Problems: []string{reason}}})
 }
 
 // refuseAnswer writes 400 invalid_answer with what is wrong with the answer.

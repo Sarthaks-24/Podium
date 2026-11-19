@@ -192,6 +192,10 @@ export function apiError(route: Route, status: number, code: string, message: st
 }
 
 export interface MockOptions {
+  /** The signed-in role; default organiser. Import AI answer and Save as file are for admin and owner. */
+  role?: 'organiser' | 'admin' | 'owner' | 'student';
+  /** POST /api/admin/ai/answers/open: 'file' refuses the text as a bad answer file; 'fail' opens it with reasons. */
+  open?: 'file' | 'fail';
   /** The key status the page starts with: none, an Anthropic key with a model, or an OpenAI key saved without a model. */
   key?: 'none' | 'active' | 'no-model';
   /** Testing mode: the fake provider is offered. */
@@ -292,6 +296,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
     modelGets: [] as string[],
     wizardBodies: [] as Json[],
     draftBodies: [] as Json[],
+    openBodies: [] as Json[],
     answerGets: 0,
     draftPosts: 0,
     wizardGets: 0,
@@ -334,7 +339,31 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
       const method = req.method();
       state.requestedUrls.push(req.url());
 
-      if (path === '/api/me' && method === 'GET') return json(route, 200, ADMIN);
+      if (path === '/api/me' && method === 'GET') return json(route, 200, { ...ADMIN, role: opts.role ?? 'organiser' });
+      if (path === '/api/admin/problems' && method === 'GET') return json(route, 200, { problems: [] });
+      if (path === '/api/admin/ai/answers/open' && method === 'POST') {
+        const body = req.postDataJSON() as { text: string; kind?: string; java_lists?: string };
+        state.openBodies.push(body);
+        if (opts.role === 'organiser' || opts.role === 'student') return apiError(route, 403, 'forbidden', 'You do not have access to this.');
+        if (opts.open === 'file') return apiError(route, 400, 'invalid_answer_file', 'The file could not be opened. Fix what is listed and try again.', { problems: ['The file is version 2. This server opens version 1.'] });
+        let file: { answer: string; kind: string; java_lists: string } | null = null;
+        try {
+          const v = JSON.parse(body.text) as { format?: string; answer: string; kind: string; java_lists: string };
+          if (v && typeof v === 'object' && 'format' in v) file = v;
+        } catch {
+          // A bare answer.
+        }
+        const answer = file ? file.answer : body.text;
+        const kind = file ? file.kind : (body.kind ?? '');
+        if (kind === '') return apiError(route, 400, 'bad_request', 'Choose a whole program or one function.');
+        return json(route, 200, {
+          answer,
+          kind,
+          java_lists: file ? file.java_lists : (body.java_lists ?? ''),
+          repairs: [],
+          reasons: opts.open === 'fail' ? ['Subtask points add up to 90; make them add up to 100.'] : [],
+        });
+      }
       if (path === '/api/auth/config') return json(route, 200, { mode: opts.testing ? 'testing' : 'production' });
 
       if (path === '/api/events') {

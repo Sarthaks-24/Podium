@@ -41,6 +41,8 @@
   import Icon from '../components/Icon.svelte';
   import KeyForm from '../components/ai/KeyForm.svelte';
   import AnswerReview from '../components/ai/AnswerReview.svelte';
+  import AnswerImport from '../components/ai/AnswerImport.svelte';
+  import { aiImport } from '../lib/aiImport.svelte';
   import { onMount, tick } from 'svelte';
   import { focusFirstInvalid } from '../lib/focus';
   import {
@@ -64,6 +66,7 @@
     type InputGeneration,
     type JavaLists,
     type KeyStatus,
+    type OpenedAnswer,
     type StudentsWrite,
     type Wizard,
     type WizardAnswer,
@@ -365,6 +368,8 @@
     setTitle(routeTitle('ai-new'));
     if (forbidden) return;
     loadKey();
+    const imported = router.query.get('import') === '1' ? aiImport.take() : null;
+    if (imported) openImported(imported);
     const resume = router.query.get('wizard');
     const rewrite = Number(router.query.get('rewrite'));
     if (resume) {
@@ -442,6 +447,22 @@
       sending = false;
     }
   }
+
+  /** An imported answer: the review screen opens on it as for a run, with no run behind it. */
+  async function openImported(a: OpenedAnswer) {
+    reviewFor = 'imported';
+    reviewLost = false;
+    reviewRefused = null;
+    reviewAnswer = { text: a.answer, cut: false, reasons: a.reasons, kind: a.kind, java_lists: a.java_lists, repairs: a.repairs };
+    reviewText = a.answer;
+    functionRun = a.kind === 'function';
+    wizard = { id: 'imported', state: 'review' };
+    await tick();
+    document.getElementById('review-heading')?.focus();
+  }
+
+  /** The address asks for the import prompt: shown until an answer is open. */
+  const importPrompt = $derived(router.query.get('import') === '1' && !wizard);
 
   /** Create draft: the answer as it now stands becomes a draft, and the usual steps follow it. */
   async function createDraft() {
@@ -694,6 +715,8 @@
         reasons={reviewAnswer.reasons}
         repairs={reviewAnswer.repairs ?? []}
         cut={reviewAnswer.cut}
+        kind={reviewAnswer.kind ?? 'program'}
+        javaLists={reviewAnswer.java_lists ?? ''}
         busy={reviewBusy}
         problems={reviewRefused?.problems ?? []}
         message={reviewRefused?.message ?? ''}
@@ -702,7 +725,9 @@
       />
     {/if}
 
-    {#if (!wizard || wizard.state === 'error') && !(rewriting && rewriteOld === null)}
+    {#if importPrompt}
+      <AnswerImport onopened={openImported} oncancel={() => navigate('/admin/problems')} />
+    {:else if (!wizard || wizard.state === 'error') && !(rewriting && rewriteOld === null)}
       <form class="wizard-form" novalidate onsubmit={generate} aria-labelledby="request-heading">
         <h2 id="request-heading" class="visually-hidden">Request</h2>
         {#if !rewriting}

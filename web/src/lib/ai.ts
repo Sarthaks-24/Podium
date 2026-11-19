@@ -421,7 +421,32 @@ export const aiPaths = {
   wizardOne: (id: string | number) => `/api/admin/ai/wizard/${encodeURIComponent(String(id))}`,
   wizardAnswer: (id: string | number) => `/api/admin/ai/wizard/${encodeURIComponent(String(id))}/answer`,
   drafts: '/api/admin/ai/drafts',
+  openAnswer: '/api/admin/ai/answers/open',
 };
+
+/** The file Save as file writes: the answer as text, and what the server needs to open it. */
+export function answerFileText(answer: string, kind: StudentsWrite, javaLists: JavaLists | ''): string {
+  return JSON.stringify({ format: 'podium-ai-answer', version: 1, kind, java_lists: kind === 'function' ? javaLists || 'array' : '', answer }, null, 2);
+}
+
+/** The answer of POST /api/admin/ai/answers/open. */
+export interface OpenedAnswer {
+  answer: string;
+  kind: StudentsWrite;
+  java_lists: JavaLists | '';
+  repairs: string[];
+  reasons: string[];
+}
+
+/** True when the text is an answer file (a JSON object with a "format" key), so no kind needs asking. */
+export function isAnswerFile(text: string): boolean {
+  try {
+    const v: unknown = JSON.parse(text);
+    return typeof v === 'object' && v !== null && !Array.isArray(v) && 'format' in v;
+  } catch {
+    return false;
+  }
+}
 
 /** A generate inputs run: POST .../generate-inputs and GET .../input-generation. */
 export interface InputGeneration {

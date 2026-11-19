@@ -10,7 +10,10 @@
   so a failed answer can be corrected and created. A cut answer (over 2 MB)
   is shown read-only and cannot be created.
 
-  Props: text (bindable, the answer's JSON), reasons, repairs, cut, busy (a
+  Admins and the owner also get Save as file, which downloads the answer in
+  the podium-ai-answer wrapper (no key or account data) for Import AI answer.
+
+  Props: kind, javaLists (written into the saved file), text (bindable, the answer's JSON), reasons, repairs, cut, busy (a
   Create draft request is running), problems (what the server refused on the
   last Create draft), message (the server's sentence for that refusal),
   oncreate, ondiscard.
@@ -18,6 +21,9 @@
 <script lang="ts">
   import { fieldId, fieldTree, parseAnswer, sendableAnswer, setAt, showAnswer, type FieldNode } from '../../lib/answerFields';
   import { tick } from 'svelte';
+  import { answerFileText, type JavaLists, type StudentsWrite } from '../../lib/ai';
+  import { administers } from '../../lib/roles';
+  import { session } from '../../lib/session.svelte';
 
   let {
     text = $bindable(),
@@ -27,6 +33,8 @@
     busy = false,
     problems = [],
     message = '',
+    kind = 'program',
+    javaLists = '',
     oncreate,
     ondiscard,
   }: {
@@ -37,6 +45,8 @@
     busy?: boolean;
     problems?: readonly string[];
     message?: string;
+    kind?: StudentsWrite;
+    javaLists?: JavaLists | '';
     oncreate: () => void;
     ondiscard: () => void;
   } = $props();
@@ -95,6 +105,21 @@
       return;
     }
     oncreate();
+  }
+
+  /** Save as file is for admins and the owner. The text in the JSON view is saved even when it does not parse. */
+  const canSave = $derived(administers(session.user?.role) && !cut);
+
+  function saveFile() {
+    const body = answerFileText(jsonError !== '' ? json : text, kind, javaLists);
+    const url = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'podium-ai-answer.json';
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   const canCreate = $derived(!cut && !busy && jsonError === '');
@@ -192,6 +217,7 @@
 
   <p class="actions">
     <button type="button" class="btn btn-primary" disabled={!canCreate} onclick={create}>{busy ? 'Creating the draft' : 'Create draft'}</button>
+    {#if canSave}<button type="button" class="btn btn-secondary" onclick={saveFile}>Save as file</button>{/if}
     <button type="button" class="btn btn-quiet" disabled={busy} onclick={ondiscard}>Discard answer</button>
   </p>
 </section>

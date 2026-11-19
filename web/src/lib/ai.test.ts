@@ -500,3 +500,17 @@ describe('the other providers in the key form', () => {
     expect(ai.privacyLine?.('Groq')).toBe('Your problem text is sent to Groq. Free plans may keep what you send.');
   });
 });
+
+describe('answer files', () => {
+  it('writes the wrapper with the answer as text, and a program has no Java choice', () => {
+    expect(JSON.parse(ai.answerFileText('{"a":1}', 'function', 'either'))).toEqual({ format: 'podium-ai-answer', version: 1, kind: 'function', java_lists: 'either', answer: '{"a":1}' });
+    expect(JSON.parse(ai.answerFileText('{not json', 'program', 'array'))).toMatchObject({ kind: 'program', java_lists: '', answer: '{not json' });
+  });
+
+  it('tells a wrapper from a bare answer', () => {
+    expect(ai.isAnswerFile(ai.answerFileText('{}', 'program', ''))).toBe(true);
+    expect(ai.isAnswerFile('{"title":"x"}')).toBe(false);
+    expect(ai.isAnswerFile('[1]')).toBe(false);
+    expect(ai.isAnswerFile('not json')).toBe(false);
+  });
+});

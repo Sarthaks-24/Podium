@@ -703,6 +703,14 @@ Any AI chat can write a pack for Import pack, not only the wizard's three provid
 
 Write the problem in your own words, and do not paste unreleased contest problems or student material into an outside AI. Expected outputs (`tests/*.out`) may be left out: Podium makes them from the reference solution.
 
+## Saving and importing an AI answer
+
+On the review screen, admins and the owner see Save as file. It downloads `podium-ai-answer.json`: a small wrapper with `format` (`podium-ai-answer`), `version` (1), `kind`, `java_lists` and `answer`, where `answer` is the model's answer as text, so an answer that does not parse can still be saved. The file holds no API key and no account data.
+
+On Problems, Import AI answer sits beside Import pack. It takes that file, or pasted text. Pasted text that is a bare model answer (no wrapper) makes the page ask whether it is a whole program or one function. The server checks the size, format, version and kind, runs the same repairs and checks as a run, and writes nothing. The answer opens on the review screen at `/admin/ai/new?import=1`, and a draft exists only after Create draft. The imported answer is held in the browser's memory only, so a reload shows the import prompt again.
+
+Import is limited to admins and the owner. This is a product choice, not a security boundary: an organiser can already send any answer to `/api/admin/ai/drafts`.
+
 ## Import limits
 
 Packs are parsed on the server outside any sandbox, so the server is strict:

@@ -23,13 +23,15 @@
   import RestoreFlow from '../components/RestoreFlow.svelte';
   import ImportConflictDialog from '../components/ImportConflictDialog.svelte';
   import PackPromptPanel from '../components/PackPromptPanel.svelte';
+  import AnswerImport from '../components/ai/AnswerImport.svelte';
+  import { aiImport } from '../lib/aiImport.svelte';
   import DeletedProblems from '../components/problem/DeletedProblems.svelte';
   import Badge from '../components/Badge.svelte';
   import MonoDigits from '../components/MonoDigits.svelte';
   import { onMount, tick, untrack } from 'svelte';
   import { focusFirstInvalid, refocusRow } from '../lib/focus';
   import { problemTone } from '../lib/badges';
-  import { isAIDraft, withoutAIDraft } from '../lib/ai';
+  import { isAIDraft, withoutAIDraft, type OpenedAnswer } from '../lib/ai';
   import { ApiError, errorText, getJSON, sendBody, sendJSON } from '../lib/api';
   import { newKey } from '../lib/workspace';
   import { formatDateTime } from '../lib/format';
@@ -217,6 +219,19 @@
     }
   }
 
+  /** Import AI answer (admins and the owner): the panel opens beside the toolbar; a checked answer goes to the review screen. */
+  let importingAnswer = $state(false);
+  let answerButton = $state<HTMLButtonElement>();
+  function answerOpened(a: OpenedAnswer) {
+    aiImport.set(a);
+    navigate('/admin/ai/new?import=1');
+  }
+  async function closeAnswerImport() {
+    importingAnswer = false;
+    await tick();
+    answerButton?.focus();
+  }
+
   function pickPack() {
     fileInput?.click();
   }
@@ -383,6 +398,9 @@
         tabindex="-1"
         onchange={importPack}
       />
+      {#if canSeeDeleted}
+        <button type="button" class="btn btn-secondary" aria-expanded={importingAnswer} aria-controls="import-answer" bind:this={answerButton} onclick={() => (importingAnswer ? void closeAnswerImport() : (importingAnswer = true))}>Import AI answer</button>
+      {/if}
     </div>
     <div class="aside">
       {#if !showDeleted}
@@ -405,6 +423,10 @@
     <DeletedProblems />
   {:else}
   <PackPromptPanel />
+
+  {#if importingAnswer && canSeeDeleted}
+    <div id="import-answer"><AnswerImport onopened={answerOpened} oncancel={closeAnswerImport} /></div>
+  {/if}
 
   {#if importing}
     <p class="status muted" role="status">Importing pack</p>
