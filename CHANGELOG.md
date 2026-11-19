@@ -4,7 +4,7 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
 
-## v2.1.1 Billota (unreleased)
+## v2.1.1 Billota (2026-11-19)
 
 v2.1.1 fixes what the v2.1.0 runs on the laptop test server and production showed. It has no migration and keeps judge protocol 4: see "Upgrading to v2.1.1" in `docs/OPERATIONS.md`.
 
