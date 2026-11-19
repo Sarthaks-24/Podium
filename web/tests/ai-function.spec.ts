@@ -215,6 +215,30 @@ test('a reference that does not compile stops the wizard at the tests instead of
   expect(proofRequests(state.requestedUrls)).toBe(n);
 });
 
+test('a failed run shows what the AI sent back, closed until opened by keyboard', async ({ page }) => {
+  await runBrief(page, { wizardEnd: 'error', sentBack: '{"title": "Sum", "starter": "int solve()"}' });
+  const sent = page.getByText('What the AI sent back');
+  await expect(sent).toBeVisible({ timeout: 15_000 });
+  const text = page.getByLabel('What the AI sent back');
+  await expect(text).toBeHidden();
+  await sent.focus();
+  await page.keyboard.press('Enter');
+  await expect(text).toContainText('"starter": "int solve()"');
+
+});
+
+test('a draft whose tests could not be generated shows what the AI sent back', async ({ page }) => {
+  await runBrief(page, { proof: 'forever', outputs: 'no_compile' });
+  await expect(page.getByText('The tests could not be generated. Open the draft to see why.')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('What the AI sent back')).toBeVisible();
+});
+
+test('a run whose answer is empty shows no sent back block', async ({ page }) => {
+  await runBrief(page, { wizardEnd: 'error', sentBack: '' });
+  await expect(page.getByText("The model's answer could not be used.")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('What the AI sent back')).toHaveCount(0);
+});
+
 test('polling stops when the round ends', async ({ page }) => {
   const state = await runBrief(page, { proof: 'pass' });
   await expect(languages(page)).toBeVisible({ timeout: 15_000 });

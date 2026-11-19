@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Sarthaks-24/podium/internal/judge"
@@ -50,7 +52,11 @@ type WizardPack struct {
 	MemoryLimitMB int             `json:"memory_limit_mb"`
 	Tags          []string        `json:"tags"`
 	Difficulty    string          `json:"difficulty"`
+	// raw is the provider's text the pack was decoded from, before any repair.
+	raw string
 }
+
+func (p *WizardPack) rawAnswer() string { return p.raw }
 
 // WizardSample is a sample test shown with the statement.
 type WizardSample struct {
@@ -275,6 +281,7 @@ func DecodePack(text string) (*WizardPack, error) {
 		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.",
 			Reasons: []string{"The answer was not in the format Podium asked for: " + clipText(err.Error(), 200)}, answer: text}
 	}
+	p.raw = text
 	return &p, nil
 }
 
@@ -441,7 +448,39 @@ func ToDraft(p *WizardPack) problems.Draft {
 // off). A refusal or a provider failure is not retried. The pack it
 // returns passes Check.
 func Generate(ctx context.Context, p Provider, req Request) (*WizardPack, error) {
-	return generateChecked(req, func(r Request) (*WizardPack, error) { return p.Generate(ctx, r) }, Check)
+	return generateChecked(req, func(r Request) (*WizardPack, error) {
+		pack, err := p.Generate(ctx, r)
+		if err == nil {
+			repairGeneratorArgs(pack.Subtasks)
+		}
+		return pack, err
+	}, Check)
+}
+
+// joinedArg is one key=value piece of a generator argument.
+var joinedArg = regexp.MustCompile(`^[A-Za-z0-9_.:+-]+=[A-Za-z0-9_.:+-]+$`)
+
+// repairGeneratorArgs splits an argument a model wrote as n=2000,k=2000 into
+// one argument per pair, which is what a generator parses (Appendix A of the
+// v2.1.1 plan). An argument is split only when every piece is a pair, so a
+// value such as range=1,5 stays whole.
+func repairGeneratorArgs(subtasks []WizardSubtask) {
+	for i := range subtasks {
+		var out []string
+		for _, a := range subtasks[i].GeneratorArgs {
+			pieces := strings.Split(a, ",")
+			whole := len(pieces) > 1
+			for _, piece := range pieces {
+				whole = whole && joinedArg.MatchString(piece)
+			}
+			if whole {
+				out = append(out, pieces...)
+			} else {
+				out = append(out, a)
+			}
+		}
+		subtasks[i].GeneratorArgs = out
+	}
 }
 
 // generateChecked is the loop of Generate and GenerateFunction: validate the
@@ -452,7 +491,16 @@ func generateChecked[T any](req Request, call func(Request) (*T, error), check f
 	}
 	return Repair(func(r Retry) (*T, error) {
 		req.Previous, req.Fix, req.Shorter = r.Previous, r.Fix, r.Shorter
+		began := time.Now()
 		pack, err := call(req)
+		if req.onAttempt != nil {
+			req.onAttempt(time.Since(began))
+		}
+		if req.onAnswer != nil {
+			if text := answerText(pack, err); text != "" {
+				req.onAnswer(text)
+			}
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -463,6 +511,24 @@ func generateChecked[T any](req Request, call func(Request) (*T, error), check f
 		answer, _ := json.Marshal(pack)
 		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: reasons, answer: string(answer)}
 	})
+}
+
+// answerText is the provider's text behind an attempt: the pack's own text,
+// the pack as JSON when a provider decoded none (the test provider), or the
+// unusable answer an *Error carries. Empty when the provider sent nothing.
+func answerText[T any](pack *T, err error) string {
+	var e *Error
+	switch {
+	case err != nil && errors.As(err, &e):
+		return e.answer
+	case err != nil || pack == nil:
+		return ""
+	}
+	if r, ok := any(pack).(interface{ rawAnswer() string }); ok && r.rawAnswer() != "" {
+		return r.rawAnswer()
+	}
+	b, _ := json.Marshal(pack)
+	return string(b)
 }
 
 func clipText(s string, n int) string {

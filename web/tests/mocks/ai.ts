@@ -189,6 +189,8 @@ export interface MockOptions {
   events?: 'stream' | 'down';
   /** How a wizard ends. */
   wizardEnd?: 'draft' | 'error';
+  /** The text GET /api/admin/ai/wizard/{id}/answer returns once the run ended; default a short JSON answer. */
+  sentBack?: string;
   /** Answer wizard GETs with "thinking" forever, so only the live event can finish it. */
   wizardOnlyByEvent?: boolean;
   /** After the draft is created, problem 20 generates its tests and passes validation (P3 O7). */
@@ -374,6 +376,12 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
         state.wizard = { id: WIZARD_ID, kind: 'generate', state: 'thinking', started_at: T0, server_now: T0 };
         state.wizardGets = 0;
         return json(route, 202, { wizard_id: WIZARD_ID });
+      }
+      if (path === `/api/admin/ai/wizard/${WIZARD_ID}/answer` && method === 'GET') {
+        if (!state.wizard) return apiError(route, 404, 'not_found', 'There is no such request.');
+        if (state.wizard.state === 'thinking') return apiError(route, 409, 'not_finished', 'The AI request has not finished yet.');
+        const reasons = (state.wizard.error as { reasons?: string[] } | undefined)?.reasons ?? [];
+        return json(route, 200, { text: opts.sentBack ?? '{"title": "Sum of an array", "languages": []}', cut: false, reasons });
       }
       if (path === `/api/admin/ai/wizard/${WIZARD_ID}` && method === 'GET') {
         if (!state.wizard) return apiError(route, 404, 'not_found', 'There is no such request.');

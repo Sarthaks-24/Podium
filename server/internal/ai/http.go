@@ -40,6 +40,9 @@ const (
 	keyCheckTimeout = 30 * time.Second
 	// draftTimeout bounds the database work after the model answered.
 	draftTimeout = 30 * time.Second
+	// maxKeptAnswer bounds the provider text a run keeps for "What the AI
+	// sent back"; longer text is cut (PLAN v2.1.1 section 4.2).
+	maxKeptAnswer = 200 << 10
 )
 
 // Wizard is the wizard's server state. Everything is in memory: a restart
@@ -72,6 +75,11 @@ type wizardRun struct {
 	finishedAt time.Time
 	// rewrite is the old problem a rewrite run started from, nil otherwise.
 	rewrite *rewriteLink
+	// answer is the latest text the provider returned, with the key removed
+	// and cut to maxKeptAnswer; answerCut says it was cut. Only the person
+	// who started the run can read it, and never through the wizard event.
+	answer    string
+	answerCut bool
 }
 
 type wizardErrorJSON struct {
@@ -157,6 +165,9 @@ func (a *Wizard) start(kind string, userID int64, problemID int64, entry KeyEntr
 	for id, r := range a.runs {
 		if !r.finishedAt.IsZero() && now.Sub(r.finishedAt) > wizardKeep {
 			delete(a.runs, id)
+		} else if r.userID == userID {
+			// One kept answer per person: a new run replaces the last.
+			r.answer, r.answerCut = "", false
 		}
 	}
 	a.runs[run.id] = run
@@ -172,6 +183,32 @@ func (a *Wizard) view(id string, userID int64) (wizardJSON, bool) {
 		return wizardJSON{}, false
 	}
 	return r.json(), true
+}
+
+// keptAnswer returns the kept answer of a run userID started, with the run's
+// error reasons. found is false for a missing run, another person's run or a
+// run that ended more than wizardKeep ago; finished is false while it runs.
+func (a *Wizard) keptAnswer(id string, userID int64) (out wizardAnswerJSON, found, finished bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	r, ok := a.runs[id]
+	if !ok || r.userID != userID || (!r.finishedAt.IsZero() && time.Since(r.finishedAt) > wizardKeep) {
+		return out, false, false
+	}
+	if r.finishedAt.IsZero() {
+		return out, true, false
+	}
+	out = wizardAnswerJSON{Text: r.answer, Cut: r.answerCut, Reasons: []string{}}
+	if r.err != nil {
+		out.Reasons = r.err.Reasons
+	}
+	return out, true, true
+}
+
+type wizardAnswerJSON struct {
+	Text    string   `json:"text"`
+	Cut     bool     `json:"cut"`
+	Reasons []string `json:"reasons"`
 }
 
 // json must be called with a.mu held.
@@ -607,7 +644,19 @@ func (d *Handlers) StartWizard(w http.ResponseWriter, r *http.Request) {
 // For a function run the draft is a function problem and the queued input
 // generation carries the proof spec: the model's solutions.
 func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, function bool, userID int64, key Secret) wizardJSON {
-	ctx, cancel := context.WithTimeout(context.Background(), CallTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), wizardRunTimeout)
+	attempt := 0
+	req.onAttempt = func(took time.Duration) {
+		attempt++
+		d.Log.Info("ai wizard attempt", "wizard_id", run.id, "attempt", attempt, "seconds", int(took.Seconds()))
+	}
+	var answer string
+	req.onAnswer = func(text string) { answer = text }
+	// The key goes before the cut, so no part of it survives at the cut point.
+	keep := func(r *wizardRun) {
+		text := key.scrub(answer)
+		r.answer, r.answerCut = clipText(text, maxKeptAnswer), len(text) > maxKeptAnswer
+	}
 	var draft problems.Draft
 	var solutions map[string]string
 	var err error
@@ -624,7 +673,7 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 	}
 	cancel()
 	if err != nil {
-		return d.failWizard(run, err, key)
+		return d.failWizard(run, err, key, keep)
 	}
 	ctx, cancel = context.WithTimeout(context.Background(), draftTimeout)
 	defer cancel()
@@ -639,7 +688,7 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 		err = &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: reasons}
 	}
 	if err != nil {
-		return d.failWizard(run, err, key)
+		return d.failWizard(run, err, key, keep)
 	}
 	d.Log.Info("ai draft created", "user_id", userID, "wizard_id", run.id, "problem_id", p.ID)
 	var g *problems.InputGeneration
@@ -654,12 +703,12 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 	} else {
 		d.Log.Info("input generation queued", "by", userID, "problem_id", p.ID, "input_generation_id", g.ID)
 	}
-	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.problemID = wizardDraft, p.ID })
+	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.problemID = wizardDraft, p.ID; keep(r) })
 }
 
 // failWizard records a failed run. An *Error is logged by its code
 // only (it never holds the key); anything else is a server fault.
-func (d *Handlers) failWizard(run *wizardRun, err error, key Secret) wizardJSON {
+func (d *Handlers) failWizard(run *wizardRun, err error, key Secret, keep func(*wizardRun)) wizardJSON {
 	var aiErr *Error
 	if errors.As(err, &aiErr) {
 		d.Log.Info("ai request ended without a result", "user_id", run.userID, "wizard_id", run.id, "code", aiErr.Code)
@@ -667,7 +716,7 @@ func (d *Handlers) failWizard(run *wizardRun, err error, key Secret) wizardJSON 
 		d.logProviderFault("ai request failed", key, err, "wizard_id", run.id)
 	}
 	e := wizardError(err)
-	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.err = wizardFailed, e })
+	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.err = wizardFailed, e; keep(r) })
 }
 
 // logProviderFault logs an error a provider client did not wrap in an *Error,
@@ -682,11 +731,28 @@ func (d *Handlers) publishWizard(userID int64, v wizardJSON) {
 	}
 }
 
+// noWizard is the refusal of a run that is missing, someone else's or gone.
+const noWizard = "There is no such AI request. It may have ended over an hour ago or before a restart."
+
 func (d *Handlers) GetWizard(w http.ResponseWriter, r *http.Request) {
 	v, ok := d.Wizard.view(r.PathValue("id"), auth.UserFrom(r.Context()).ID)
 	if !ok {
-		httpx.WriteError(w, http.StatusNotFound, "not_found", "There is no such AI request. It may have ended over an hour ago or before a restart.")
+		httpx.WriteError(w, http.StatusNotFound, "not_found", noWizard)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, v)
+}
+
+// GetWizardAnswer returns what the provider sent back for a finished run, to
+// the person who started it only.
+func (d *Handlers) GetWizardAnswer(w http.ResponseWriter, r *http.Request) {
+	v, found, finished := d.Wizard.keptAnswer(r.PathValue("id"), auth.UserFrom(r.Context()).ID)
+	switch {
+	case !found:
+		httpx.WriteError(w, http.StatusNotFound, "not_found", noWizard)
+	case !finished:
+		httpx.WriteError(w, http.StatusConflict, "not_finished", "The AI request has not finished yet.")
+	default:
+		httpx.WriteJSON(w, http.StatusOK, v)
+	}
 }

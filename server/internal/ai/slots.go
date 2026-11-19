@@ -9,6 +9,12 @@ import (
 // is a variable only so a test can shorten it.
 var CallTimeout = 3 * time.Minute
 
+// wizardRunTimeout bounds one wizard run: the first attempt, the retry and
+// the provider's short retries share it, so the retry gets the time left. It
+// is longer than CallTimeout because a run is background work that holds no
+// browser request open (V211-47). A variable only so a test can shorten it.
+var wizardRunTimeout = 6 * time.Minute
+
 // Slots allows one wizard call per admin at a time: a second Generate
 // while one runs is refused rather than queued, so a double click
 // cannot spend twice.

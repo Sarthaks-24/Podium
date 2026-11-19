@@ -12,6 +12,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Provider is one model API.
@@ -69,6 +70,11 @@ type Request struct {
 	Shorter  bool
 	// JavaLists is a function run's Java list choice: array, arraylist or either.
 	JavaLists string
+	// onAttempt, when set, is told how long each model call took.
+	onAttempt func(time.Duration)
+	// onAnswer, when set, is given the provider's text each time an attempt
+	// returns one, so a run keeps the latest answer even if a retry fails.
+	onAnswer func(string)
 }
 
 // Error codes a caller can branch on.

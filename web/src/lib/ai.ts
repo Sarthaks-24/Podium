@@ -277,6 +277,14 @@ export function wizardRequest(mode: 'brief' | 'paste', brief: Brief, text: strin
 
 export type WizardState = 'thinking' | 'draft_created' | 'error' | 'done';
 
+/** GET /api/admin/ai/wizard/{id}/answer: what the provider sent back, for the person who started the run. */
+export interface WizardAnswer {
+  text: string;
+  /** The text was longer than 200 KB and is cut. */
+  cut: boolean;
+  reasons: string[];
+}
+
 /** GET /api/admin/ai/wizard/{id}, and the `wizard` live event. */
 export interface Wizard {
   id: string;
@@ -384,6 +392,7 @@ export const aiPaths = {
   models: (provider: string, refresh = false) => `/api/admin/ai/models?provider=${encodeURIComponent(provider)}${refresh ? '&refresh=1' : ''}`,
   wizard: '/api/admin/ai/wizard',
   wizardOne: (id: string | number) => `/api/admin/ai/wizard/${encodeURIComponent(String(id))}`,
+  wizardAnswer: (id: string | number) => `/api/admin/ai/wizard/${encodeURIComponent(String(id))}/answer`,
 };
 
 /** A generate inputs run: POST .../generate-inputs and GET .../input-generation. */

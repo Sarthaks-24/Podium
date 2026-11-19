@@ -187,7 +187,7 @@ func TestProviderFaultIsLoggedWithoutTheKey(t *testing.T) {
 	const key = "PODIUMTEST-held-key-4711"
 	err := fmt.Errorf("dial failed with header x-api-key: %s", key)
 	d.logProviderFault("ai edit failed", NewSecret(key), err, "problem_id", 7)
-	d.failWizard(&wizardRun{id: "w1"}, err, NewSecret(key))
+	d.failWizard(&wizardRun{id: "w1"}, err, NewSecret(key), func(*wizardRun) {})
 	out := buf.String()
 	if !strings.Contains(out, "ai edit failed") || !strings.Contains(out, "ai request failed") {
 		t.Fatalf("not logged; the check below would prove nothing:\n%s", out)

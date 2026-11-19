@@ -266,3 +266,18 @@ func TestFixRequestFieldsArePinned(t *testing.T) {
 		t.Errorf("FixRequest fields %s", got)
 	}
 }
+
+func TestGenerateFixRepairsJava(t *testing.T) {
+	a := javaFix()
+	a.Solution = "public class Solution {\n  long s(int[] a) { return 0; }\n}"
+	a.LockedTop = strings.ReplaceAll(a.LockedTop, "\n", `\n`)
+	want := javaFix().LockedTop
+	s := &stub{fixAnswers: []func() (*FixAnswer, error){func() (*FixAnswer, error) { return a, nil }}}
+	got, err := GenerateFix(context.Background(), s, sampleFixRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.Solution, "public class") || got.LockedTop != want {
+		t.Errorf("not repaired: %+v", got)
+	}
+}

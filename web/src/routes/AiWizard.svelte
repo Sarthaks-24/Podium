@@ -20,6 +20,10 @@
   change", and the server sends the AI the problem's statement, settings,
   reference solution and sample tests, never a hidden test. The run reports
   which problem it rewrote, and the page keeps that for the draft's banner.
+
+  When a run fails, or its draft's tests could not be generated, a closed
+  "What the AI sent back" disclosure shows the provider's text as plain text,
+  read from the run's answer route. It is absent when there is no text.
 -->
 <script lang="ts">
   import { organises } from '../lib/roles';
@@ -50,6 +54,7 @@
     type KeyStatus,
     type StudentsWrite,
     type Wizard,
+    type WizardAnswer,
   } from '../lib/ai';
   import { checkingLine, notOffered, notOfferedLine, offeredNames, proofPaths, referenceBanner, roundFinished, type ProofState } from '../lib/proof';
   import { ApiError, errorText, getJSON, sendJSON } from '../lib/api';
@@ -130,6 +135,21 @@
     return wizardStatusText(wizard);
   });
   const drafted = $derived(wizard ? draftedBy(wizard, keyStatus) : '');
+  /** What the provider sent back for a run that failed or whose tests failed; asked for once per run. */
+  let sentBack = $state<WizardAnswer | null>(null);
+  let sentBackFor = '';
+  $effect(() => {
+    const id = wizard?.id;
+    if (!id || sentBackFor === String(id) || (wizard?.state !== 'error' && chain?.outcome !== 'tests_failed')) return;
+    sentBackFor = String(id);
+    getJSON<WizardAnswer>(aiPaths.wizardAnswer(id))
+      .then((a) => {
+        if (alive && String(wizard?.id) === String(id)) sentBack = a;
+      })
+      .catch(() => {
+        // The answer is extra help: without it the page still says what failed.
+      });
+  });
   const textLength = $derived(text.trim().length);
 
   /** Handles errors every request can hit; returns true when it did. */
@@ -396,6 +416,8 @@
     proofError = false;
     chainSlow = false;
     functionRun = null;
+    sentBack = null;
+    sentBackFor = '';
     const again = rewriteId ?? wizard?.rewrite_of?.problem_id ?? null;
     wizard = null;
     requestError = null;
@@ -410,6 +432,17 @@
     return ids.length > 0 ? ids.join(' ') : undefined;
   }
 </script>
+
+{#snippet sentBackBlock()}
+  {#if sentBack && sentBack.text !== ''}
+    <details class="sent-back">
+      <summary>What the AI sent back</summary>
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <pre class="compiler" tabindex="0" translate="no" aria-label="What the AI sent back">{sentBack.text}</pre>
+      {#if sentBack.cut}<p class="muted hint">Only the first 200 KB is shown.</p>{/if}
+    </details>
+  {/if}
+{/snippet}
 
 <div class="wizard">
   <PageHeader title="New problem with AI" crumbs={[{ label: 'Problems', href: '/admin/problems' }, { label: 'New problem with AI' }]} />
@@ -514,6 +547,7 @@
               <ul>{#each wizard.error.reasons as reason, i (i)}<li>{reason}</li>{/each}</ul>
             {/if}
           </div>
+          {@render sentBackBlock()}
           <p class="actions"><button type="button" class="btn btn-secondary" onclick={startAgain}>Change the request</button></p>
         {:else if wizard.problem_id}
           <p class="created">
@@ -529,6 +563,7 @@
               .filter((x) => x !== '')
               .join(' ')}
           </p>
+          {#if chain?.outcome === 'tests_failed'}{@render sentBackBlock()}{/if}
           {#if chainSlow && !chain?.done}
             <div class="banner banner-info">
               <p>This is taking longer than usual. Open the draft to see where it is.</p>
@@ -985,6 +1020,10 @@
     gap: var(--space-2);
     color: var(--bad);
     font-weight: 500;
+  }
+
+  .sent-back {
+    margin-block: var(--space-3);
   }
 
   .compiler {

@@ -68,7 +68,7 @@ func TestFunctionSchemaIsStrict(t *testing.T) {
 	rt := reflect.TypeOf(FunctionPack{})
 	for i := 0; i < rt.NumField(); i++ {
 		name := strings.Split(rt.Field(i).Tag.Get("json"), ",")[0]
-		if name == "java_solution_arraylist" { // only the either schema has it (TestEitherSchemaIsStrictAndAddsOneField)
+		if !rt.Field(i).IsExported() || name == "java_solution_arraylist" { // only the either schema has it (TestEitherSchemaIsStrictAndAddsOneField)
 			continue
 		}
 		want = append(want, name)
@@ -387,12 +387,73 @@ func TestFunctionRequestsCarryNoTestData(t *testing.T) {
 	// The request type has no field a test could be put in. Old, the problem
 	// a rewrite starts from, holds its settings, statement, reference and
 	// sample tests, built by rewriteText, which never reads a hidden test.
+	// onAttempt and onAnswer are callbacks the request never sends.
 	var fields []string
 	rt := reflect.TypeOf(Request{})
 	for i := 0; i < rt.NumField(); i++ {
 		fields = append(fields, rt.Field(i).Name)
 	}
-	if got := strings.Join(fields, ","); got != "Brief,Pasted,Old,System,Previous,Fix,Shorter,JavaLists" {
+	if got := strings.Join(fields, ","); got != "Brief,Pasted,Old,System,Previous,Fix,Shorter,JavaLists,onAttempt,onAnswer" {
 		t.Errorf("Request fields %s: a new field must be reviewed for test data", got)
+	}
+}
+
+func TestRepairCode(t *testing.T) {
+	for _, c := range []struct{ lang, in, want string }{
+		{"cpp17", `#include <x>\nint a;\n`, "#include <x>\nint a;\n"},
+		{"cpp17", `printf("%d\n", x);`, `printf("%d\n", x);`},
+		{"cpp17", `cout << \"a\n\";\n`, "cout << \"a\n\";\n"},
+		{"cpp17", "int a;\nputs(\"x\n\");", "int a;\nputs(\"x\n\");"},
+		{"python3", `import sys\n\tx = 1`, "import sys\n\tx = 1"},
+		{"java21", "public class Solution {\n}", "class Solution {\n}"},
+		{"java21", "  public  class Solution extends Base {}", "  class Solution extends Base {}"},
+		{"java21", "public class Main {\n}", "public class Main {\n}"},
+		{"cpp17", "public class Solution {}", "public class Solution {}"},
+	} {
+		got := c.in
+		notes := repairCode(c.lang, "starter", &got)
+		if got != c.want {
+			t.Errorf("%s %q: got %q want %q", c.lang, c.in, got, c.want)
+		}
+		if (got != c.in) != (len(notes) > 0) {
+			t.Errorf("%q: notes %v", c.in, notes)
+		}
+		again := got
+		if n := repairCode(c.lang, "starter", &again); again != got || len(n) > 0 {
+			t.Errorf("%q: second repair changed it to %q (%v)", got, again, n)
+		}
+	}
+}
+
+func TestGenerateFunctionRepairsBeforeChecks(t *testing.T) {
+	escaped := func() (*FunctionPack, error) {
+		p := FakeFunctionArraySum()
+		for i := range p.Languages {
+			if l := &p.Languages[i]; l.Language == "cpp17" {
+				l.LockedTop = strings.ReplaceAll(l.LockedTop, "\n", `\n`)
+			} else if l.Language == "java21" {
+				l.Solution = "public " + l.Solution
+			}
+		}
+		return p, nil
+	}
+	s := &stub{functionAnswers: []func() (*FunctionPack, error){escaped}}
+	pack, err := GenerateFunction(context.Background(), s, Request{Pasted: "sum an array", JavaLists: "array"})
+	if err != nil || len(s.reqs) != 1 {
+		t.Fatalf("err %v calls %d", err, len(s.reqs))
+	}
+	if !reflect.DeepEqual(pack.Languages[0], FakeFunctionArraySum().Languages[0]) {
+		t.Errorf("cpp17 not repaired: %+v", pack.Languages[0])
+	}
+	for _, l := range pack.Languages {
+		if l.Language == "java21" && strings.Contains(l.Solution, "public class Solution") {
+			t.Errorf("java solution %q", l.Solution)
+		}
+	}
+	lists := "public class Solution extends Base { }"
+	p := FakeFunctionArraySum()
+	p.JavaSolutionArrayList = &lists
+	if notes := repairFunctionPack(p); len(notes) != 1 || *p.JavaSolutionArrayList != "class Solution extends Base { }" {
+		t.Errorf("arraylist solution %q notes %v", *p.JavaSolutionArrayList, notes)
 	}
 }

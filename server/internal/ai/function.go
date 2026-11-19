@@ -50,7 +50,11 @@ type FunctionPack struct {
 	// Java starting code then holds both forms and whose Java Solution is the
 	// array one. Nil in every other run.
 	JavaSolutionArrayList *string `json:"java_solution_arraylist,omitempty"`
+	// raw is the provider's text the pack was decoded from, before any repair.
+	raw string
 }
+
+func (p *FunctionPack) rawAnswer() string { return p.raw }
 
 // FunctionLanguage is one language's four parts.
 type FunctionLanguage struct {
@@ -111,6 +115,7 @@ func DecodeFunctionFor(text, javaLists string) (*FunctionPack, error) {
 		return nil, &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.",
 			Reasons: []string{"The answer was not in the format Podium asked for: java_solution_arraylist was not asked for."}, answer: text}
 	}
+	p.raw = text
 	return &p, nil
 }
 
@@ -325,7 +330,10 @@ func functionRules(javaLists string) string {
 - statement_md describes the function in language-neutral words: what it receives and what it returns. Keep the sections "## Input", "## Output" and "## Constraints", which describe the input the locked code reads. The statement never names a signature.
 - reference_cpp and brute_cpp are bare C++ functions, not programs: no main and no input or output code. Where the rules above say "program", read "function". generator_python and validator_python stay whole Python programs.
 - languages has one entry per language: cpp17 always, and java21, python3 and node22 when you can write them. Each entry has locked_top (imports only, plus the base code the language needs around the function), starter (the function a student fills in, with a signature and a placeholder body that compiles), locked_bottom (reads the input exactly as "## Input" describes, calls the student's function once, prints the result and prints nothing else) and solution (the full function, efficient, in the same shape as the starter). The cpp17 solution is not used; repeat reference_cpp there.
-- ` + java + ` C++ uses vector, Python a list and JavaScript an Array either way.`
+- ` + java + ` C++ uses vector, Python a list and JavaScript an Array either way.
+- In Java, write class Solution without public.
+- Each generator_args item is one key=value pair, for example ["n=1000", "k=5"].
+- At least half of the tests must be small enough for brute_cpp to finish within the time limit.`
 }
 
 // BuildFunctionSystemPrompt is BuildSystemPrompt for a function request: the
@@ -344,9 +352,83 @@ func (r Request) functionSystem() string {
 }
 
 // GenerateFunction runs one function generation like Generate: the call, the
-// checks and at most one retry. The pack it returns passes CheckFunction.
+// repairs, the checks and at most one retry. The pack it returns passes
+// CheckFunction.
 func GenerateFunction(ctx context.Context, p Provider, req Request) (*FunctionPack, error) {
-	return generateChecked(req, func(r Request) (*FunctionPack, error) { return p.GenerateFunction(ctx, r) }, CheckFunction)
+	return generateChecked(req, func(r Request) (*FunctionPack, error) {
+		pack, err := p.GenerateFunction(ctx, r)
+		if err == nil {
+			repairFunctionPack(pack)
+			repairGeneratorArgs(pack.Subtasks)
+		}
+		return pack, err
+	}, CheckFunction)
+}
+
+// javaPublicSolution finds a public Solution class, which javac refuses
+// outside a file named Solution.java (PF-17, Appendix A of the v2.1.1 plan).
+var javaPublicSolution = regexp.MustCompile(`(?m)^(\s*)public\s+class\s+Solution\b`)
+
+// unescapeCode turns escape sequences written as text into the characters.
+var unescapeCode = strings.NewReplacer(`\\`, `\`, `\n`, "\n", `\t`, "\t", `\"`, `"`)
+
+// repairCode fixes two faults real models make in a code part and returns a
+// plain note for each repair. A part with no line break and a backslash-n
+// outside any quoted string was sent with its line breaks written as text
+// (PF-17), so it is unescaped once. A Java part loses "public" before
+// "class Solution". A part with a real line break is never unescaped, so a
+// repaired part is left as it is.
+func repairCode(language, name string, part *string) []string {
+	var notes []string
+	if *part != "" && !strings.Contains(*part, "\n") && escapedNewline(*part) {
+		*part = unescapeCode.Replace(*part)
+		notes = append(notes, language+" "+name+": line breaks written as \\n were turned into real line breaks.")
+	}
+	if language == "java21" && javaPublicSolution.MatchString(*part) {
+		*part = javaPublicSolution.ReplaceAllString(*part, "${1}class Solution")
+		notes = append(notes, language+" "+name+": public class Solution became class Solution.")
+	}
+	return notes
+}
+
+// escapedNewline reports whether s has a backslash-n outside quotes. Each
+// backslash skips the character after it, and a string opens only at an
+// unescaped " or '.
+func escapedNewline(s string) bool {
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\\':
+			if quote == 0 && i+1 < len(s) && s[i+1] == 'n' {
+				return true
+			}
+			i++
+		case quote == 0 && (c == '"' || c == '\''):
+			quote = c
+		case c == quote:
+			quote = 0
+		}
+	}
+	return false
+}
+
+// repairFunctionPack runs repairCode on every language part and solution of
+// a pack, before the checks.
+func repairFunctionPack(p *FunctionPack) []string {
+	var notes []string
+	for i := range p.Languages {
+		l := &p.Languages[i]
+		for _, part := range []struct {
+			name string
+			code *string
+		}{{"locked_top", &l.LockedTop}, {"starter", &l.Starter}, {"locked_bottom", &l.LockedBottom}, {"solution", &l.Solution}} {
+			notes = append(notes, repairCode(l.Language, part.name, part.code)...)
+		}
+	}
+	if p.JavaSolutionArrayList != nil {
+		notes = append(notes, repairCode("java21", "java_solution_arraylist", p.JavaSolutionArrayList)...)
+	}
+	return notes
 }
 
 // FixRequest is one request to write a language again: the problem as a
@@ -540,6 +622,11 @@ func GenerateFix(ctx context.Context, p Provider, req FixRequest) (*FixAnswer, e
 		a, err := p.FixLanguage(ctx, req)
 		if err != nil {
 			return nil, err
+		}
+		if a != nil {
+			for _, part := range []*string{&a.LockedTop, &a.Starter, &a.LockedBottom, &a.Solution} {
+				repairCode(req.Language, "part", part)
+			}
 		}
 		reasons := CheckFixAnswer(a)
 		if len(reasons) == 0 {

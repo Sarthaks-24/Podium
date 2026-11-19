@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -345,4 +346,73 @@ func TestWizardRequestBodiesWholeUnchanged(t *testing.T) {
 		t.Error("the key is in a request body")
 	}
 	checkGolden(t, "testdata/wizard_request_whole.json", got)
+}
+
+func TestRepairGeneratorArgs(t *testing.T) {
+	st := []WizardSubtask{
+		{GeneratorArgs: []string{"n=1,k=2", "range=1,5", "mode=x"}},
+		{GeneratorArgs: []string{"n=2000,k=2000,pattern=periodic"}},
+		{},
+	}
+	repairGeneratorArgs(st)
+	if got := strings.Join(st[0].GeneratorArgs, " "); got != "n=1 k=2 range=1,5 mode=x" {
+		t.Errorf("subtask 1: %s", got)
+	}
+	if got := strings.Join(st[1].GeneratorArgs, " "); got != "n=2000 k=2000 pattern=periodic" {
+		t.Errorf("subtask 2: %s", got)
+	}
+	if st[2].GeneratorArgs != nil {
+		t.Errorf("subtask 3: %v", st[2].GeneratorArgs)
+	}
+}
+
+func TestFunctionRulesCarryTheRealModelFixes(t *testing.T) {
+	for _, javaLists := range []string{JavaListsArray, JavaListsArrayList, JavaListsEither} {
+		rules := functionRules(javaLists)
+		for _, want := range []string{
+			`Each generator_args item is one key=value pair, for example ["n=1000", "k=5"].`,
+			"At least half of the tests must be small enough for brute_cpp to finish within the time limit.",
+			"In Java, write class Solution without public.",
+		} {
+			if !strings.Contains(rules, want) {
+				t.Errorf("%s rules lack %q", javaLists, want)
+			}
+		}
+	}
+	if strings.Contains(DefaultRules, "brute_cpp") {
+		t.Error("the whole-program rules changed")
+	}
+}
+
+// deadlineStub records the deadline each function call saw.
+type deadlineStub struct {
+	stub
+	deadlines []time.Time
+}
+
+func (s *deadlineStub) GenerateFunction(ctx context.Context, req Request) (*FunctionPack, error) {
+	dl, _ := ctx.Deadline()
+	s.deadlines = append(s.deadlines, dl)
+	return s.stub.GenerateFunction(ctx, req)
+}
+
+func TestWizardRunSharesOneDeadline(t *testing.T) {
+	if CallTimeout != 3*time.Minute || wizardRunTimeout != 6*time.Minute {
+		t.Fatalf("limits %v %v", CallTimeout, wizardRunTimeout)
+	}
+	bad := func() (*FunctionPack, error) { p := FakeFunctionArraySum(); p.Languages[1].Starter = ""; return p, nil }
+	s := &deadlineStub{stub: stub{functionAnswers: []func() (*FunctionPack, error){bad, bad}}}
+	d := &Handlers{Wizard: &Wizard{}, Log: slog.New(slog.DiscardHandler)}
+	run := d.Wizard.start("generate", 1, 0, KeyEntry{Provider: ProviderFake}, nil)
+	began := time.Now()
+	v := d.runGenerate(run, s, Request{Pasted: "sum", JavaLists: JavaListsArray}, true, 1, Secret{})
+	if v.State != wizardFailed || len(s.deadlines) != 2 {
+		t.Fatalf("state %s calls %d", v.State, len(s.deadlines))
+	}
+	if !s.deadlines[0].Equal(s.deadlines[1]) {
+		t.Errorf("the retry got its own deadline: %v %v", s.deadlines[0], s.deadlines[1])
+	}
+	if left := s.deadlines[0].Sub(began); left < 5*time.Minute || left > 6*time.Minute+time.Second {
+		t.Errorf("run limit %v", left)
+	}
 }
