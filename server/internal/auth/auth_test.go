@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -477,5 +478,42 @@ func TestRecordSiteWritesTheActorAndFixedFields(t *testing.T) {
 	if len(rows) != 1 || rows[0].Actor == nil || rows[0].Actor.Email != ownerEmail || rows[0].At != c.t.UnixMilli() ||
 		string(rows[0].Details) != `{"problem_id":4,"slug":"two-sum"}` {
 		t.Fatalf("rows = %+v", rows)
+	}
+}
+
+func TestSignInKeepsACleanName(t *testing.T) {
+	s, _ := newService(t, "named@college.edu")
+	ctx := context.Background()
+	long := strings.Repeat("é", 300)
+	var userID int64
+	for _, c := range []struct{ raw, want string }{
+		{"Ada ‮ecalovoL", "Ada ecalovoL"},
+		{"Ze​ro‍ Width", "Zero Width"},
+		{"  Many    spaces\tand\nlines ", "Many spaces and lines"},
+		{long, strings.Repeat("é", 80)},
+		{"​‮  ", ""},
+	} {
+		in := id("named@college.edu")
+		in.Name = c.raw
+		u, _, _, err := s.SignIn(ctx, in, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		userID = u.ID
+		want := c.want
+		if want == "" {
+			want = fmt.Sprintf("Student %d", u.ID)
+		}
+		var stored string
+		if err := s.DB.QueryRowContext(ctx, "SELECT name FROM users WHERE id = ?", u.ID).Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		// The standings and every list read this column.
+		if u.Name != want || stored != want {
+			t.Errorf("%q: user %q, stored %q, want %q", c.raw, u.Name, stored, want)
+		}
+	}
+	if userID == 0 {
+		t.Fatal("no sign-in")
 	}
 }

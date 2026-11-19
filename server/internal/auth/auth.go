@@ -20,6 +20,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Sarthaks-24/podium/internal/retention"
 )
@@ -233,7 +234,7 @@ func (s *Service) SignInKeep(ctx context.Context, id Identity, ip, userAgent str
 	}
 
 	now := s.now()
-	u := User{ID: userID, Name: limit(id.Name, 200), AvatarURL: safeAvatar(id.Picture)}
+	u := User{ID: userID, Name: cleanName(id.Name, userID), AvatarURL: safeAvatar(id.Picture)}
 	var custom string
 	// The row keeps the address as it was listed; a dotted Gmail spelling
 	// from Google does not rename it.
@@ -556,6 +557,33 @@ func limit(s string, n int) string {
 		return s
 	}
 	return strings.ToValidUTF8(s[:n], "")
+}
+
+// maxName is the most characters a display name keeps.
+const maxName = 80
+
+// cleanName is the display name Podium keeps from Google's: printable
+// characters only, so a name cannot hide or reverse text on the public board
+// (L2), with runs of spaces collapsed and at most maxName characters. A name
+// left empty becomes "Student <id>", never blank and never the email.
+func cleanName(raw string, userID int64) string {
+	kept := strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsSpace(r):
+			return ' '
+		case unicode.IsGraphic(r):
+			return r
+		}
+		return -1
+	}, strings.ToValidUTF8(raw, ""))
+	name := []rune(strings.Join(strings.Fields(kept), " "))
+	if len(name) > maxName {
+		name = name[:maxName]
+	}
+	if out := strings.TrimSpace(string(name)); out != "" {
+		return out
+	}
+	return fmt.Sprintf("Student %d", userID)
 }
 
 // safeAvatar keeps only https avatar URLs from Google's image host, which
