@@ -224,6 +224,16 @@ public class Main {
 
 **What locked code is not.** It is a teaching aid, not an integrity control. A student can still read standard input or print from their own code, redefine things in C++, or close the function early and write more code. Everything runs in the sandbox, and the checker and the hidden tests decide the verdict, so such tricks only help a student who could solve the problem anyway.
 
+**The Locked code setting.** A contest has a Locked code setting for its function problems, in the contest editor under Advanced, set by organisers and above. It does not change the problem.
+
+| Setting | Students see |
+|---|---|
+| Shown | The locked code, as always. This is the default |
+| Folded | The same code, folded to "Locked code, N lines" when the editor opens; they can unfold it |
+| Hidden | Only their own function, with one line above and below saying locked code runs there. Compiler and Run output no longer quotes locked lines; "locked code, line N" stays |
+
+Staff always see the locked code, and the problem page outside a contest is unchanged. The setting can change at any time and reaches each student at their next page load. Hidden is not a secret: the locked code is part of the program the student's code runs in, so a student who writes code that reads that file can still print it. Use it to keep the code out of the way, not to protect it. Whole-program problems ignore the setting.
+
 **Renamed functions in Python and JavaScript.** In C++ and Java a student who renames the function gets a compile error and the hint "Your code no longer matches the function the locked code calls." In Python and JavaScript there is no compile step, so the same mistake is a runtime error, and the student sees "Runtime error on test 1" with no hint (Run shows the error text, Submit does not).
 
 **AI.** The AI wizard can write a function problem: choose "One function, between locked code" in "Students write" (see "The AI wizard"), and Podium runs every language before offering it. For a function problem written or edited by hand, use "Check a language".
@@ -510,6 +520,8 @@ The model's code is never run on the server: it goes to the judge, in isolate, l
 One AI request per admin runs at a time. A wizard run has at most 6 minutes for its answer and one retry; Edit with AI and Fix with AI have 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
 
 Before checking an answer, Podium repairs three faults real models make (v2.1.1): locked code sent with its line breaks written as `\n` text, `public class Solution` in Java, and generator arguments joined as `n=2000,k=2000`. When a run fails, or its draft's tests could not be generated, "What the AI sent back" under the message shows the model's answer as it arrived, as plain text, for up to an hour or until you start another run. The key is never in it.
+
+**Review before saving (v2.1.1).** "Show me the AI's answer first" on the wizard is ticked on each visit and is not remembered. With it ticked the run creates no problem: the page shows the answer as the model sent it, also when it failed the checks (with the reasons). Edit it as Fields or as raw JSON, which are the same answer; JSON that does not parse stays in the JSON view with its error. The page says when Podium's repairs will change the answer. Create draft then makes the problem through the same repairs and checks as a run without review, and Discard answer clears the page. No problem exists before Create draft. An answer is kept up to 2 MB (above that it is shown cut and Create draft is disabled), and the server drops it an hour after the run ends. A rewrite keeps its link to the old problem.
 
 ## Check a language
 

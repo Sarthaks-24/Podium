@@ -4,7 +4,7 @@ A self-hosted platform for weekly programming contests at a college. Students si
 
 Everything runs on one small Linux VM (Ubuntu 24.04, amd64 or arm64). The design floor is 2 GB of RAM, so every dependency has to fit there; production is a Google Cloud e2-standard-2 with 2 vCPUs and 8 GB. A 700 student k6 load test on a 2 vCPU, 8 GB test VM (2026-11-14) gave a p95 of 276 ms with no failed requests (`docs/OPERATIONS.md`, "Replay corpus and speed comparison").
 
-Status (2026-11-19): `v2.1.1` Billota is live on a Google Cloud VM at podium-sst.tech (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"). `CHANGELOG.md` lists what changed in each release, and `docs/` describes the code on `main`.
+Status (2026-11-20): `v2.1.0` Billota is live on a Google Cloud VM at podium-sst.tech (V4-26, see `docs/OPERATIONS.md`, "Google Cloud"). `v2.1.1` is built on `main` and not yet released. `CHANGELOG.md` lists what changed in each release, and `docs/` describes the code on `main`.
 
 **Version names.** Releases are numbered from `v2.0.0`. The builds before it were never released, and the docs give them `v1.x` names:
 

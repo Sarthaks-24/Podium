@@ -802,6 +802,67 @@ v2.0.2 added deleting a problem, function problems, Problems to finish, owner-ed
 | A version is kept by storing its programs and keeping the newest three, with no migration | A revision held only hashes of its programs and its tests, so nothing could be written back. `writeRevision` (`problems/revision.go`) now also puts the text of the reference, brute force, validator, generator and custom checker in the file store under the hash the revision already holds, and the subtasks JSON gains each subtask's `generator_args` (nil in an older revision, which is how a version from before v2.1.0 is told and never offered; a change of arguments alone is a new revision). `Blobs.GC` keeps the program and test files of the newest `GCKeepRevisions` (3) revisions of each problem that is not deleted, besides those of pinned revisions. `Service.BringBack` (`problems/bringback.go`) does not use the pack replace path: that path reads a pack, sets origin and clears who wrote the solution. It rebuilds the problem from the revision and the file store, saves it through `save` as one new revision, withdraws validation and keeps origin, tags, difficulty, plan and slug. A version is offered only when `complete` finds the limits, the arguments and every named file; a refusal is a `*RewriteRefusal` with its own code. Students' code is counted by `studentCode`, the same rule as Replace. |
 | SQLite's cache and memory mapping stay as they are | The cache sits outside the Go heap and outside what `GOMEMLIMIT` sees, under the server unit's 300 MB cap: sized from the machine it could get the server killed in a contest, and the operating system's file cache already holds the database. |
 
+## The v2.1.1 choices
+
+### Locked code setting (V211-67, V211-70, V211-71)
+
+A contest has a `locked_code` setting for function problems: `shown` (the default), `folded` or `hidden`. It is a column on `contests` added by migration `0017_v211_locked_code`, edited by organisers and above who manage the contest, and audited like the other settings. Whole-program problems ignore it.
+
+| Mode | What a student gets |
+|---|---|
+| Shown | The locked top and bottom, as before |
+| Folded | The same code, and the editor starts with both blocks folded to "Locked code, N lines"; the student can unfold them |
+| Hidden | `locked_top` and `locked_bottom` as `{}`; the editor shows only the student's part with one line above and below saying locked code runs before and after it |
+
+| Choice | Why |
+|---|---|
+| Hidden is out of view, not secret | The locked code is part of the program the student's code runs in. A student who writes code that reads that file can still print it. The help text and `docs/AUTHORING.md` say so, so nobody uses it as an integrity control |
+| Staff always see everything | Organisers and above get the locked code and `shown` in every mode, and the problem page outside a contest is unchanged, so a setter can always check what students run |
+| The judge is unchanged | It compiles the composed program in every mode, from the stored locked code. A hidden contest judges exactly like a shown one |
+| Output is filtered for students only | In hidden mode the compiler output and the stderr a Run or a submission shows drop any line that quotes locked code (the source excerpt under an error, an assert's text, a traceback echo). The existing "locked code, line N" text stays. The filter is set in the contest's student view options, so it also covers submission reads and the live stream |
+| The setting can change at any time | It is audited and reaches each student at their next page load. A page already open keeps what it loaded |
+
+Known limit: compiler message text can still name a locked identifier, and a student who pastes a whole program in hidden mode gets duplicate-definition errors located in locked code. Both stay inside "out of view, not secret".
+
+### Review before saving (V211-4, V211-10, V211-13, V211-16, V211-34, V211-35)
+
+The wizard page has "Show me the AI's answer first", ticked on each visit and not remembered. A missing `review` field in the request means off.
+
+- A run with review creates nothing. It ends in state `review` and the server keeps the model's answer in memory for the person who started it (checked by user id), never in the database or in an event. The answer is shown before any problem exists, also when it failed the checks, with the reasons.
+- The person corrects it as Fields or raw JSON, which are the same answer. Create draft sends the answer, the kind and the Java lists choice to `POST /api/admin/ai/drafts`. No problem exists until then.
+- That route runs the same decode, repairs and checks as a run without review, through the one function that makes every AI draft, so a corrected answer cannot skip a rule. It needs no AI key, but it takes the person's AI slot, because it does the same work.
+- The repairs (line breaks written as `\n` text, the Java class name, joined generator arguments) are worked out from the stored text on each read, and the page says when they will change the answer. The page shows the answer as the model sent it.
+- Each person keeps one answer, replaced by their next run. It goes an hour after the run ends or on restart. An expired run loses nothing while the page is open, because Create draft sends the answer.
+- Fix with AI and Edit with AI stay outside the review screen.
+
+| Size | Without review | With review and import |
+|---|---|---|
+| Read from the provider | 16 MB | 16 MB |
+| Kept and shown | 200 KB, cut with a note | Up to 2 MB; above it the answer is shown cut and Create draft is disabled |
+| Sent to Create draft or imported | Not available | 2 MB, in a body of at most 4 MB. A test builds the largest legal answer and fails if it does not fit |
+
+Known limits: an adversarial answer made of six-byte escapes can pass 2 MB, and is then shown cut with Create draft disabled. The same reviewed answer posted from two tabs makes two drafts, as creating by hand twice would. One kept 2 MB answer holds about 2 MB of memory per organiser, and one read of it allocates about 29 MB for the length of the response.
+
+### Saving and importing an answer (V211-8, V211-11, V211-31, V211-32, V211-56)
+
+Save as file is built in the browser from the answer on the page. The file holds `format`, `version`, `kind`, `java_lists` and `answer`, and never a key, a provider or an account. `POST /api/admin/ai/answers/open` is limited to admins and the owner, checks size, format, version and kind, runs the same decode, repairs and checks, returns the answer and the reasons, and writes nothing. The limit is a product choice, not a security control: an organiser can already send any answer to `/drafts`. A pasted bare answer is accepted once the person says whether it is a program or a function.
+
+### Adding problems to a running contest (V211-39, V211-55, V211-66)
+
+Problems can be added from the Problems page with `POST /api/admin/contests/{id}/problems/add`. The route adds what passes and returns a reason for each refusal. It runs in one transaction and inserts only new rows, so existing letters and pinned versions never change. It uses the same per-problem checks as the contest editor's save, and neither refuses a started contest: the page says first that students will see the new problems at once.
+
+The danger is a stale editor. An editor opened before an add holds the old list, and its save replaces the whole list, which would erase the added problems without a word. The guard: the editor sends `loaded_problem_ids`, the ids of the list it last loaded or saved. Inside the save transaction, a problem in the contest that is not in that list refuses the save with 409 `problems_changed` and writes nothing, and the page asks the person to reload. A body without the field (a tab from before the deploy) is not checked. The problem editor's Add to contest uses the add route too, so it cannot erase a concurrent add.
+
+| Rejected alternative | Why |
+|---|---|
+| A fingerprint of the problem rows compared in the save, with `If-Match` | More moving parts than the case needs; the list of ids says exactly what the editor never saw |
+
+Every problem change writes a contest audit entry with the rows before and after, so an erased problem can still be found.
+
+### People list and organiser dropdown (V211-19, V211-21, V211-65)
+
+The people list loads every row, because search and the Role filter need all of them, and shows 50 per page; search and the filter return to page 1. The organiser select is filled by `GET .../organisers/candidates`: enabled organisers, admins and owners not yet on the contest, with name and email. Showing all staff names and emails to a contest's organisers is accepted. Add organiser still sends the email to the existing route.
+
 ## The v1.2 choices
 
 v1.2 refactored v1.1 in place and deleted what a first contest at one college does not need. Each row is a choice that is hard to reverse, with its reason; the ids point to the owner's decision records, which are not in this repository.

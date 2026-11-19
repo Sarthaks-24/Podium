@@ -918,6 +918,12 @@ Configuration files are never overwritten: add a new variable with `sudoedit` be
 
 - **Rollback.** The previous server refuses a database that records 0016, so rolling back means restoring the backup taken just before the upgrade.
 
+### Migration 0017 (v2.1.1): locked code setting
+
+`0017_v211_locked_code.sql` adds `contests.locked_code`, one of `shown`, `folded` or `hidden`, default `shown`. Every existing contest is `shown`, so no student sees a change at the upgrade. Backups include it.
+
+- **Rollback.** The previous server refuses a database that records 0017, so rolling back means restoring the backup taken just before the upgrade. Anything written after the upgrade is lost.
+
 ### Judge protocol 4 (v2.1.0): held claims
 
 The judge now asks the server to hold an empty claim for up to 20 seconds, so a job starts the moment it is queued instead of up to 3 seconds later. This raises the judge protocol from 3 to 4.
@@ -929,7 +935,9 @@ The judge now asks the server to hold an empty claim for up to 20 seconds, so a 
 
 ## Upgrading to v2.1.1
 
-v2.1.1 has no migration and keeps judge protocol 4. Upgrade with `sudo ./install.sh upgrade` as in "Upgrade", then run the checks of step 5 under "Upgrading to v2.1.0": `/healthz` shows version v2.1.1 and schema `0016_v210_sessions`, and `podium-judge selftest` ends `PASS: all 23 programs`, with the hello worlds now printed first. Display names are cleaned at each person's next sign-in, so nothing changes in the database at the upgrade. A rollback loses nothing, since the schema is unchanged.
+v2.1.1 adds migration `0017_v211_locked_code` and keeps judge protocol 4. Upgrade with `sudo ./install.sh upgrade` as in "Upgrade", then run the checks of step 5 under "Upgrading to v2.1.0": `/healthz` shows version v2.1.1 and schema `0017_v211_locked_code`, and `podium-judge selftest` ends `PASS: all 23 programs`, with the hello worlds now printed first. Display names are cleaned at each person's next sign-in, so nothing else changes in the database at the upgrade.
+
+**Rollback is the pre-upgrade backup.** The previous server (v2.1.0) refuses a database that records 0017, so `sudo ./install.sh rollback` restores the backup taken just before the upgrade, and everything written since is lost: submissions, runs, drafts, settings and new problems. The cut-off for that choice is the one for v2.0.2 below. Rolling back the binaries alone does not work.
 
 ## Upgrading to v2.1.0
 
