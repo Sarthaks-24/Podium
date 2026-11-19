@@ -284,6 +284,7 @@ func (d Deps) contestRoutes(mux *http.ServeMux, console *contests.Handlers) {
 	mux.HandleFunc("GET /api/admin/contests/{id}", organiser(console.GetAdminContest))
 	mux.HandleFunc("PUT /api/admin/contests/{id}", organiser(console.UpdateContest))
 	mux.HandleFunc("GET /api/admin/contests/{id}/organisers", organiser(console.ListOrganisers))
+	mux.HandleFunc("GET /api/admin/contests/{id}/organisers/candidates", organiser(d.limitReads(console.OrganiserCandidates)))
 	mux.HandleFunc("POST /api/admin/contests/{id}/organisers", organiser(console.AddOrganiser))
 	mux.HandleFunc("DELETE /api/admin/contests/{id}/organisers/{user}", organiser(console.RemoveOrganiser))
 	mux.HandleFunc("GET /api/admin/contests/{id}/invites", organiser(console.ListInvites))

@@ -588,6 +588,9 @@ export interface AdminContest extends ContestSettings {
   server_now: number;
 }
 
+/** A person who can still be added as an organiser (GET .../organisers/candidates). */
+export type OrganiserCandidate = ContestOrganiser;
+
 export interface ContestOrganiser { user_id: number; email: string; name: string; role: string; added_at: number }
 
 /** One row of the console's submission feed. */

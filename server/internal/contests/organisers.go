@@ -41,6 +41,29 @@ func (s *Service) Organisers(ctx context.Context, contestID int64) ([]Organiser,
 	return out, rows.Err()
 }
 
+// OrganiserCandidates lists the enabled organisers, admins and owners who
+// are not yet listed on the contest, by email. Students and disabled
+// people are left out.
+func (s *Service) OrganiserCandidates(ctx context.Context, contestID int64) ([]Organiser, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT u.id,u.email,u.name,u.role FROM users u
+		WHERE u.disabled = 0 AND u.role IN ('organiser', 'admin', 'owner')
+		AND NOT EXISTS (SELECT 1 FROM contest_organisers o WHERE o.contest_id = ? AND o.user_id = u.id)
+		ORDER BY u.email COLLATE NOCASE, u.id`, contestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Organiser{}
+	for rows.Next() {
+		var o Organiser
+		if err := rows.Scan(&o.UserID, &o.Email, &o.Name, &o.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
 // OrganiserNames are the names the contest page shows as its organisers:
 // listed people who are still enabled staff, in the order they were added
 // (the creator first). Staff see each by name or, without one, by email.
@@ -119,6 +142,21 @@ func (d *Handlers) ListOrganisers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"organisers": list, "server_now": d.Contests.Clock().UnixMilli()})
+}
+
+// OrganiserCandidates answers the people who can still be listed as
+// organisers of the contest, for the Add an organiser select.
+func (d *Handlers) OrganiserCandidates(w http.ResponseWriter, r *http.Request) {
+	c, ok := d.OrganisedContest(w, r)
+	if !ok {
+		return
+	}
+	list, err := d.Contests.OrganiserCandidates(r.Context(), c.ID)
+	if err != nil {
+		d.internalError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"candidates": list})
 }
 
 // AddOrganiser lists a person whose role is organiser or above as a

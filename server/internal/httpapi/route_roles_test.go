@@ -116,6 +116,7 @@ var routeRoles = map[string]string{
 	"POST /api/admin/contests":                                      "organiser",
 	"GET /api/admin/contests/{id}":                                  "organiser",
 	"GET /api/admin/contests/{id}/organisers":                       "organiser",
+	"GET /api/admin/contests/{id}/organisers/candidates":            "organiser",
 	"POST /api/admin/contests/{id}/organisers":                      "organiser",
 	"DELETE /api/admin/contests/{id}/organisers/{user}":             "organiser",
 	"GET /api/admin/contests/{id}/invites":                          "organiser",

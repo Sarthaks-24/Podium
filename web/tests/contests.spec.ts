@@ -1533,23 +1533,45 @@ test('Student view shows the problems and the board as students see them, with n
 test('setup can add and remove a listed co-organiser (C2)', async ({ page }) => {
   await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
   let people = [{ user_id: 1, email: 'owner@college.edu', name: 'Owner', role: 'owner', added_at: 1 }];
+  let candidates = [
+    { user_id: 9, email: 'asha@college.edu', name: 'Asha', role: 'organiser', added_at: 0 },
+    { user_id: 10, email: 'bare@college.edu', name: '', role: 'admin', added_at: 0 },
+  ];
   await page.route('**/api/admin/contests/4/organisers**', async (route) => {
     const req = route.request();
+    if (req.url().endsWith('/organisers/candidates')) return route.fulfill({ json: { candidates } });
     if (req.method() === 'GET') return route.fulfill({ json: { organisers: people, server_now: Date.now() } });
     if (req.method() === 'POST') {
       people.push({ user_id: 9, email: 'asha@college.edu', name: 'Asha', role: 'organiser', added_at: Date.now() });
+      candidates = candidates.filter((c) => c.user_id !== 9);
       return route.fulfill({ status: 200, json: people.at(-1) });
     }
-    if (req.method() === 'DELETE') { people = people.filter((p) => p.user_id !== 9); return route.fulfill({ status: 204, body: '' }); }
+    if (req.method() === 'DELETE') {
+      people = people.filter((p) => p.user_id !== 9);
+      candidates = [{ user_id: 9, email: 'asha@college.edu', name: 'Asha', role: 'organiser', added_at: 0 }, ...candidates];
+      return route.fulfill({ status: 204, body: '' }); }
     return route.continue();
   });
   await page.goto('/admin/contests/4');
   await expect(page.getByRole('heading', { name: 'Organisers' })).toBeVisible();
-  await page.getByLabel('Add a listed organiser by email').fill('asha@college.edu');
+  const pick = page.getByLabel('Add an organiser');
+  await expect(pick.locator('option')).toHaveText(['Choose a person', 'Asha, asha@college.edu', 'bare@college.edu']);
+  await pick.selectOption({ label: 'Asha, asha@college.edu' });
   await page.getByRole('button', { name: 'Add organiser' }).click();
   await expect(page.getByText('asha@college.edu', { exact: true })).toBeVisible();
+  await expect(pick.locator('option')).toHaveText(['Choose a person', 'bare@college.edu']);
   await page.getByRole('button', { name: 'Remove asha@college.edu' }).click();
   await expect(page.getByText('asha@college.edu', { exact: true })).toHaveCount(0);
+  await expect(pick.locator('option')).toHaveText(['Choose a person', 'Asha, asha@college.edu', 'bare@college.edu']);
+});
+
+test('setup says so when nobody else can be added as an organiser (K)', async ({ page }) => {
+  await mockApi(page, { who: 'organiser', phase: 'upcoming', published: false });
+  await page.route('**/api/admin/contests/4/organisers**', (route) =>
+    route.fulfill({ json: route.request().url().endsWith('/candidates') ? { candidates: [] } : { organisers: [], server_now: Date.now() } }));
+  await page.goto('/admin/contests/4');
+  await expect(page.getByText('Nobody else can be added. An admin can give someone the organiser role on the Dashboard.')).toBeVisible();
+  await expect(page.getByLabel('Add an organiser')).toHaveCount(0);
 });
 
 test('a contest manager opens a student submission in the console code view (C4)', async ({ page }) => {

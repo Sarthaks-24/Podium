@@ -39,6 +39,7 @@
     type Audience,
     type AdminContestProblem,
     type ContestOrganiser,
+    type OrganiserCandidate,
     type ContestSettings,
   } from '../lib/contests';
   import { focusFirstInvalid, keepHeadingFocus } from '../lib/focus';
@@ -154,6 +155,7 @@
   let duplicating = $state(false);
   let restoreOpen = $state(false);
   let organisers = $state<ContestOrganiser[]>([]);
+  let organiserCandidates = $state<OrganiserCandidate[]>([]);
   let organiserEmail = $state('');
   let organiserError = $state('');
   let organisersBusy = $state(false);
@@ -161,6 +163,8 @@
   async function loadOrganisers() {
     try {
       organisers = (await getJSON<{ organisers: ContestOrganiser[] }>(`${base}/organisers`)).organisers;
+      organiserCandidates = (await getJSON<{ candidates: OrganiserCandidate[] }>(`${base}/organisers/candidates`)).candidates;
+      if (!organiserCandidates.some((c) => c.email === organiserEmail)) organiserEmail = '';
       organiserError = '';
     } catch (e) {
       organiserError = errorText(e);
@@ -933,23 +937,18 @@
             </ul>
           {/if}
           <div class="row">
-            <div class="field grow">
-              <label for="organiser-email">Add a listed organiser by email</label>
-              <input
-                id="organiser-email"
-                class="input"
-                type="email"
-                autocomplete="off"
-                bind:value={organiserEmail}
-                onkeydown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void addOrganiser();
-                  }
-                }}
-              />
-            </div>
-            <button type="button" class="btn btn-secondary" title={!organiserEmail.trim() ? 'Enter an email address to add an organiser.' : ''} disabled={organisersBusy || !organiserEmail.trim()} onclick={addOrganiser}>Add organiser</button>
+            {#if organiserCandidates.length === 0}
+              <p class="muted">Nobody else can be added. An admin can give someone the organiser role on the Dashboard.</p>
+            {:else}
+              <div class="field grow">
+                <label for="organiser-email">Add an organiser</label>
+                <select id="organiser-email" class="select" bind:value={organiserEmail}>
+                  <option value="">Choose a person</option>
+                  {#each organiserCandidates as c (c.user_id)}<option value={c.email}>{c.name ? `${c.name}, ${c.email}` : c.email}</option>{/each}
+                </select>
+              </div>
+              <button type="button" class="btn btn-secondary" title={!organiserEmail ? 'Choose a person to add as an organiser.' : ''} disabled={organisersBusy || !organiserEmail} onclick={addOrganiser}>Add organiser</button>
+            {/if}
           </div>
           {#if organiserError}<p class="field-error" role="alert">{organiserError}</p>{/if}
         </section>
