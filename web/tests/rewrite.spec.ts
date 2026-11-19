@@ -14,6 +14,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { AXE_TAGS } from './axe';
 import { activate } from './keyboard';
 import { toasts } from './locators';
+import { REVIEW_ANSWER } from './mocks/ai';
 import * as bank from './mocks/problems';
 
 const WIDTHS = [375, 768, 1024, 1440] as const;
@@ -84,6 +85,7 @@ const REFUSALS: { name: string; answer: Answer; text: string }[] = [
 
 interface Calls {
   started: Record<string, unknown>[];
+  drafts: Record<string, unknown>[];
   replaced: { path: string; body: Record<string, unknown> }[];
 }
 
@@ -91,11 +93,13 @@ interface Options {
   replace?: Answer;
   /** Problem 2 is a function problem. */
   fn?: boolean;
+  /** The run ends in state review, with its answer waiting. */
+  review?: boolean;
 }
 
 async function setup(page: Page, opts: Options = {}) {
   await bank.mockApi(page);
-  const calls: Calls = { started: [], replaced: [] };
+  const calls: Calls = { started: [], drafts: [], replaced: [] };
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     async (route) => {
@@ -108,6 +112,24 @@ async function setup(page: Page, opts: Options = {}) {
       if (path === '/api/admin/ai/wizard' && req.method() === 'POST') {
         calls.started.push(req.postDataJSON());
         return bank.json(route, 202, { wizard_id: 'w1', server_now: bank.T0 });
+      }
+      if (path === '/api/admin/ai/wizard/w1/answer' && req.method() === 'GET') {
+        return bank.json(route, 200, {
+          text: JSON.stringify(REVIEW_ANSWER),
+          cut: false,
+          reasons: [],
+          kind: 'program',
+          java_lists: '',
+          rewrite_of: LINK,
+          repairs: [],
+        });
+      }
+      if (path === '/api/admin/ai/drafts' && req.method() === 'POST') {
+        calls.drafts.push(req.postDataJSON());
+        return bank.json(route, 201, { problem_id: VALIDATED_DRAFT });
+      }
+      if (opts.review && path === '/api/admin/ai/wizard/w1' && req.method() === 'GET') {
+        return bank.json(route, 200, { id: 'w1', kind: 'generate', state: 'review', rewrite_of: LINK, provider: 'anthropic', model: 'claude-opus-5-5', started_at: bank.T0, server_now: bank.T0 });
       }
       if (path === '/api/admin/ai/wizard/w1' && req.method() === 'GET') {
         return bank.json(route, 200, {
@@ -239,7 +261,7 @@ test('a rewrite sends the problem and the change, follows the run and remembers 
   await expect(page.getByText(`Rewriting: ${OLD_TITLE}`)).toBeVisible();
   await page.getByLabel('What should change').fill('The limits are wrong.');
   await page.getByRole('button', { name: 'Rewrite the problem' }).click();
-  expect(calls.started).toEqual([{ mode: 'paste', text: 'The limits are wrong.', rewrite_of: OLD_ID }]);
+  expect(calls.started).toEqual([{ mode: 'paste', text: 'The limits are wrong.', rewrite_of: OLD_ID, review: true }]);
   await expect(page.getByRole('link', { name: /Open the draft/ })).toHaveAttribute('href', `/admin/problems/${VALIDATED_DRAFT}`, { timeout: 15_000 });
   await expect(page.getByText(`Rewriting: ${OLD_TITLE}`)).toBeVisible();
   expect(JSON.parse((await stored(page, VALIDATED_DRAFT)) ?? 'null')).toEqual(LINK);
@@ -251,7 +273,7 @@ test('a function rewrite sends the function choice', async ({ page }) => {
   await expect(page.getByRole('radio', { name: /One function/ })).toBeChecked();
   await page.getByLabel('What should change').fill('Add a case.');
   await page.getByRole('button', { name: 'Rewrite the problem' }).click();
-  expect(calls.started).toEqual([{ mode: 'paste', text: 'Add a case.', rewrite_of: OLD_ID, students_write: 'function', java_lists: 'array' }]);
+  expect(calls.started).toEqual([{ mode: 'paste', text: 'Add a case.', rewrite_of: OLD_ID, students_write: 'function', java_lists: 'array', review: true }]);
 });
 
 test('the draft has the banner, and Replace waits for Validate', async ({ page }) => {
@@ -267,7 +289,7 @@ test('a validated draft can be replaced only with the saved content', async ({ p
   await setup(page);
   await openDraft(page);
   await expect(replaceButton(page)).toBeEnabled();
-  await page.getByLabel('Title', { exact: true }).fill('A plus B, edited');
+  await page.getByLabel('Title', { exact: true }).first().fill('A plus B, edited');
   await expect(replaceButton(page)).toBeDisabled();
   await expect(replaceButton(page)).toHaveAccessibleDescription('Save your changes first.');
 });
@@ -451,3 +473,23 @@ for (const theme of THEMES) {
     }
   });
 }
+
+test('a rewrite with review keeps its banner and link through Create draft', async ({ page }) => {
+  const calls = await setup(page, { review: true });
+  await page.goto(`/admin/ai/new?rewrite=${OLD_ID}`);
+  await expect(page.getByText(`Rewriting: ${OLD_TITLE}`)).toBeVisible();
+  await expect(page.getByLabel("Show me the AI's answer first")).toBeChecked();
+  await page.getByLabel('What should change').fill('The limits are wrong.');
+  await page.getByRole('button', { name: 'Rewrite the problem' }).click();
+  await expect(page.getByRole('heading', { name: "Review the AI's answer" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(`Rewriting: ${OLD_TITLE}`)).toBeVisible();
+  expect(calls.drafts).toEqual([]);
+  await page.getByLabel('Title', { exact: true }).first().fill('Interval covering, again');
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  await expect(page.getByRole('link', { name: /Open the draft/ })).toHaveAttribute('href', `/admin/problems/${VALIDATED_DRAFT}`, { timeout: 15_000 });
+  await expect(page.getByText(`Rewriting: ${OLD_TITLE}`)).toBeVisible();
+  expect(calls.drafts).toHaveLength(1);
+  expect(calls.drafts[0]).toMatchObject({ kind: 'program' });
+  expect(JSON.parse(calls.drafts[0].answer as string).title).toBe('Interval covering, again');
+  expect(JSON.parse((await stored(page, VALIDATED_DRAFT)) ?? 'null')).toEqual(LINK);
+});

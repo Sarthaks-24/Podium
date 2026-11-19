@@ -277,6 +277,7 @@ test('a wizard from a brief follows the live event to the draft', async ({ page 
     {
       mode: 'brief',
       brief: { topic: 'Maximum subarray sum', difficulty: 'hard', constraints: 'n up to 200000, values up to 10^9 in size', subtasks: '30 points for n up to 1000' },
+      review: true,
     },
   ]);
   await page.screenshot({ path: `${shots()}ai-wizard-writing-1440-light.png`, fullPage: true });
@@ -306,7 +307,7 @@ test('a wizard from pasted text polls when live updates are down', async ({ page
   await page.getByRole('button', { name: 'Generate' }).click();
   await expect(step(page, 'in progress')).toHaveText(/Writing the problem/);
   await expect(step(page, 'in progress')).toHaveText(/Generating the tests/, { timeout: 10_000 });
-  expect(state.wizardBodies).toEqual([{ mode: 'paste', text: pasted }]);
+  expect(state.wizardBodies).toEqual([{ mode: 'paste', text: pasted, review: true }]);
   await expect(page.getByRole('link', { name: 'Open the draft in the editor' })).toHaveAttribute('href', '/admin/problems/20');
 
   // A reload picks the request up from the address.

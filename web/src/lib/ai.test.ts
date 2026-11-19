@@ -14,6 +14,7 @@ import {
   modelLabel,
   redactKey,
   saveKey,
+  wizardInReview,
   wizardPending,
   wizardRequest,
   wizardStatusText,
@@ -252,6 +253,7 @@ describe('wizard progress', () => {
   it('reads "Writing the problem", then "Draft created, generating tests"', () => {
     expect(wizardStatusText({ state: 'thinking' })).toBe('Writing the problem');
     expect(wizardStatusText({ state: 'draft_created' })).toBe('Draft created, generating tests');
+    expect(wizardStatusText({ state: 'review' })).toBe("Review the AI's answer");
   });
 
   it('links to the settings for key problems only', () => {
@@ -265,6 +267,29 @@ describe('wizard progress', () => {
     expect(wizardPending(null)).toBe(false);
     expect(wizardPending({ state: 'thinking' })).toBe(true);
     expect(wizardPending({ state: 'error' })).toBe(false);
+    expect(wizardPending({ state: 'review' })).toBe(false);
+  });
+
+  it('is in review only in state review, and treats an unknown state from a newer server as finished', () => {
+    expect(wizardInReview(null)).toBe(false);
+    expect(wizardInReview({ state: 'review' })).toBe(true);
+    expect(wizardInReview({ state: 'thinking' })).toBe(false);
+    expect(wizardPending({ state: 'something_new' })).toBe(false);
+    expect(wizardStatusText({ state: 'something_new' })).toBe('');
+  });
+
+  it('shows the first step done while the answer waits, and no draft yet', () => {
+    const steps = draftChainSteps({ state: 'review' }, null, null, null).steps;
+    expect(steps.map((x) => x.state)).toEqual(['done', 'waiting', 'waiting', 'waiting']);
+  });
+
+  it('sends the review choice only when the form gives one', () => {
+    const brief = { topic: 'Sums', difficulty: 'easy' as const, constraints: '', subtasks: '' };
+    expect(wizardRequest('paste', brief, 'x', 'program', 'array', true)).toEqual({ ok: true, body: { mode: 'paste', text: 'x', review: true } });
+    expect(wizardRequest('paste', brief, 'x', 'function', 'either', false)).toEqual({
+      ok: true,
+      body: { mode: 'paste', text: 'x', students_write: 'function', java_lists: 'either', review: false },
+    });
   });
 });
 

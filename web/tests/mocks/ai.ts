@@ -6,6 +6,19 @@ import { longLivedEvents } from '../sse';
 export function shots(): string {
   return `${test.info().project.testDir}/../../cache/screenshots-m5/`;
 }
+/** The answer a review run keeps: a small function answer, with the nesting the review screen walks. */
+export const REVIEW_ANSWER = {
+  title: 'Array sum',
+  slug: 'array-sum',
+  statement_md: '## Input\n\nA list of integers.\n\n## Output\n\nTheir sum.\n\n## Constraints\n\nn up to 1000.',
+  time_limit_ms: 1000,
+  subtasks: [{ title: 'Small n', points: 100, test_count: 2 }],
+  languages: [
+    { language: 'cpp17', starter: 'long long sum(vector<int>& a) {\n}\n', solution: '' },
+    { language: 'python3', starter: 'def solve(a):\n    pass\n', solution: 'def solve(a):\n    return sum(a)\n' },
+  ],
+};
+
 export const WIDTHS = [375, 768, 1024, 1440] as const;
 export const THEMES = ['light', 'dark'] as const;
 
@@ -191,6 +204,19 @@ export interface MockOptions {
   wizardEnd?: 'draft' | 'error';
   /** The text GET /api/admin/ai/wizard/{id}/answer returns once the run ended; default a short JSON answer. */
   sentBack?: string;
+  /**
+   * Stage C: a run whose request has `review` true ends in state "review" instead of creating a draft. 'pass' gives a usable
+   * function answer, 'fail' one the checks refused (with reasons), 'invalid_json' text that is not JSON, 'cut' a cut answer.
+   */
+  review?: 'pass' | 'fail' | 'invalid_json' | 'cut';
+  /** Repairs the answer route lists for a review run. */
+  repairs?: string[];
+  /** The rewrite link the run reports, so a review of a rewrite keeps it. */
+  rewriteOf?: { problem_id: number; base: string; title: string };
+  /** POST /api/admin/ai/drafts refuses the first call with a faulty answer (400 invalid_answer), then accepts. */
+  draftRefuses?: boolean;
+  /** The answer route answers 404 from the second read on, as after a restart. */
+  answerGone?: boolean;
   /** Answer wizard GETs with "thinking" forever, so only the live event can finish it. */
   wizardOnlyByEvent?: boolean;
   /** After the draft is created, problem 20 generates its tests and passes validation (P3 O7). */
@@ -265,6 +291,9 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
     keyDeletes: [] as string[],
     modelGets: [] as string[],
     wizardBodies: [] as Json[],
+    draftBodies: [] as Json[],
+    answerGets: 0,
+    draftPosts: 0,
     wizardGets: 0,
     chainGets: 0,
     proofGets: 0,
@@ -377,9 +406,34 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
         state.wizardGets = 0;
         return json(route, 202, { wizard_id: WIZARD_ID });
       }
+      if (path === '/api/admin/ai/drafts' && method === 'POST') {
+        state.draftBodies.push(req.postDataJSON() as Json);
+        state.draftPosts++;
+        if (opts.draftRefuses && state.draftPosts === 1) {
+          return apiError(route, 400, 'invalid_answer', 'The answer could not be used. Fix what is listed and try again.', {
+            problems: ['subtasks: points add up to 90; make them add up to 100.'],
+          });
+        }
+        return json(route, 201, { problem_id: 20 });
+      }
       if (path === `/api/admin/ai/wizard/${WIZARD_ID}/answer` && method === 'GET') {
         if (!state.wizard) return apiError(route, 404, 'not_found', 'There is no such request.');
         if (state.wizard.state === 'thinking') return apiError(route, 409, 'not_finished', 'The AI request has not finished yet.');
+        state.answerGets++;
+        if (state.wizard.state === 'review') {
+          if (opts.answerGone && state.answerGets > 1) return apiError(route, 404, 'not_found', 'There is no such request.');
+          const text =
+            opts.review === 'invalid_json' ? '{"title": "Array sum", "subtasks": [' : opts.review === 'cut' ? '{"title": "' + 'x'.repeat(300) : JSON.stringify(REVIEW_ANSWER);
+          return json(route, 200, {
+            text,
+            cut: opts.review === 'cut',
+            reasons: opts.review === 'fail' ? ['Subtask points add up to 90; make them add up to 100.'] : [],
+            kind: 'function',
+            java_lists: 'array',
+            ...(opts.rewriteOf ? { rewrite_of: opts.rewriteOf } : {}),
+            repairs: opts.repairs ?? [],
+          });
+        }
         const reasons = (state.wizard.error as { reasons?: string[] } | undefined)?.reasons ?? [];
         return json(route, 200, { text: opts.sentBack ?? '{"title": "Sum of an array", "languages": []}', cut: false, reasons });
       }
@@ -387,8 +441,10 @@ export async function mockApi(page: Page, opts: MockOptions = {}) {
         if (!state.wizard) return apiError(route, 404, 'not_found', 'There is no such request.');
         state.wizardGets++;
         if (!opts.wizardOnlyByEvent && state.wizardGets >= 2) {
-          state.wizard =
-            opts.wizardEnd === 'error'
+          const reviewing = opts.review && state.wizardBodies[state.wizardBodies.length - 1]?.review === true;
+          state.wizard = reviewing
+            ? { id: WIZARD_ID, kind: 'generate', state: 'review', provider: state.active, model: state.active ? state.held[state.active].model : '', ...(opts.rewriteOf ? { rewrite_of: opts.rewriteOf } : {}) }
+            : opts.wizardEnd === 'error'
               ? {
                   id: WIZARD_ID,
                   kind: 'generate',

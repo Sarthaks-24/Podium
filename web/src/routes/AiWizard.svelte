@@ -24,6 +24,15 @@
   When a run fails, or its draft's tests could not be generated, a closed
   "What the AI sent back" disclosure shows the provider's text as plain text,
   read from the run's answer route. It is absent when there is no text.
+
+  "Show me the AI's answer first" is ticked on each visit and not remembered.
+  A run with it ends in state "review" before any problem exists: the page
+  reads the answer route and shows AnswerReview, where the person edits the
+  answer as fields or JSON. Create draft posts the answer, its kind and the
+  Java lists choice to /api/admin/ai/drafts, which needs no key and no wizard
+  slot, so it works after the run has expired; the returned problem id then
+  continues the usual progress steps. A rewrite keeps its banner and link.
+  Discard answer clears the page.
 -->
 <script lang="ts">
   import { organises } from '../lib/roles';
@@ -31,6 +40,7 @@
   import PageHeader from '../components/PageHeader.svelte';
   import Icon from '../components/Icon.svelte';
   import KeyForm from '../components/ai/KeyForm.svelte';
+  import AnswerReview from '../components/ai/AnswerReview.svelte';
   import { onMount, tick } from 'svelte';
   import { focusFirstInvalid } from '../lib/focus';
   import {
@@ -45,10 +55,12 @@
     wizardBlocker,
     needsKey,
     WIZARD_DIFFICULTIES,
+    wizardInReview,
     wizardPending,
     wizardRequest,
     wizardStatusText,
     type Brief,
+    type DraftRequest,
     type InputGeneration,
     type JavaLists,
     type KeyStatus,
@@ -91,6 +103,8 @@
   let change = $state('');
   let studentsWrite = $state<StudentsWrite>('program');
   let javaLists = $state<JavaLists>('array');
+  /** "Show me the AI's answer first": ticked for every new request, never remembered. */
+  let review = $state(true);
   let fields = $state<Record<string, string>>({});
   let requestError = $state<{ message: string; problems: readonly string[]; code: string } | null>(null);
   let sending = $state(false);
@@ -148,6 +162,31 @@
       })
       .catch(() => {
         // The answer is extra help: without it the page still says what failed.
+      });
+  });
+  /** The answer of a run waiting for review, read once per run; `reviewText` is what the person edits. */
+  let reviewAnswer = $state<WizardAnswer | null>(null);
+  let reviewText = $state('');
+  let reviewFor = '';
+  let reviewLost = $state(false);
+  let reviewBusy = $state(false);
+  let reviewRefused = $state<{ message: string; problems: readonly string[] } | null>(null);
+  $effect(() => {
+    const id = wizard?.id;
+    if (!id || reviewFor === String(id) || !wizardInReview(wizard)) return;
+    reviewFor = String(id);
+    getJSON<WizardAnswer>(aiPaths.wizardAnswer(id))
+      .then(async (a) => {
+        if (!alive || String(wizard?.id) !== String(id)) return;
+        reviewAnswer = a;
+        reviewText = a.text;
+        if (a.rewrite_of && wizard && !wizard.rewrite_of) wizard = { ...wizard, rewrite_of: a.rewrite_of };
+        functionRun = a.kind === 'function';
+        await tick();
+        document.getElementById('review-heading')?.focus();
+      })
+      .catch((e) => {
+        if (!handleAuth(e) && alive) reviewLost = true;
       });
   });
   const textLength = $derived(text.trim().length);
@@ -367,7 +406,7 @@
     event.preventDefault();
     requestError = null;
     lostWizard = false;
-    const built = rewriteId !== null ? rewriteRequest(change, rewriteId, studentsWrite, javaLists) : wizardRequest(mode, brief, text, studentsWrite, javaLists);
+    const built = rewriteId !== null ? rewriteRequest(change, rewriteId, studentsWrite, javaLists, review) : wizardRequest(mode, brief, text, studentsWrite, javaLists, review);
     if (!built.ok) {
       fields = built.fields;
       await focusFirstInvalid('.wizard-form');
@@ -404,7 +443,41 @@
     }
   }
 
+  /** Create draft: the answer as it now stands becomes a draft, and the usual steps follow it. */
+  async function createDraft() {
+    const w = wizard;
+    const a = reviewAnswer;
+    if (!w || !a || reviewBusy) return;
+    reviewBusy = true;
+    reviewRefused = null;
+    const body: DraftRequest = { answer: reviewText, kind: a.kind ?? 'program', java_lists: a.kind === 'function' && a.java_lists ? a.java_lists : 'array' };
+    try {
+      const made = await sendJSON<{ problem_id: number }>('POST', aiPaths.drafts, body);
+      if (!alive || wizard?.id !== w.id) return;
+      const link = w.rewrite_of ?? a.rewrite_of ?? null;
+      reviewAnswer = null;
+      reviewText = '';
+      wizard = { ...w, state: 'draft_created', problem_id: made.problem_id, rewrite_of: link };
+      if (link) rememberRewrite(draftStorage(), made.problem_id, link);
+      chainStarted = Date.now();
+      void pollChain();
+      await tick();
+      document.getElementById('progress-heading')?.focus();
+    } catch (e) {
+      if (handleAuth(e)) return;
+      reviewRefused = { message: errorText(e), problems: e instanceof ApiError ? e.problems : [] };
+    } finally {
+      reviewBusy = false;
+    }
+  }
+
   async function startAgain() {
+    review = true;
+    reviewAnswer = null;
+    reviewText = '';
+    reviewFor = '';
+    reviewLost = false;
+    reviewRefused = null;
     stopWatch();
     clearTimeout(chainTimer);
     chainStarted = 0;
@@ -537,6 +610,15 @@
           {#if streamMode === 'polling'}
             <p class="muted hint">Live updates are down, so progress is checked every few seconds.</p>
           {/if}
+        {:else if wizardInReview(wizard)}
+          {#if reviewLost}
+            <div class="banner banner-info" role="status">
+              <p>The server no longer holds this answer. It keeps an answer only for an hour and until a restart. Change the request and ask again.</p>
+            </div>
+            <p class="actions"><button type="button" class="btn btn-secondary" onclick={startAgain}>Change the request</button></p>
+          {:else if !reviewAnswer}
+            <p class="muted hint" role="status">Reading the answer</p>
+          {/if}
         {:else if wizard.state === 'error'}
           <div class="banner banner-error problems-list" role="alert">
             <p>
@@ -604,6 +686,20 @@
           </p>
         {/if}
       </section>
+    {/if}
+
+    {#if wizard && wizardInReview(wizard) && reviewAnswer}
+      <AnswerReview
+        bind:text={reviewText}
+        reasons={reviewAnswer.reasons}
+        repairs={reviewAnswer.repairs ?? []}
+        cut={reviewAnswer.cut}
+        busy={reviewBusy}
+        problems={reviewRefused?.problems ?? []}
+        message={reviewRefused?.message ?? ''}
+        oncreate={createDraft}
+        ondiscard={startAgain}
+      />
     {/if}
 
     {#if (!wizard || wizard.state === 'error') && !(rewriting && rewriteOld === null)}
@@ -746,6 +842,11 @@
             {#if fields.text}<p id="text-error" class="field-error">{fields.text}</p>{/if}
           </div>
         {/if}
+
+        <label class="choice review-choice">
+          <input type="checkbox" bind:checked={review} />
+          Show me the AI's answer first
+        </label>
 
         <div class="actions">
           <button type="submit" class="btn {keyActive ? 'btn-primary' : 'btn-secondary'}" disabled={sending || !keyActive} aria-describedby={keyActive ? undefined : 'generate-help'}>

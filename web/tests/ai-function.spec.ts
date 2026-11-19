@@ -11,7 +11,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { AXE_TAGS } from './axe';
-import { mockApi, THEMES, WIDTHS, type MockOptions } from './mocks/ai';
+import { mockApi, REVIEW_ANSWER, THEMES, WIDTHS, type MockOptions } from './mocks/ai';
 
 function shotDir(): string {
   const dir = process.env.PODIUM_SHOTS ?? `${test.info().project.testDir}/../../cache/v2.1.0/shots/F/`;
@@ -47,7 +47,7 @@ test('a whole program is the default and sends the request it always sent', asyn
   await page.getByLabel('Topic', { exact: true }).fill('Maximum subarray sum');
   await page.getByRole('button', { name: 'Generate draft' }).click();
   await expect(page.getByRole('link', { name: 'Open the draft in the editor' })).toBeVisible({ timeout: 10_000 });
-  expect(state.wizardBodies).toEqual([{ mode: 'brief', brief: { topic: 'Maximum subarray sum', difficulty: 'medium', constraints: '', subtasks: '' } }]);
+  expect(state.wizardBodies).toEqual([{ mode: 'brief', brief: { topic: 'Maximum subarray sum', difficulty: 'medium', constraints: '', subtasks: '' }, review: true }]);
   await expect(progress(page).getByRole('listitem')).toHaveCount(4);
   expect(proofRequests(state.requestedUrls)).toBe(0);
 });
@@ -62,7 +62,7 @@ test('a whole program from pasted text sends only the mode and the text, even af
   await page.getByLabel('Problem text').fill('Two sum. Given an array, print two numbers.');
   await page.getByRole('button', { name: 'Generate draft' }).click();
   await expect(progress(page)).toBeVisible();
-  expect(state.wizardBodies).toEqual([{ mode: 'paste', text: 'Two sum. Given an array, print two numbers.' }]);
+  expect(state.wizardBodies).toEqual([{ mode: 'paste', text: 'Two sum. Given an array, print two numbers.', review: true }]);
 });
 
 test('one function sends both choices, from a brief and from pasted text', async ({ page }) => {
@@ -81,6 +81,7 @@ test('one function sends both choices, from a brief and from pasted text', async
     brief: { topic: 'Sum of an array', difficulty: 'medium', constraints: '', subtasks: '' },
     students_write: 'function',
     java_lists: 'arraylist',
+    review: true,
   });
 
   const again = await mockApi(page, OPTS);
@@ -90,7 +91,7 @@ test('one function sends both choices, from a brief and from pasted text', async
   await page.getByLabel('Problem text').fill('Array sum, rewrite it.');
   await page.getByRole('button', { name: 'Generate draft' }).click();
   await expect(progress(page)).toBeVisible();
-  expect(again.wizardBodies[0]).toEqual({ mode: 'paste', text: 'Array sum, rewrite it.', students_write: 'function', java_lists: 'array' });
+  expect(again.wizardBodies[0]).toEqual({ mode: 'paste', text: 'Array sum, rewrite it.', students_write: 'function', java_lists: 'array', review: true });
 });
 
 test('the Java question offers three answers and Either sends either', async ({ page }) => {
@@ -113,6 +114,7 @@ test('the Java question offers three answers and Either sends either', async ({ 
     brief: { topic: 'Sum of an array', difficulty: 'medium', constraints: '', subtasks: '' },
     students_write: 'function',
     java_lists: 'either',
+    review: true,
   });
 });
 
@@ -374,3 +376,155 @@ test('a proof answer that arrives after Start another is not written into the ne
   await expect(languages(page)).toHaveCount(0);
   expect(state.wizardBodies).toHaveLength(2);
 });
+
+// Review before saving (v2.1.1 stage C).
+const reviewing = (page: Page) => page.getByRole('region', { name: "Review the AI's answer" });
+
+test('the review box is ticked on each visit, sent with the request and not remembered', async ({ page }) => {
+  const state = await mockApi(page, { ...OPTS, review: 'pass' });
+  await page.goto('/admin/ai/new');
+  const box = page.getByLabel("Show me the AI's answer first");
+  await expect(box).toBeChecked();
+  await box.uncheck();
+  await page.reload();
+  await expect(box).toBeChecked();
+  await box.uncheck();
+  await page.getByLabel('Topic', { exact: true }).fill('Sum of an array');
+  await page.getByRole('button', { name: 'Generate draft' }).click();
+  await expect(progress(page)).toBeVisible();
+  expect(state.wizardBodies[0]).toMatchObject({ review: false });
+});
+
+test('a run with review shows the answer before any draft, as Fields and as JSON', async ({ page }) => {
+  const state = await runBrief(page, { review: 'pass', repairs: ['cpp17 solution: line breaks written as \\n were turned into real line breaks.'] });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  expect(state.draftBodies).toEqual([]);
+  await expect(page.getByText('Creating the draft will change it as follows.')).toBeVisible();
+  await expect(page.getByText('line breaks written as')).toBeVisible();
+  await expect(reviewing(page).getByLabel('Title', { exact: true }).first()).toHaveValue('Array sum');
+  await expect(reviewing(page).getByRole('group', { name: 'Languages' })).toBeVisible();
+  await expect(reviewing(page).getByRole('group', { name: 'Item 1, cpp17' })).toBeVisible();
+  await expect(reviewing(page).getByLabel('Time limit ms')).toHaveValue('1000');
+  // The JSON view is the same answer.
+  await page.getByRole('button', { name: 'JSON' }).click();
+  const json = page.getByLabel('The answer as JSON');
+  expect(JSON.parse(await json.inputValue())).toEqual(REVIEW_ANSWER);
+  // An edit in JSON shows in Fields.
+  const edited = { ...REVIEW_ANSWER, title: 'Array total' };
+  await json.fill(JSON.stringify(edited, null, 2));
+  await page.getByRole('button', { name: 'Fields' }).click();
+  await expect(page.getByLabel('Title', { exact: true }).first()).toHaveValue('Array total');
+});
+
+test('invalid JSON stays in the JSON view with its error and blocks Create draft', async ({ page }) => {
+  const state = await runBrief(page, { review: 'pass' });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'JSON' }).click();
+  await page.getByLabel('The answer as JSON').fill('{"title": ');
+  await expect(page.getByText('This is not valid JSON, so the answer is unchanged')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create draft' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Fields' }).click();
+  await expect(page.getByLabel('The answer as JSON')).toBeVisible();
+  await expect(page.getByLabel('Title', { exact: true }).first()).toHaveCount(0);
+  expect(state.draftBodies).toEqual([]);
+});
+
+test('an answer that is not JSON opens in the JSON view with the error', async ({ page }) => {
+  await runBrief(page, { review: 'invalid_json' });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel('The answer as JSON')).toBeVisible();
+  await expect(page.getByText('This is not valid JSON')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create draft' })).toBeDisabled();
+});
+
+test('a cut answer is shown read-only and cannot become a draft', async ({ page }) => {
+  await runBrief(page, { review: 'cut' });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('The answer is longer than 2 MB')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create draft' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Discard answer' })).toBeEnabled();
+});
+
+test('Create draft sends the edited answer, its kind and the Java choice, then follows the draft', async ({ page }) => {
+  const state = await runBrief(page, { review: 'pass', chain: true, proof: 'pass' });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  await reviewing(page).getByLabel('Title', { exact: true }).first().fill('Array total');
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  await expect(page.getByRole('link', { name: /Open the draft/ })).toBeVisible({ timeout: 15_000 });
+  expect(state.draftBodies).toHaveLength(1);
+  expect(state.draftBodies[0]).toMatchObject({ kind: 'function', java_lists: 'array' });
+  expect(JSON.parse(state.draftBodies[0].answer as string)).toEqual({ ...REVIEW_ANSWER, title: 'Array total' });
+  await expect(reviewing(page)).toHaveCount(0);
+});
+
+test('a failed answer is shown with its reasons and can be corrected and created', async ({ page }) => {
+  const state = await runBrief(page, { review: 'fail', draftRefuses: true, chain: true });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('alert').getByText('Subtask points add up to 90; make them add up to 100.')).toBeVisible();
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  await expect(page.getByText('subtasks: points add up to 90; make them add up to 100.')).toBeVisible();
+  expect(state.draftBodies).toHaveLength(1);
+  await reviewing(page).getByLabel('Points').fill('100');
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  await expect(page.getByRole('link', { name: /Open the draft/ })).toBeVisible({ timeout: 15_000 });
+  expect(state.draftBodies).toHaveLength(2);
+});
+
+test('Create draft needs no answer route: it still works after the answer route says 404', async ({ page }) => {
+  const state = await runBrief(page, { review: 'pass', answerGone: true, chain: true });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  // The answer is already on the page; the route has since forgotten it.
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  await expect(page.getByRole('link', { name: /Open the draft/ })).toBeVisible({ timeout: 15_000 });
+  expect(state.draftBodies).toHaveLength(1);
+});
+
+test('after a reload an expired answer is said to be gone', async ({ page }) => {
+  const state = await runBrief(page, { review: 'pass', answerGone: true });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  await page.reload();
+  await expect(page.getByText('The server no longer holds this answer.')).toBeVisible({ timeout: 15_000 });
+  expect(state.draftBodies).toEqual([]);
+});
+
+test('Discard answer clears the page and the request form comes back with the box ticked', async ({ page }) => {
+  const state = await runBrief(page, { review: 'pass' });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Discard answer' }).click();
+  await expect(reviewing(page)).toHaveCount(0);
+  await expect(page.getByLabel("Show me the AI's answer first")).toBeChecked();
+  expect(state.draftBodies).toEqual([]);
+});
+
+test('the review screen works by keyboard', async ({ page }) => {
+  const state = await runBrief(page, { review: 'pass', chain: true });
+  await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: "Review the AI's answer" })).toBeFocused();
+  await page.getByRole('button', { name: 'JSON' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('The answer as JSON')).toBeVisible();
+  await page.getByRole('button', { name: 'Fields' }).focus();
+  await page.keyboard.press('Space');
+  await expect(page.getByLabel('Title', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Create draft' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('link', { name: /Open the draft/ })).toBeVisible({ timeout: 15_000 });
+  expect(state.draftBodies).toHaveLength(1);
+});
+
+for (const theme of THEMES) {
+  test.describe(`review in the ${theme} theme`, () => {
+    test.use({ colorScheme: theme });
+    for (const width of WIDTHS) {
+      test(`${width} px has no accessibility violation and no sideways scroll`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await runBrief(page, { review: 'fail' });
+        await expect(reviewing(page)).toBeVisible({ timeout: 15_000 });
+        const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+        expect(results.violations.map((v) => v.id)).toEqual([]);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+        await page.screenshot({ path: `${shotDir()}ai-review-${width}-${theme}.png`, fullPage: true });
+      });
+    }
+  });
+}

@@ -30,11 +30,11 @@ export interface Replaced {
  * the problem to rewrite, and what should change as the text. Refuses an
  * empty box and one that is too long.
  */
-export function rewriteRequest(change: string, problemId: number, studentsWrite: StudentsWrite, javaLists: JavaLists): WizardRequestResult {
+export function rewriteRequest(change: string, problemId: number, studentsWrite: StudentsWrite, javaLists: JavaLists, review?: boolean): WizardRequestResult {
   const text = change.trim();
   if (text === '') return { ok: false, fields: { text: 'Say what should change.' } };
   if ([...text].length > MAX_CHANGE) return { ok: false, fields: { text: `Keep what should change under ${MAX_CHANGE.toLocaleString('en-GB')} characters.` } };
-  const choices = studentsWrite === 'function' ? { students_write: 'function' as const, java_lists: javaLists } : {};
+  const choices = { ...(studentsWrite === 'function' ? { students_write: 'function' as const, java_lists: javaLists } : {}), ...(review === undefined ? {} : { review }) };
   return { ok: true, body: { mode: 'paste', text, rewrite_of: problemId, ...choices } };
 }
 

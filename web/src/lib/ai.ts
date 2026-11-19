@@ -240,6 +240,8 @@ export type WizardRequest = ({ mode: 'brief'; brief: Brief } | { mode: 'paste'; 
   java_lists?: JavaLists;
   /** Paste mode only: the problem to write again; `text` then says what should change (stage W). */
   rewrite_of?: number;
+  /** Keep the model's answer for the person to read and edit before any problem is created. The form always sends it. */
+  review?: boolean;
 };
 
 /** The problem a rewrite run started from, and the fingerprint of its content then. */
@@ -256,9 +258,9 @@ export type WizardRequestResult = { ok: true; body: WizardRequest } | { ok: fals
  * whole program sends exactly what it always did; one function adds the two
  * choices the server reads.
  */
-export function wizardRequest(mode: 'brief' | 'paste', brief: Brief, text: string, studentsWrite: StudentsWrite = 'program', javaLists: JavaLists = 'array'): WizardRequestResult {
+export function wizardRequest(mode: 'brief' | 'paste', brief: Brief, text: string, studentsWrite: StudentsWrite = 'program', javaLists: JavaLists = 'array', review?: boolean): WizardRequestResult {
   const fields: Record<string, string> = {};
-  const choices = studentsWrite === 'function' ? { students_write: 'function' as const, java_lists: javaLists } : {};
+  const choices = { ...(studentsWrite === 'function' ? { students_write: 'function' as const, java_lists: javaLists } : {}), ...(review === undefined ? {} : { review }) };
   if (mode === 'paste') {
     const t = text.trim();
     if (t === '') fields.text = 'Paste the problem you want rewritten.';
@@ -277,15 +279,31 @@ export function wizardRequest(mode: 'brief' | 'paste', brief: Brief, text: strin
   return Object.keys(fields).length > 0 ? { ok: false, fields } : { ok: true, body: { mode: 'brief', brief: b, ...choices } };
 }
 
-export type WizardState = 'thinking' | 'draft_created' | 'error' | 'done';
+export type WizardState = 'thinking' | 'review' | 'draft_created' | 'error' | 'done';
 
 /** GET /api/admin/ai/wizard/{id}/answer: what the provider sent back, for the person who started the run. */
 export interface WizardAnswer {
   text: string;
-  /** The text was longer than 200 KB and is cut. */
+  /** The text was longer than the server keeps (200 KB, or 2 MB for a run with review) and is cut. */
   cut: boolean;
   reasons: string[];
+  /** Absent from a server older than v2.1.1 stage C. */
+  kind?: StudentsWrite;
+  java_lists?: JavaLists | '';
+  rewrite_of?: RewriteLink | null;
+  /** What Create draft will change in the answer. */
+  repairs?: string[];
 }
+
+/** The body of POST /api/admin/ai/drafts. */
+export interface DraftRequest {
+  answer: string;
+  kind: StudentsWrite;
+  java_lists: JavaLists;
+}
+
+/** The answer is longer than this and cannot become a draft (server: maxReviewAnswer). */
+export const MAX_ANSWER = 2 * 1024 * 1024;
 
 /** GET /api/admin/ai/wizard/{id}, and the `wizard` live event. */
 export interface Wizard {
@@ -316,6 +334,11 @@ export function isKeyProblem(code: string | undefined): boolean {
 /** True while the model is still writing. */
 export function wizardPending(w: Pick<Wizard, 'state'> | null): boolean {
   return w !== null && w.state === 'thinking';
+}
+
+/** True while a run with review waits for the person to read its answer. */
+export function wizardInReview(w: Pick<Wizard, 'state'> | null): boolean {
+  return w !== null && w.state === 'review';
 }
 
 /** One step of the wizard's progress list. */
@@ -353,6 +376,7 @@ export function draftChainSteps(
     j !== null && j.state === 'done' && !!j.summary &&
     (next === 'outputs' ? j.summary.generating_outputs === false : (j.summary.problems?.length ?? 0) > 0 || j.summary.applied === 0);
   const failed = w.state === 'error';
+  const reviewing = w.state === 'review';
   const created = !failed && (w.state === 'draft_created' || w.state === 'done' || !!w.problem_id);
   const testsFailed =
     created && (broke(inputs) || broke(outputs) || (validation === null && ((outputs === null && stopped(inputs, 'outputs')) || stopped(outputs, 'checks'))));
@@ -367,7 +391,7 @@ export function draftChainSteps(
   const passed = validationDone && validation?.state === 'passed';
   const step = (done: boolean, current: boolean, bad = false): WizardStep['state'] => (bad ? 'failed' : done ? 'done' : current ? 'current' : 'waiting');
   const steps: WizardStep[] = [
-    { text: 'Writing the problem', state: step(created, !created && !failed, failed) },
+    { text: 'Writing the problem', state: step(created || reviewing, !created && !reviewing && !failed, failed) },
     { text: 'Draft created', state: step(created, false) },
     { text: 'Generating the tests', state: step(testsDone, created && !testsDone, testsFailed) },
     ...(isFunction ? [{ text: 'Checking each language', state: step(testsDone && langsDone, testsDone && !langsDone, referenceStop !== '') }] : []),
@@ -381,6 +405,7 @@ export function draftChainSteps(
 export function wizardStatusText(w: Pick<Wizard, 'state'>): string {
   if (w.state === 'thinking') return 'Writing the problem';
   if (w.state === 'draft_created' || w.state === 'done') return 'Draft created, generating tests';
+  if (w.state === 'review') return "Review the AI's answer";
   if (w.state === 'error') return 'The model could not write this problem';
   return '';
 }
@@ -395,6 +420,7 @@ export const aiPaths = {
   wizard: '/api/admin/ai/wizard',
   wizardOne: (id: string | number) => `/api/admin/ai/wizard/${encodeURIComponent(String(id))}`,
   wizardAnswer: (id: string | number) => `/api/admin/ai/wizard/${encodeURIComponent(String(id))}/answer`,
+  drafts: '/api/admin/ai/drafts',
 };
 
 /** A generate inputs run: POST .../generate-inputs and GET .../input-generation. */
