@@ -32,6 +32,11 @@ var ErrSamePin = errors.New("revision already pinned")
 // wrong.
 var ErrPinMoved = errors.New("the pin changed since it was read")
 
+// ErrProblemsChanged refuses a save of a contest's problems made from a list
+// that no longer matches the contest: problems were added after it was
+// loaded (409 problems_changed).
+var ErrProblemsChanged = errors.New("Problems were added to this contest after you opened it. Reload to see them, then make your change again.")
+
 // EventStatement tells a contest's members that a label now pins another
 // revision.
 const EventStatement = "statement"

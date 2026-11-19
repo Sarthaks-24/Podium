@@ -124,6 +124,8 @@ func (d *Handlers) contestError(w http.ResponseWriter, r *http.Request, err erro
 		httpx.WriteError(w, http.StatusForbidden, "contest_over", err.Error())
 	case errors.Is(err, ErrNotReady):
 		httpx.WriteError(w, http.StatusConflict, "not_ready", err.Error())
+	case errors.Is(err, ErrProblemsChanged):
+		httpx.WriteError(w, http.StatusConflict, "problems_changed", err.Error())
 	case errors.Is(err, ErrPracticeChanged):
 		httpx.WriteError(w, http.StatusConflict, "practice_changed", err.Error())
 	case errors.Is(err, submissions.ErrProblemDeleted), errors.Is(err, problems.ErrDeleted):

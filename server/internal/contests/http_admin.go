@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -346,27 +347,75 @@ func (d *Handlers) CloneContest(w http.ResponseWriter, r *http.Request) {
 	d.writeAdminContest(w, r, out.ID, http.StatusCreated)
 }
 
+// AddProblems adds validated bank problems to the contest with the next
+// free letters, from the Problems page. It answers 200 with what was added
+// and what was refused, and why.
+func (d *Handlers) AddProblems(w http.ResponseWriter, r *http.Request) {
+	c, ok := d.OrganisedContest(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		ProblemIDs []int64 `json:"problem_ids"`
+	}
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.ProblemIDs) > 26 {
+		httpx.WriteError(w, http.StatusBadRequest, "too_many_problems", "Add at most 26 problems at a time.")
+		return
+	}
+	res, err := d.Contests.AddProblems(r.Context(), c.ID, req.ProblemIDs, actor(r))
+	if err != nil {
+		d.contestError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
 // SetContestProblems chooses the contest's problems from the bank.
 func (d *Handlers) SetContestProblems(w http.ResponseWriter, r *http.Request) {
 	c, ok := d.OrganisedContest(w, r)
 	if !ok {
 		return
 	}
-	var req []struct {
+	type row struct {
 		ProblemID int64  `json:"problem_id"`
 		Label     string `json:"label"`
 		// AIReason confirms an AI problem no person has written a solution
 		// for, in a graded contest.
 		AIReason string `json:"ai_reason"`
 	}
-	if !httpx.DecodeJSON(w, r, &req) {
+	// The body is the bare list an old tab sends (no guard), or an object
+	// with the list and the problem ids the editor last loaded.
+	var raw json.RawMessage
+	if !httpx.DecodeJSON(w, r, &raw) {
+		return
+	}
+	var req []row
+	var loaded *[]int64
+	var err error
+	if t := bytes.TrimSpace(raw); len(t) > 0 && t[0] == '{' {
+		var obj struct {
+			Problems []row    `json:"problems"`
+			Loaded   *[]int64 `json:"loaded_problem_ids"`
+		}
+		dec := json.NewDecoder(bytes.NewReader(t))
+		dec.DisallowUnknownFields()
+		err = dec.Decode(&obj)
+		req, loaded = obj.Problems, obj.Loaded
+	} else {
+		err = json.Unmarshal(t, &req)
+	}
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "The request body is not valid JSON for this action.")
 		return
 	}
 	choices := make([]ProblemChoice, 0, len(req))
 	for _, p := range req {
 		choices = append(choices, ProblemChoice{ProblemID: p.ProblemID, Label: p.Label, AIReason: p.AIReason})
 	}
-	if _, err := d.Contests.SetProblems(r.Context(), c.ID, choices, actor(r)); err != nil {
+	if _, err := d.Contests.SetProblems(r.Context(), c.ID, choices, actor(r), loaded); err != nil {
 		d.contestError(w, r, err)
 		return
 	}

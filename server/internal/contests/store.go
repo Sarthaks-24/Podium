@@ -694,7 +694,12 @@ type pin struct {
 // a changed reference or brute force) or an admin's reason (AIReason),
 // else the whole change is refused with AIProblemError. The change, and
 // each new reason, is recorded in the audit log in the same transaction.
-func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemChoice, by Actor) (*Contest, error) {
+//
+// loaded, when not nil, is the problem ids the caller last saw in the
+// contest. A problem in the contest that is not in it was added since (by
+// AddProblems), so the save is refused with ErrProblemsChanged instead of
+// erasing it. An empty list is checked; nil is not (an old client).
+func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemChoice, by Actor, loaded *[]int64) (*Contest, error) {
 	if len(choices) > 26 {
 		return nil, FieldErrors{"problems": "Use at most 26 problems."}
 	}
@@ -737,6 +742,17 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if loaded != nil {
+		seen := map[int64]bool{}
+		for _, pid := range *loaded {
+			seen[pid] = true
+		}
+		for _, p := range before {
+			if !seen[p.ProblemID] {
+				return nil, ErrProblemsChanged
+			}
+		}
+	}
 	if shown {
 		kept := map[int64]bool{}
 		for _, ch := range choices {
@@ -749,6 +765,11 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 		}
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM contest_problems WHERE contest_id = ?", id); err != nil {
+		// A writer that committed first leaves this transaction unable to
+		// write; with a guard that means problems were added meanwhile.
+		if loaded != nil && isBusy(err) {
+			return nil, ErrProblemsChanged
+		}
 		return nil, err
 	}
 	after := []pin{}
@@ -923,6 +944,118 @@ func refusalError(code, label string) error {
 		msg = "A problem appears twice."
 	}
 	return FieldErrors{"problems": msg}
+}
+
+// AddedProblem is a problem AddProblems put in the contest, with its label.
+type AddedProblem struct {
+	ProblemID int64  `json:"problem_id"`
+	Label     string `json:"label"`
+}
+
+// RefusedProblem is a problem AddProblems left out, with the Refuse code.
+type RefusedProblem struct {
+	ProblemID int64  `json:"problem_id"`
+	Reason    string `json:"reason"`
+}
+
+// AddResult is what AddProblems did. Both lists are never nil.
+type AddResult struct {
+	Added   []AddedProblem   `json:"added"`
+	Refused []RefusedProblem `json:"refused"`
+}
+
+// AddProblems adds the validated problems among ids to the contest in one
+// transaction, each with the first unused single letter from A to Z, the
+// next position and its current revision. The rest are refused with a code.
+// Existing rows are not touched. The audit entry and the change event
+// follow only when something was added.
+func (s *Service) AddProblems(ctx context.Context, id int64, ids []int64, by Actor) (*AddResult, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var one int
+	if err := tx.QueryRowContext(ctx, "SELECT 1 FROM contests WHERE id = ?", id).Scan(&one); errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
+	var before []pin
+	used := map[string]bool{}
+	rows, err := tx.QueryContext(ctx, `SELECT cp.label, cp.problem_id, coalesce(r.content_hash, ''), coalesce(cp.revision_id, 0), coalesce(r.rev, 0)
+		FROM contest_problems cp LEFT JOIN problem_revisions r ON r.id = cp.revision_id WHERE cp.contest_id = ? ORDER BY cp.ord`, id)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p pin
+		if err := rows.Scan(&p.Label, &p.ProblemID, &p.Hash, &p.RevisionID, &p.Rev); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		before = append(before, p)
+		used[p.Label] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	res := &AddResult{Added: []AddedProblem{}, Refused: []RefusedProblem{}}
+	after := slices.Clone(before)
+	var ord int
+	if err := tx.QueryRowContext(ctx, "SELECT coalesce(max(ord) + 1, 0) FROM contest_problems WHERE contest_id = ?", id).Scan(&ord); err != nil {
+		return nil, err
+	}
+	for _, pid := range ids {
+		cp, code, err := checkContestProblem(ctx, tx, id, pid)
+		if err != nil {
+			return nil, err
+		}
+		if code == "" && cp.NeedsAI {
+			code = RefuseNeedsAI
+		}
+		if code != "" {
+			res.Refused = append(res.Refused, RefusedProblem{ProblemID: pid, Reason: code})
+			continue
+		}
+		label := ""
+		for c := 'A'; c <= 'Z'; c++ {
+			if !used[string(c)] {
+				label = string(c)
+				break
+			}
+		}
+		if label == "" {
+			res.Refused = append(res.Refused, RefusedProblem{ProblemID: pid, Reason: RefuseLimit})
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, points, revision_id)
+			VALUES (?, ?, ?, ?, ?, ?)`, id, pid, label, ord, cp.Points, cp.RevisionID); err != nil {
+			return nil, err
+		}
+		used[label] = true
+		ord++
+		res.Added = append(res.Added, AddedProblem{ProblemID: pid, Label: label})
+		after = append(after, pin{label, pid, cp.Hash, cp.RevisionID, cp.Rev})
+	}
+	if len(res.Added) == 0 {
+		return res, nil
+	}
+	if err := s.recordTx(ctx, tx, id, by, AuditProblems, map[string]any{"from": nonNilPins(before), "to": after}); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	s.changed(id)
+	return res, nil
+}
+
+// isBusy reports a SQLite busy or locked failure.
+func isBusy(err error) bool {
+	m := err.Error()
+	return strings.Contains(m, "SQLITE_BUSY") || strings.Contains(m, "database is locked")
 }
 
 func nonNilPins(p []pin) []pin {

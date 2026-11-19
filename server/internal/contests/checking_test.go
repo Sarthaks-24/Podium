@@ -36,7 +36,7 @@ func TestSetProblemsRefusesAProblemBeingChecked(t *testing.T) {
 	r := newSvc(t)
 	c := r.contest(t, nil)
 	checkedProblem(t, r, "queued")
-	_, err := r.svc.SetProblems(context.Background(), c.ID, []ProblemChoice{{ProblemID: 100, Label: "B"}}, Actor{ID: 1})
+	_, err := r.svc.SetProblems(context.Background(), c.ID, []ProblemChoice{{ProblemID: 100, Label: "B"}}, Actor{ID: 1}, nil)
 	wantChecking(t, "set problems", err)
 	if n := count(t, r, "SELECT count(*) FROM contest_problems"); n != 0 {
 		t.Errorf("%d pins after the refusal", n)
@@ -44,7 +44,7 @@ func TestSetProblemsRefusesAProblemBeingChecked(t *testing.T) {
 	// The proof ends: the refusal goes away (the pin may still be refused for
 	// another reason, never this one).
 	execNoFK(t, r, "UPDATE jobs SET state = 'done'")
-	_, err = r.svc.SetProblems(context.Background(), c.ID, []ProblemChoice{{ProblemID: 100, Label: "B"}}, Actor{ID: 1})
+	_, err = r.svc.SetProblems(context.Background(), c.ID, []ProblemChoice{{ProblemID: 100, Label: "B"}}, Actor{ID: 1}, nil)
 	var checking *CheckingError
 	if errors.As(err, &checking) {
 		t.Errorf("a closed proof still refuses: %v", err)

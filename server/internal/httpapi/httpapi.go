@@ -298,6 +298,7 @@ func (d Deps) contestRoutes(mux *http.ServeMux, console *contests.Handlers) {
 	mux.HandleFunc("POST /api/admin/contests/{id}/restore", organiser(console.RestoreContest))
 	mux.HandleFunc("POST /api/admin/contests/{id}/clone", organiser(console.CloneContest))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/problems", organiser(console.SetContestProblems))
+	mux.HandleFunc("POST /api/admin/contests/{id}/problems/add", organiser(console.AddProblems))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/problems/{label}/revision", organiser(console.UpdatePin))
 	mux.HandleFunc("PUT /api/admin/contests/{id}/extensions/{user}", organiser(console.SetExtension))
 	mux.HandleFunc("POST /api/admin/contests/{id}/extend", organiser(console.ExtendContest))

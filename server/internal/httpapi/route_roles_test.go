@@ -132,6 +132,7 @@ var routeRoles = map[string]string{
 	"POST /api/admin/contests/{id}/clone":                           "organiser",
 	"PUT /api/admin/contests/{id}/problems":                         "organiser",
 	"PUT /api/admin/contests/{id}/problems/{label}/revision":        "organiser",
+	"POST /api/admin/contests/{id}/problems/add":                    "organiser",
 	"PUT /api/admin/contests/{id}/extensions/{user}":                "organiser",
 	"POST /api/admin/contests/{id}/extend":                          "organiser",
 	"POST /api/admin/contests/{id}/pause":                           "organiser",

@@ -76,7 +76,7 @@ func TestUnreadableTagsRefuseTheProblem(t *testing.T) {
 	c := r.contest(t, nil)
 	execNoFK(t, r, `INSERT INTO problems (id, slug, title, time_limit_ms, memory_limit_mb, checker, reference_language, created_at, updated_at, content_hash, validated_hash, tags)
 		VALUES (100, 'drafted', 'Drafted', 1000, 256, 'tokens', 'cpp17', 0, 0, 'h', 'h', '{"ai-draft":true}')`)
-	_, err := r.svc.SetProblems(ctx, c.ID, []ProblemChoice{{ProblemID: 100, Label: "A"}}, Actor{ID: 1})
+	_, err := r.svc.SetProblems(ctx, c.ID, []ProblemChoice{{ProblemID: 100, Label: "A"}}, Actor{ID: 1}, nil)
 	if err == nil || !strings.Contains(err.Error(), "tags") {
 		t.Fatalf("adding a problem with unreadable tags: %v, want an error naming tags", err)
 	}
