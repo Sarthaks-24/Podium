@@ -200,7 +200,7 @@ func PCHNotUsedBecause(out string) string {
 }
 
 // pchProbeError is a probe compile that ran to the end and failed, with its
-// output. A time-out or another sandbox stop is a plain error instead.
+// output. A time-out or an isolate fault is a plain error instead.
 type pchProbeError struct{ Output string }
 
 func (e *pchProbeError) Error() string {
@@ -254,11 +254,13 @@ func (r *Runner) ProbePCHSource(ctx context.Context, box int, source string) (us
 		return false, "", err
 	}
 	out, _ := readBoxHead(filepath.Join(dir, "compile.txt"), 1<<20)
-	if meta.Status == "" && meta.ExitCode != 0 {
-		return false, "", &pchProbeError{Output: string(out)}
-	}
-	if meta.Status != "" {
+	switch {
+	case meta.Status == "TO" || meta.Status == "XX":
+		// Stopped by the sandbox (time-out, isolate fault): proves nothing about the header.
 		return false, "", fmt.Errorf("the probe compile failed: %s", tail(string(out), 300))
+	case meta.Status != "" || meta.ExitCode != 0:
+		// GCC ran to the end and failed (isolate reports RE or SG); isPCHFault reads its output.
+		return false, "", &pchProbeError{Output: string(out)}
 	}
 	return PCHUsed(string(out)), PCHNotUsedBecause(string(out)), nil
 }
