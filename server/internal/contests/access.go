@@ -102,7 +102,7 @@ func (c *Contest) FrozenAt() time.Time {
 // contest: coarse figures always and times to 100 ms, since every contest
 // counts.
 func (c *Contest) ViewOptions(StudentState) submissions.ViewOptions {
-	return submissions.ViewOptions{Coarse: true, RoundMS: 100}
+	return submissions.ViewOptions{Coarse: true, RoundMS: 100, HideLocked: c.LockedCode == LockedHidden}
 }
 
 // ViewFor is ViewOptions for a contest and student by id, for the live

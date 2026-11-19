@@ -535,7 +535,12 @@ export interface ContestSettings extends ExamOptions {
   audience?: Audience;
   /** Shown on the contest page; "" shows none. */
   contact_email?: string;
+  /** How function problems show their locked code to students; "shown" when left out (v2.1.1). */
+  locked_code?: LockedCodeMode;
 }
+
+/** A contest's "Locked code" setting: shown as always, folded, or hidden from students. */
+export type LockedCodeMode = 'shown' | 'folded' | 'hidden';
 
 /** Everyone who can sign in, or only the students invited to the contest. */
 export type Audience = 'everyone' | 'invited';
@@ -670,6 +675,7 @@ const AUDIT_FIELDS: Record<string, string> = {
   practice_after_end: 'practice after the end',
   audience: 'who can take part',
   contact_email: 'contact email',
+  locked_code: 'locked code',
   min_gap_s: 'gap between submissions',
   max_per_problem: 'submissions per problem',
   languages: 'languages',

@@ -43,7 +43,7 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 	e := Edit{Title: title, Description: src.Description, StartsAt: startsAt, EndsAt: endsAt,
 		FreezeMinutes: int(src.Schedule.Freeze / time.Minute), PracticeAfterEnd: src.PracticeAfterEnd,
 		MinGapS: int(src.MinGap / time.Second), MaxPerProblem: src.MaxPerProblem, Languages: src.Languages,
-		HonourText: src.HonourText, HoldReveal: src.HoldReveal, Exam: src.Exam, Audience: src.Audience, ContactEmail: src.ContactEmail}
+		HonourText: src.HonourText, HoldReveal: src.HoldReveal, Exam: src.Exam, Audience: src.Audience, ContactEmail: src.ContactEmail, LockedCode: src.LockedCode}
 	if errs := e.check(); errs != nil {
 		return nil, errs
 	}
@@ -74,12 +74,12 @@ func (s *Service) Clone(ctx context.Context, id int64, slug, title string, start
 		}
 		err = tx.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
 			freeze_minutes, published, practice_after_end, min_gap_s, max_per_problem, languages, honour_text, hold_reveal,
-			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, audience, contact_email)
-			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, audience, contact_email, locked_code)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			cloneSlug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
 			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
-			nullID(by.ID), now, now, e.Audience, e.ContactEmail).Scan(&cloneID)
+			nullID(by.ID), now, now, e.Audience, e.ContactEmail, lockedOrDefault(e.LockedCode)).Scan(&cloneID)
 		if db.IsUnique(err) {
 			continue
 		}

@@ -90,10 +90,13 @@ type Contest struct {
 	// ContactEmail is the address the contest page shows for questions
 	// about this contest; "" shows none.
 	ContactEmail string
-	CreatedBy    int64
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Problems     []ContestProblem
+	// LockedCode is how function problems show their locked code to
+	// students: LockedShown, LockedFolded or LockedHidden (stage P).
+	LockedCode string
+	CreatedBy  int64
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	Problems   []ContestProblem
 }
 
 // ExamOptions are the measures an organiser can turn on for an
@@ -181,6 +184,26 @@ type Edit struct {
 	Audience string
 	// ContactEmail is shown on the contest page; "" shows none.
 	ContactEmail string
+	// LockedCode is LockedShown, LockedFolded or LockedHidden (stage P). "" on
+	// a create means shown; "" on an update keeps the stored value, so a page
+	// that does not know the field cannot reset it.
+	LockedCode string
+}
+
+// The three ways a contest can show a function problem's locked code to
+// students (stage P). Staff always see it.
+const (
+	// LockedShown sends the locked code and shows it, as before.
+	LockedShown = "shown"
+	// LockedFolded sends it and opens the editor with it folded.
+	LockedFolded = "folded"
+	// LockedHidden sends students no locked code. It is out of view, not secret.
+	LockedHidden = "hidden"
+)
+
+// ValidLockedCode reports whether s is one of the three locked code values.
+func ValidLockedCode(s string) bool {
+	return s == LockedShown || s == LockedFolded || s == LockedHidden
 }
 
 // The two audiences a contest can have.
@@ -287,6 +310,9 @@ func (e *Edit) check() FieldErrors {
 	if e.Audience != AudienceEveryone && e.Audience != AudienceInvited {
 		errs["audience"] = "Choose everyone who can sign in, or only invited students."
 	}
+	if e.LockedCode != "" && !ValidLockedCode(e.LockedCode) {
+		errs["locked_code"] = "Choose shown, folded or hidden."
+	}
 	e.ContactEmail = strings.ToLower(strings.TrimSpace(e.ContactEmail))
 	if !auth.ValidContactEmail(e.ContactEmail) {
 		errs["contact_email"] = "Enter a single email address, such as contest@college.edu."
@@ -295,6 +321,13 @@ func (e *Edit) check() FieldErrors {
 		return nil
 	}
 	return errs
+}
+
+func lockedOrDefault(s string) string {
+	if s == "" {
+		return LockedShown
+	}
+	return s
 }
 
 // Create adds a contest (unpublished). Its slug is derived from the
@@ -328,12 +361,12 @@ func (s *Service) Create(ctx context.Context, e Edit, by int64, key string) (*Co
 		var id int64
 		err = tx.QueryRowContext(ctx, `INSERT INTO contests (slug, title, description_md, starts_at, ends_at,
 			freeze_minutes, published, practice_after_end, min_gap_s, max_per_problem, languages, honour_text, hold_reveal,
-			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, client_key, audience, contact_email)
-			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			full_screen, count_focus, block_paste, block_copy, created_by, created_at, updated_at, client_key, audience, contact_email, locked_code)
+			VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 			slug, e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 			e.FreezeMinutes, e.PracticeAfterEnd, e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
 			e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy,
-			nullID(by), now, now, key, e.Audience, e.ContactEmail).Scan(&id)
+			nullID(by), now, now, key, e.Audience, e.ContactEmail, lockedOrDefault(e.LockedCode)).Scan(&id)
 		if db.IsUnique(err) {
 			tx.Rollback()
 			// Either the slug is taken or an earlier copy of this request
@@ -415,14 +448,17 @@ func (s *Service) Update(ctx context.Context, id int64, e Edit, by Actor) (*Cont
 	}
 	// The slug was derived at create and stays, so links keep working.
 	e.Slug = c.Slug
+	if e.LockedCode == "" {
+		e.LockedCode = c.LockedCode
+	}
 	langs, _ := json.Marshal(e.Languages)
 	_, err = tx.ExecContext(ctx, `UPDATE contests SET title = ?, description_md = ?, starts_at = ?, ends_at = ?,
 		freeze_minutes = ?, published = ?, practice_after_end = ?, min_gap_s = ?, max_per_problem = ?, languages = ?, honour_text = ?,
-		hold_reveal = ?, full_screen = ?, count_focus = ?, block_paste = ?, block_copy = ?, audience = ?, contact_email = ?, updated_at = ? WHERE id = ?`,
+		hold_reveal = ?, full_screen = ?, count_focus = ?, block_paste = ?, block_copy = ?, audience = ?, contact_email = ?, locked_code = ?, updated_at = ? WHERE id = ?`,
 		e.Title, e.Description, e.StartsAt.UnixMilli(), e.EndsAt.UnixMilli(),
 		e.FreezeMinutes, e.Published, e.PracticeAfterEnd,
 		e.MinGapS, e.MaxPerProblem, string(langs), e.HonourText, e.HoldReveal,
-		e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy, e.Audience, e.ContactEmail, s.now().UnixMilli(), id)
+		e.Exam.FullScreen, e.Exam.CountFocus, e.Exam.BlockPaste, e.Exam.BlockCopy, e.Audience, e.ContactEmail, e.LockedCode, s.now().UnixMilli(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +513,7 @@ const contestColumns = `id, slug, title, description_md, starts_at, ends_at, fre
 	languages, honour_text, editorial_md, editorial_published, paused, extended_minutes, hold_reveal, coalesce(revealed_at, 0),
 	full_screen, count_focus, block_paste, block_copy, archived,
 	coalesce(created_by, 0), created_at, updated_at,
-	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id), audience, archived_slug, contact_email`
+	(SELECT coalesce(max(minutes), 0) FROM contest_extensions e WHERE e.contest_id = contests.id), audience, archived_slug, contact_email, locked_code`
 
 func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	var c Contest
@@ -487,7 +523,7 @@ func scanContest(sc interface{ Scan(...any) error }) (*Contest, error) {
 	err := sc.Scan(&c.ID, &c.Slug, &c.Title, &c.Description, &starts, &ends, &freeze,
 		&c.Published, &c.PracticeAfterEnd, &gap,
 		&c.MaxPerProblem, &langs, &c.HonourText, &c.Editorial, &c.EditorialPublished, &c.Paused, &extended, &c.HoldReveal, &revealed,
-		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt, &c.Audience, &c.ArchivedSlug, &c.ContactEmail)
+		&c.Exam.FullScreen, &c.Exam.CountFocus, &c.Exam.BlockPaste, &c.Exam.BlockCopy, &c.Archived, &c.CreatedBy, &created, &updated, &maxExt, &c.Audience, &c.ArchivedSlug, &c.ContactEmail, &c.LockedCode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

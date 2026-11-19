@@ -45,7 +45,9 @@ import {
   keymap,
   lineNumbers,
   rectangularSelection,
+  WidgetType,
   type Command,
+  type DecorationSet,
   type KeyBinding,
 } from '@codemirror/view';
 import { tags as t } from '@lezer/highlight';
@@ -135,6 +137,13 @@ const theme = EditorView.theme(
     '.cm-foldGutter .cm-gutterElement': { padding: '0 var(--space-1)', cursor: 'pointer' },
     // Locked code (v2.0.2): muted lines, and the fold's label as a button.
     '.cm-lockedLine': { backgroundColor: 'var(--code-locked-wash)' },
+    '.cm-lockedNote': {
+      padding: 'var(--space-1) var(--space-3)',
+      backgroundColor: 'var(--code-locked-wash)',
+      color: 'var(--well-ink)',
+      fontFamily: 'var(--font-sans)',
+      fontSize: 'var(--fs-0)',
+    },
     '.cm-foldPlaceholder': {
       padding: '0 var(--space-2)',
       border: 'var(--rule) solid var(--code-gutter)',
@@ -187,6 +196,12 @@ export interface EditorOptions extends EditorCallbacks {
   locked?: LockedParts | null;
   /** Start with the locked blocks folded. */
   collapseLocked?: boolean;
+  /**
+   * `hidden`: the server sent no locked code, so the editor shows one read-only
+   * note above and one below the student's code instead (contest setting
+   * "Locked code", v2.1.1).
+   */
+  lockedMode?: 'hidden';
 }
 
 /** The handle the component keeps. */
@@ -276,6 +291,37 @@ const lockedLines = EditorView.decorations.compute([lockField], (state) => {
   if (l.bottomStart >= 0) for (let n = state.doc.lineAt(l.bottomStart + 1).number; n <= state.doc.lines; n++) b.add(state.doc.line(n).from, state.doc.line(n).from, line);
   return b.finish();
 });
+
+/** The notes shown above and below the student's code when the locked code is hidden. */
+export const HIDDEN_NOTE_BEFORE = 'Locked code runs before your function.';
+export const HIDDEN_NOTE_AFTER = 'Locked code runs after your function.';
+
+class LockedNote extends WidgetType {
+  constructor(readonly text: string) {
+    super();
+  }
+  eq(other: LockedNote) {
+    return other.text === this.text;
+  }
+  toDOM() {
+    const note = document.createElement('div');
+    note.className = 'cm-lockedNote';
+    note.textContent = this.text;
+    return note;
+  }
+}
+
+/** Two one-line read-only notes, a block above the first line and one below the last. */
+const hiddenNotes = StateField.define<DecorationSet>({
+  create: (state) => hiddenNotesOf(state),
+  update: (notes, tr) => (tr.docChanged ? hiddenNotesOf(tr.state) : notes),
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+function hiddenNotesOf(state: EditorState): DecorationSet {
+  const widget = (text: string, side: -1 | 1) => Decoration.widget({ widget: new LockedNote(text), block: true, side });
+  return Decoration.set([widget(HIDDEN_NOTE_BEFORE, -1).range(0), widget(HIDDEN_NOTE_AFTER, 1).range(state.doc.length)]);
+}
 
 /** A fold per locked block, labelled "Locked code, N lines". */
 const lockFolds: Extension = [
@@ -674,6 +720,7 @@ export function createEditor(o: EditorOptions): EditorHandle {
         lockField.init(() => ({ topEnd: first.topEnd, bottomStart: first.bottomStart })),
         lockGuard(() => o.onLockedEdit?.()),
         lockedLines,
+        ...(o.lockedMode === 'hidden' ? [hiddenNotes] : []),
         // Locked lines have no number; the student's lines count from 1, as compiler messages do.
         lineNumbers({
           formatNumber: (n, state) => {

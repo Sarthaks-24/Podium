@@ -47,6 +47,12 @@ export interface Workspace {
   /** The locked code before and after the student's, by offered language. */
   locked_top?: Record<string, string>;
   locked_bottom?: Record<string, string>;
+  /**
+   * The contest's "Locked code" setting for a function problem (v2.1.1).
+   * `hidden` sends both locked maps empty; `folded` opens the editor with the
+   * locked blocks folded. Absent from older servers, which mean `shown`.
+   */
+  locked_code?: 'shown' | 'folded' | 'hidden';
   draft: Draft | null;
   /** Own submissions, newest first, at most 20. */
   submissions: Submission[];

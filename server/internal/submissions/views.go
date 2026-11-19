@@ -130,6 +130,10 @@ type ViewOptions struct {
 	// the student's window is open): state "submitted", no verdict, score,
 	// tests, times or compile output.
 	Hide bool
+	// HideLocked is set for a student in a contest whose locked code is
+	// hidden (stage P): compiler output and run stderr drop every excerpt of
+	// a locked line and keep only "locked code, line N".
+	HideLocked bool
 }
 
 // StudentView is how a student sees a submission outside any contest
@@ -242,7 +246,7 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 		view := Score{Samples: sc.Samples, Subtasks: sc.Subtasks, MaxTimeMS: v.MaxTimeMS, MaxMemoryKB: v.MaxMemoryKB}
 		applyView(&view, o)
 		v.Subtasks, v.Samples, v.MaxTimeMS, v.MaxMemoryKB = view.Subtasks, view.Samples, view.MaxTimeMS, view.MaxMemoryKB
-		v.CompileOutput = s.lineMapOf(r).rewrite(sc.CompileOutput, r.language)
+		v.CompileOutput = s.lineMapOf(r, o.HideLocked).rewrite(sc.CompileOutput, r.language)
 		if sc.Revealed != nil {
 			v.Revealed = s.revealed(sc.Revealed)
 		}
@@ -279,7 +283,7 @@ func (s *Service) GetWith(ctx context.Context, id int64, o ViewOptions) (*Submis
 		maskUnfinished(&sc)
 	}
 	v.Subtasks, v.Samples, v.Score, v.MaxTimeMS, v.MaxMemoryKB = sc.Subtasks, sc.Samples, sc.Score, sc.MaxTimeMS, sc.MaxMemoryKB
-	v.CompileOutput = s.lineMapOf(r).rewrite(compileOutput(program), r.language)
+	v.CompileOutput = s.lineMapOf(r, o.HideLocked).rewrite(compileOutput(program), r.language)
 	return v, nil
 }
 
@@ -374,7 +378,7 @@ func (s *Service) GetRunWith(ctx context.Context, id int64, o ViewOptions) (*Run
 	if err := json.Unmarshal(job.Payload, &pl); err != nil {
 		return nil, err
 	}
-	lines := s.lineMapOf(r)
+	lines := s.lineMapOf(r, o.HideLocked)
 	v.CompileOutput = lines.rewrite(compileOutput(job.Result.Compile), r.language)
 	got := map[int]judgeapi.TestResult{}
 	for _, t := range job.Result.Tests {
@@ -461,7 +465,7 @@ func (s *Service) listMine(ctx context.Context, userID, problemID, contestID int
 // with: the top's line count stored at judging time (a practice
 // submission has no pinned revision to look it up in, V202-33) and the
 // length of the student's own code. A run keeps its code only as a blob.
-func (s *Service) lineMapOf(r row) lineMap {
+func (s *Service) lineMapOf(r row, hide bool) lineMap {
 	if r.topLines == 0 {
 		return lineMap{}
 	}
@@ -473,5 +477,5 @@ func (s *Service) lineMapOf(r row) lineMap {
 		}
 		src = string(b)
 	}
-	return lineMap{top: r.topLines, code: problems.CodeLines(src)}
+	return lineMap{top: r.topLines, code: problems.CodeLines(src), hide: hide}
 }

@@ -608,7 +608,8 @@
           blockPaste={exam?.block_paste ?? false}
           onpasteblocked={() => (pasteNote = showToast(PASTE_BLOCKED))}
           locked={lockedParts}
-          collapseLocked={layout === 'phone'}
+          collapseLocked={layout === 'phone' || ws?.locked_code === 'folded'}
+          lockedMode={ws?.mode === 'function' && ws.locked_code === 'hidden' ? 'hidden' : undefined}
           onlockededit={() => {
             dismissToast(lockNote);
             lockNote = showToast('That part of the file is locked. Write your code between the locked blocks.');

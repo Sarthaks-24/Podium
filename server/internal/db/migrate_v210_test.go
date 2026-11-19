@@ -31,7 +31,7 @@ func TestSessionsMigrationLeavesEverySessionOrdinary(t *testing.T) {
 		}
 	}
 
-	applied, err := Migrate(ctx, d)
+	applied, err := MigrateTo(ctx, d, "0016_v210_sessions")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestSessionsMigrationLeavesEverySessionOrdinary(t *testing.T) {
 	if err := d.QueryRowContext(ctx, "SELECT count(*) FROM pragma_foreign_key_check").Scan(&n); err != nil || n != 0 {
 		t.Errorf("foreign_key_check: %d rows (%v)", n, err)
 	}
-	again, err := Migrate(ctx, d)
+	again, err := MigrateTo(ctx, d, "0016_v210_sessions")
 	if err != nil || len(again) != 0 {
 		t.Errorf("second Migrate applied %v (%v)", again, err)
 	}

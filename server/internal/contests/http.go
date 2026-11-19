@@ -398,6 +398,7 @@ func (d *Handlers) contestProblem(w http.ResponseWriter, r *http.Request) (*cont
 		return nil, false
 	}
 	t.scope.MinGap, t.scope.MaxPerProblem, t.scope.View = c.MinGap, c.MaxPerProblem, c.ViewOptions(st)
+	t.scope.LockedCode = c.LockedCode
 	switch {
 	case t.problem.Deleted:
 		t.refusal = submissions.ErrProblemDeleted

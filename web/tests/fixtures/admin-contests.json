@@ -28,6 +28,7 @@
         "python3",
         "node22"
       ],
+      "locked_code": "shown",
       "max_per_problem": 15,
       "min_gap_s": 0,
       "paused": false,

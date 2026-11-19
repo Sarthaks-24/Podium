@@ -116,6 +116,10 @@ func (s *Service) now() time.Time {
 // problem) or inside one.
 type Scope struct {
 	ContestID int64
+	// LockedCode is the contest's setting for a function problem's locked
+	// code: "shown" (also when empty), "folded" or "hidden". It is set
+	// only for students; staff always get the code.
+	LockedCode string
 	// MinGap is the shortest time between two submits by one user to one problem.
 	MinGap time.Duration
 	// MaxPerProblem caps submits per problem; 0 means no cap.
@@ -208,9 +212,12 @@ type Workspace struct {
 	Mode         string            `json:"mode"`
 	LockedTop    map[string]string `json:"locked_top"`
 	LockedBottom map[string]string `json:"locked_bottom"`
-	Draft        *Draft            `json:"draft"`
-	Submissions  []SubmissionView  `json:"submissions"`
-	ServerNow    int64             `json:"server_now"`
+	// LockedCode is "shown", "folded" or "hidden". Hidden sends both
+	// locked maps empty; folded sends them and asks the editor to fold them.
+	LockedCode  string           `json:"locked_code"`
+	Draft       *Draft           `json:"draft"`
+	Submissions []SubmissionView `json:"submissions"`
+	ServerNow   int64            `json:"server_now"`
 }
 
 // Language is a choice in the editor's language select.
@@ -296,12 +303,16 @@ func (s *Service) Workspace(ctx context.Context, problemID, userID int64, sc Sco
 	if offered.IsFunction() {
 		w.Mode = problems.ModeFunction
 	}
+	w.LockedCode = sc.LockedCode
+	if w.LockedCode == "" {
+		w.LockedCode = "shown"
+	}
 	for _, l := range languages {
 		if !sc.allows(l.ID) || !offered.Offers(l.ID) {
 			continue
 		}
 		w.Languages = append(w.Languages, l)
-		if offered.IsFunction() {
+		if offered.IsFunction() && w.LockedCode != "hidden" {
 			w.LockedTop[l.ID], w.LockedBottom[l.ID] = offered.LockedTop[l.ID], offered.LockedBottom[l.ID]
 		}
 	}

@@ -40,6 +40,8 @@
     locked?: LockedParts | null;
     /** Fold the locked blocks (under 768 px they start folded). */
     collapseLocked?: boolean;
+    /** `hidden`: no locked code was sent, so two notes stand where it would be. */
+    lockedMode?: 'hidden';
     onlockededit?: () => void;
     onchange: (source: string) => void;
     ontyped?: (chars: number) => void;
@@ -67,6 +69,7 @@
     onpasteblocked,
     locked = null,
     collapseLocked = false,
+    lockedMode,
     onlockededit,
     onchange,
     ontyped,
@@ -105,6 +108,7 @@
           onPasteBlocked: () => onpasteblocked?.(),
           locked,
           collapseLocked,
+          lockedMode,
           onLockedEdit: () => onlockededit?.(),
           onChange: (s) => onchange(s),
           onTyped: (n) => ontyped?.(n),

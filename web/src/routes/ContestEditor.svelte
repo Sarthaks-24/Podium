@@ -37,6 +37,7 @@
     toLocalInput,
     type AdminContest,
     type Audience,
+    type LockedCodeMode,
     type AdminContestProblem,
     type ContestOrganiser,
     type OrganiserCandidate,
@@ -67,6 +68,7 @@
     | 'hold_reveal'
     | 'audience'
     | 'contact_email'
+    | 'locked_code'
     | ExamKey
     | 'description_md'
     | 'honour_text';
@@ -84,6 +86,7 @@
     hold_reveal: boolean;
     audience: Audience;
     contact_email: string;
+    locked_code: LockedCodeMode;
     full_screen: boolean;
     count_focus: boolean;
     block_paste: boolean;
@@ -101,12 +104,22 @@
     { key: 'block_copy', label: 'Block copy out of the statement', help: 'Copying the statement or the examples does nothing, and the student is told why.' },
   ];
 
+  /** The "Locked code" choices; the help is shown under the group (V211-67, V211-70). */
+  const LOCKED_CODE: readonly { value: LockedCodeMode; label: string }[] = [
+    { value: 'shown', label: 'Shown' },
+    { value: 'folded', label: 'Folded' },
+    { value: 'hidden', label: 'Hidden' },
+  ];
+  const LOCKED_CODE_HELP =
+    'For function problems. Folded: students can open it. Hidden: students see only their function; staff always see everything. Hidden is not a secret: a student\'s program can still read the file it runs in.';
+
   /** Typing saves after this pause. */
   const PAUSE_MS = 800;
   /** The settings under Advanced, so an error there opens it. */
   const ADVANCED: readonly Key[] = [
     'audience',
     'contact_email',
+    'locked_code',
     'min_gap_s',
     'max_per_problem',
     'practice_after_end',
@@ -304,6 +317,7 @@
       hold_reveal: c.hold_reveal ?? false,
       audience: c.audience ?? 'everyone',
       contact_email: c.contact_email ?? '',
+      locked_code: c.locked_code ?? 'shown',
       full_screen: c.full_screen ?? false,
       count_focus: c.count_focus ?? false,
       block_paste: c.block_paste ?? false,
@@ -809,6 +823,7 @@
       countOf(whole(form.max_per_problem) || 0, 'submission') + ' per problem',
       form.practice_after_end ? 'practice after the end' : 'no practice after the end',
       ...(form.hold_reveal ? ['results hidden until you reveal them'] : []),
+      ...(form.locked_code !== 'shown' ? [`locked code ${form.locked_code}`] : []),
       ...(EXAM.some((x) => form?.[x.key]) ? [`exam options: ${EXAM.filter((x) => form?.[x.key]).map((x) => x.label.toLowerCase()).join(', ')}`] : []),
     ].join(', ');
     return line.charAt(0).toUpperCase() + line.slice(1);
@@ -1235,6 +1250,27 @@
                 <p id="f-{x.key}-help" class="field-help exam-help">{x.help}</p>
               {/each}
             </fieldset>
+
+            <fieldset class="group" aria-describedby="f-locked-help{fields.locked_code ? ' f-locked_code-error' : ''}">
+              <legend>Locked code</legend>
+              {#each LOCKED_CODE as opt (opt.value)}
+                <label class="choice">
+                  <input
+                    type="radio"
+                    name="locked_code"
+                    value={opt.value}
+                    checked={form.locked_code === opt.value}
+                    onchange={() => {
+                      if (form) form.locked_code = opt.value;
+                      change(['locked_code'], true);
+                    }}
+                  />
+                  {opt.label}
+                </label>
+              {/each}
+              <p id="f-locked-help" class="field-help">{LOCKED_CODE_HELP}</p>
+            </fieldset>
+            {@render err('locked_code')}
 
             <fieldset class="group">
               <legend>Contact</legend>

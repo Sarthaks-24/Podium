@@ -231,3 +231,113 @@ func TestRunOutputIsLeftAloneWithoutItsCode(t *testing.T) {
 		t.Errorf("compile output %q, want it as printed", got.CompileOutput)
 	}
 }
+
+// With hide (a student in a contest that hides its locked code) a compile
+// error and a runtime error in locked code keep "locked code, line N" and
+// lose every excerpt of that line and its caret line; the message text and
+// the student's own lines stay. Composed lines 1 and 2 are the locked top,
+// 3 to 5 the student's 1 to 3, 6 on the locked bottom.
+var hideCases = []struct {
+	name, lang, in, want string
+	stderr               bool
+}{
+	{"cpp compile", "cpp17",
+		"main.cpp: In function 'int main()':\n" +
+			"main.cpp:6:13: error: 'twice' was not declared in this scope\n" +
+			"    6 |     cout << twice(n) << endl;\n" +
+			"      |             ^~~~~\n" +
+			"main.cpp:4:3: error: 'y' was not declared in this scope\n" +
+			"    4 |   y;\n" +
+			"      |   ^\n",
+		"main.cpp: In function 'int main()':\n" +
+			"locked code, line 1: error: 'twice' was not declared in this scope\n" +
+			"main.cpp:2:3: error: 'y' was not declared in this scope\n" +
+			"    2 |   y;\n" +
+			"      |   ^\n", false},
+	{"cpp runtime", "cpp17",
+		"prog: main.cpp:7: int main(): Assertion `x > 0' failed.\n" +
+			"prog: main.cpp:4: long long twice(long long): Assertion `m' failed.\n",
+		"prog: locked code, line 2: int main(): Assertion `x > 0' failed.\n" +
+			"prog: main.cpp:2: long long twice(long long): Assertion `m' failed.\n", true},
+	{"java compile", "java21",
+		"Main.java:7: error: cannot find symbol\n" +
+			"        foo();\n" +
+			"        ^\n" +
+			"  symbol:   method foo()\n" +
+			"Main.java:4: error: cannot find symbol\n" +
+			"        bar();\n" +
+			"        ^\n",
+		"locked code, line 2: error: cannot find symbol\n" +
+			"  symbol:   method foo()\n" +
+			"Main.java:2: error: cannot find symbol\n" +
+			"        bar();\n" +
+			"        ^\n", false},
+	{"java runtime", "java21",
+		"Exception in thread \"main\" java.lang.ArithmeticException: / by zero\n" +
+			"\tat Solution.twice(Main.java:4)\n" +
+			"\tat Main.main(Main.java:8)\n",
+		"Exception in thread \"main\" java.lang.ArithmeticException: / by zero\n" +
+			"\tat Solution.twice(Main.java:2)\n" +
+			"\tat Main.main(locked code, line 3)\n", true},
+	{"python compile", "python3",
+		"py_compile.PyCompileError:   File \"main.py\", line 7\n" +
+			"    foo(\n" +
+			"       ^\n" +
+			"SyntaxError: '(' was never closed\n",
+		"py_compile.PyCompileError:   locked code, line 2\n" +
+			"SyntaxError: '(' was never closed\n", false},
+	{"python runtime", "python3",
+		"Traceback (most recent call last):\n" +
+			"  File \"/box/main.py\", line 7, in <module>\n" +
+			"    main()\n" +
+			"    ~~~~^^\n" +
+			"  File \"/box/main.py\", line 4, in twice\n" +
+			"    return 1 // 0\n" +
+			"ZeroDivisionError: integer division or modulo by zero\n",
+		"Traceback (most recent call last):\n" +
+			"  locked code, line 2, in <module>\n" +
+			"  File \"/box/main.py\", line 2, in twice\n" +
+			"    return 1 // 0\n" +
+			"ZeroDivisionError: integer division or modulo by zero\n", true},
+	{"node compile", "node22",
+		"/box/main.js:7\n" +
+			"foo(\n" +
+			"^\n" +
+			"\n" +
+			"SyntaxError: missing ) after argument list\n",
+		"locked code, line 2\n" +
+			"\n" +
+			"SyntaxError: missing ) after argument list\n", false},
+	{"node runtime", "node22",
+		"/box/main.js:7\n" +
+			"    throw new Error('x');\n" +
+			"    ^\n" +
+			"\n" +
+			"Error: x\n" +
+			"    at main (/box/main.js:7:11)\n" +
+			"    at twice (/box/main.js:4:9)\n",
+		"locked code, line 2\n" +
+			"\n" +
+			"Error: x\n" +
+			"    at main (locked code, line 2)\n" +
+			"    at twice (/box/main.js:2:9)\n", true},
+}
+
+func TestHiddenLockedCodeKeepsOnlyTheLineNumber(t *testing.T) {
+	m := lineMap{top: 2, code: 3, hide: true}
+	for _, c := range hideCases {
+		got := m.rewrite(c.in, c.lang)
+		if c.stderr {
+			got = m.rewriteRunStderr(c.in, c.lang)
+		}
+		if got != c.want {
+			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
+		}
+		// Without hide the compile cases map as before, and the runtime
+		// stderr of anything but Node is left as the program printed it.
+		plain := lineMap{top: 2, code: 3}
+		if c.stderr && c.lang != "node22" && plain.rewriteRunStderr(c.in, c.lang) != c.in {
+			t.Errorf("%s: stderr changed without hide", c.name)
+		}
+	}
+}

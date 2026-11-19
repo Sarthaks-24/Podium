@@ -320,6 +320,12 @@ describe('auditSummary', () => {
     ).toBe('Moved problem A from revision 2 to revision 3 after the contest ended; points per part 40, 60 became 30, 70');
   });
 
+  it('names a locked code change by its setting', () => {
+    expect(auditSummary({ action: 'settings', details: { changes: { locked_code: { from: 'shown', to: 'hidden' } } } })).toBe(
+      'Changed locked code from shown to hidden',
+    );
+  });
+
   it('names each change in the past tense', () => {
     expect(
       auditSummary({
