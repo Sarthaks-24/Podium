@@ -768,62 +768,24 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 			return nil, FieldErrors{"problems": "A problem appears twice."}
 		}
 		seenLabel[ch.Label], seenProblem[ch.ProblemID] = true, true
-		var hash, tags string
-		var validated sql.NullString
-		var deleted bool
-		err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags, deleted FROM problems WHERE id = ? AND (archived = 0 OR deleted = 1)", ch.ProblemID).
-			Scan(&hash, &validated, &tags, &deleted)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s no longer exists.", ch.Label)}
-		}
+		cp, code, err := checkContestProblem(ctx, tx, id, ch.ProblemID)
 		if err != nil {
-			return nil, err
-		}
-		if deleted {
-			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s was deleted. Remove it from the contest.", ch.Label)}
-		}
-		if err := refuseChecking(ctx, tx, ch.ProblemID, ch.Label); err != nil {
 			return nil, err
 		}
 		// The message names the label the organiser chose, never the
 		// problem's title, so ids cannot be used to list the bank.
-		if validated.String != hash {
-			return nil, FieldErrors{"problems": fmt.Sprintf("The problem for label %s is not validated. Validate it before adding it to a contest.", ch.Label)}
-		}
-		// The wizard's chain can validate a draft on its own; a person
-		// must still read and save it before students can see it.
-		// Unreadable tags are an error, so the guard never fails open.
-		if err := refuseAIDraft(tags, ch.ProblemID, ch.Label); err != nil {
-			return nil, err
-		}
-		needs, err := unconfirmedAI(ctx, tx, id, ch.ProblemID)
-		if err != nil {
+		if err := refusalError(code, ch.Label); err != nil {
 			return nil, err
 		}
 		reason := strings.TrimSpace(ch.AIReason)
 		switch {
-		case !needs:
+		case !cp.NeedsAI:
 		case utf8.RuneCountInString(reason) >= minAIReason:
 			confirmations = append(confirmations, confirmation{ch.Label, ch.ProblemID, limitStr(reason, 1000)})
 		default:
 			unconfirmed = append(unconfirmed, ch.Label)
 		}
-		points, err := subtaskPoints(ctx, tx, ch.ProblemID)
-		if err != nil {
-			return nil, err
-		}
-		// The newest revision records the working copy (every save writes
-		// one), so it is the revision with this content hash.
-		var revID int64
-		var rev int
-		err = tx.QueryRowContext(ctx, `SELECT id, rev FROM problem_revisions WHERE problem_id = ? AND content_hash = ? AND reconstructed = 0
-			ORDER BY rev DESC LIMIT 1`, ch.ProblemID, hash).Scan(&revID, &rev)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("problem %d has no revision for its content", ch.ProblemID)
-		}
-		if err != nil {
-			return nil, err
-		}
+		hash, points, revID, rev := cp.Hash, cp.Points, cp.RevisionID, cp.Rev
 		if _, err := tx.ExecContext(ctx, `INSERT INTO contest_problems (contest_id, problem_id, label, ord, points, revision_id)
 			VALUES (?, ?, ?, ?, ?, ?)`, id, ch.ProblemID, ch.Label, i, points, revID); err != nil {
 			return nil, err
@@ -849,6 +811,118 @@ func (s *Service) SetProblems(ctx context.Context, id int64, choices []ProblemCh
 	}
 	s.changed(id)
 	return s.Get(ctx, id)
+}
+
+// Refusal codes of checkContestProblem, also the reasons AddProblems reports.
+const (
+	RefuseAlreadyAdded = "already_added"
+	RefuseLimit        = "limit"
+	RefuseNotFound     = "not_found"
+	RefuseDeleted      = "deleted"
+	RefuseBeingChecked = "being_checked"
+	RefuseNotValidated = "not_validated"
+	RefuseAIDraft      = "ai_draft"
+	RefuseNeedsAI      = "needs_ai_reason"
+)
+
+// contestProblem is what a contest pins when it takes a problem.
+type contestProblem struct {
+	Hash       string
+	Tags       string
+	Points     string
+	RevisionID int64
+	Rev        int
+	NeedsAI    bool
+}
+
+// checkContestProblem decides whether a problem may join a contest now, in
+// tx. A refusal is a code and a nil error; an error is a failure to decide.
+// NeedsAI is set, with no code, for a problem an admin must confirm.
+func checkContestProblem(ctx context.Context, tx *sql.Tx, contestID, problemID int64) (contestProblem, string, error) {
+	var cp contestProblem
+	var n int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM contest_problems WHERE contest_id = ? AND problem_id = ?", contestID, problemID).Scan(&n); err != nil {
+		return cp, "", err
+	}
+	if n > 0 {
+		return cp, RefuseAlreadyAdded, nil
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM contest_problems WHERE contest_id = ?", contestID).Scan(&n); err != nil {
+		return cp, "", err
+	}
+	if n >= 26 {
+		return cp, RefuseLimit, nil
+	}
+	var validated sql.NullString
+	var deleted bool
+	err := tx.QueryRowContext(ctx, "SELECT content_hash, validated_hash, tags, deleted FROM problems WHERE id = ? AND (archived = 0 OR deleted = 1)", problemID).
+		Scan(&cp.Hash, &validated, &cp.Tags, &deleted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return cp, RefuseNotFound, nil
+	}
+	if err != nil {
+		return cp, "", err
+	}
+	if deleted {
+		return cp, RefuseDeleted, nil
+	}
+	open, err := problems.OpenProof(ctx, tx, problemID)
+	if err != nil {
+		return cp, "", err
+	}
+	if open {
+		return cp, RefuseBeingChecked, nil
+	}
+	if validated.String != cp.Hash {
+		return cp, RefuseNotValidated, nil
+	}
+	// Unreadable tags are an error, so the guard never fails open.
+	var tagList []string
+	if err := json.Unmarshal([]byte(cp.Tags), &tagList); err != nil {
+		return cp, "", fmt.Errorf("problem %d tags: %w", problemID, err)
+	}
+	if slices.Contains(tagList, problems.AIDraftTag) {
+		return cp, RefuseAIDraft, nil
+	}
+	if cp.NeedsAI, err = unconfirmedAI(ctx, tx, contestID, problemID); err != nil {
+		return cp, "", err
+	}
+	if cp.Points, err = subtaskPoints(ctx, tx, problemID); err != nil {
+		return cp, "", err
+	}
+	// The newest revision records the working copy (every save writes
+	// one), so it is the revision with this content hash.
+	err = tx.QueryRowContext(ctx, `SELECT id, rev FROM problem_revisions WHERE problem_id = ? AND content_hash = ? AND reconstructed = 0
+		ORDER BY rev DESC LIMIT 1`, problemID, cp.Hash).Scan(&cp.RevisionID, &cp.Rev)
+	if errors.Is(err, sql.ErrNoRows) {
+		return cp, "", fmt.Errorf("problem %d has no revision for its content", problemID)
+	}
+	return cp, "", err
+}
+
+// refusalError turns a checkContestProblem code into the error SetProblems
+// has always returned for it, naming the label the organiser chose.
+func refusalError(code, label string) error {
+	var msg string
+	switch code {
+	case "":
+		return nil
+	case RefuseNotFound:
+		msg = fmt.Sprintf("The problem for label %s no longer exists.", label)
+	case RefuseDeleted:
+		msg = fmt.Sprintf("The problem for label %s was deleted. Remove it from the contest.", label)
+	case RefuseBeingChecked:
+		return &CheckingError{Label: label}
+	case RefuseNotValidated:
+		msg = fmt.Sprintf("The problem for label %s is not validated. Validate it before adding it to a contest.", label)
+	case RefuseAIDraft:
+		msg = fmt.Sprintf("The problem for label %s is an AI draft. Read it and save it in the editor before adding it to a contest.", label)
+	case RefuseLimit:
+		msg = "Use at most 26 problems."
+	default:
+		msg = "A problem appears twice."
+	}
+	return FieldErrors{"problems": msg}
 }
 
 func nonNilPins(p []pin) []pin {
