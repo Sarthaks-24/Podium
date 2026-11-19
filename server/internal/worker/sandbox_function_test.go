@@ -10,6 +10,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -84,7 +85,15 @@ func (r *rig) waitSubmission(t *testing.T, id int64, key string) *submissions.Su
 func (r *rig) runIn(t *testing.T, problemID int64, lang, src string) *submissions.RunView {
 	t.Helper()
 	ctx := context.Background()
-	run, err := r.subs.Run(ctx, submissions.RunRequest{ProblemID: problemID, UserID: 1, Language: lang, Source: src})
+	req := submissions.RunRequest{ProblemID: problemID, UserID: 1, Language: lang, Source: src}
+	run, err := r.subs.Run(ctx, req)
+	// The gap is checked on the wall clock, which WSL2 can step back after the
+	// 2.1 s sleep below; one more try after a second keeps the test about verdicts.
+	var rate *submissions.RateError
+	if errors.As(err, &rate) {
+		time.Sleep(time.Second)
+		run, err = r.subs.Run(ctx, req)
+	}
 	if err != nil {
 		t.Fatalf("%s run: %v", lang, err)
 	}
