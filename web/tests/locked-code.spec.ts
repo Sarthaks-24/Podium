@@ -294,3 +294,52 @@ test('the fold chords list in the shortcut help, and Enter on a focused fold but
   await expect(help).toContainText('Fold all');
   await expect(help).toContainText('Unfold all');
 });
+
+// Stage Q (v2.1.1): the selection highlight must show on the active line and
+// on locked lines. CodeMirror draws it in a layer behind the text, so an
+// opaque line background would cover it. The selection cannot reach a locked
+// line, so for those the test checks that the line background is translucent.
+const SCHEMES = [
+  ['night', 'light'],
+  ['night', 'dark'],
+  ['paper', 'light'],
+  ['midnight', 'dark'],
+  ['dusk', 'dark'],
+  ['high-contrast', 'dark'],
+] as const;
+
+for (const [scheme, theme] of SCHEMES) {
+  test(`selection shows through the line washes: ${scheme}, ${theme}`, async ({ page }) => {
+    await open(page);
+    await page.evaluate(
+      ([s, t]) => {
+        document.documentElement.dataset.editor = s;
+        document.documentElement.dataset.theme = t;
+      },
+      [scheme, theme],
+    );
+    await clickCode(page);
+    await page.keyboard.press('Control+a');
+    const result = await page.evaluate(() => {
+      const alpha = (css: string) => {
+        const m = /\/\s*([\d.]+%?)\s*\)/.exec(css) ?? /^rgba\([^)]*,\s*([\d.]+)\)/.exec(css);
+        if (!m) return css === 'transparent' ? 0 : 1;
+        return m[1].endsWith('%') ? parseFloat(m[1]) / 100 : parseFloat(m[1]);
+      };
+      const bg = (el: Element) => alpha(getComputedStyle(el).backgroundColor);
+      // The head of Mod-A is the last code line, which is the active line.
+      const sel = [...document.querySelectorAll('.cm-selectionBackground')].pop();
+      if (!sel) return { covered: ['no selection'], locked: 1 };
+      const r = sel.getBoundingClientRect();
+      const covered: string[] = [];
+      for (const el of document.elementsFromPoint(r.left + 4, r.top + r.height / 2)) {
+        if (el === sel) break;
+        if (bg(el) >= 1) covered.push(String(el.className || el.tagName));
+      }
+      const locked = document.querySelector('.cm-lockedLine');
+      return { covered, locked: locked ? bg(locked) : 1 };
+    });
+    expect(result.covered).toEqual([]);
+    expect(result.locked).toBeLessThan(1);
+  });
+}

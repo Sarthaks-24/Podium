@@ -103,8 +103,12 @@
   /* The editor's focus ring is drawn on the well, where --act can fall to
      2.3:1, so it takes the keyword colour (at least 3:1 on every well). */
   --code-focus: var(--code-keyword);
-  --code-selection: color-mix(in srgb, var(--code-keyword) 22%, var(--well));
+  --code-selection: color-mix(in srgb, var(--code-keyword) 26%, var(--well));
   --code-active-line: color-mix(in srgb, var(--well-ink) 7%, var(--well));
+  /* The line washes are translucent, so the selection layer shows through
+     them. Same look as --code-active-line over the well when not selected. */
+  --code-active-line-wash: color-mix(in srgb, var(--well-ink) 7%, transparent);
+  --code-locked-wash: color-mix(in srgb, var(--code-gutter) 8%, transparent);
 
   /* Passages two programs share, in the integrity views. The edge marks
      the line in the gutter so the match does not rely on the tint alone;
@@ -395,8 +399,9 @@
   --code-meta: #9A2C6A;
   --code-invalid: #B42318;
   --code-gutter: #5F6762;
-  --code-selection: color-mix(in srgb, var(--code-keyword) 10%, var(--well));
+  --code-selection: color-mix(in srgb, var(--code-keyword) 15%, var(--well));
   --code-active-line: color-mix(in srgb, var(--well-ink) 4%, var(--well));
+  --code-active-line-wash: color-mix(in srgb, var(--well-ink) 4%, transparent);
 }
 
 /* Midnight: a black well. */
@@ -414,6 +419,7 @@
   --code-meta: #F29CC8;
   --code-invalid: #FF8F86;
   --code-gutter: #8A938D;
+  --code-selection: color-mix(in srgb, var(--code-keyword) 28%, var(--well));
 }
 
 /* Dusk: a warm dark well. */
@@ -448,5 +454,5 @@
   --code-meta: #FFA6DA;
   --code-invalid: #FF9A8F;
   --code-gutter: #BDBDBD;
-  --code-selection: color-mix(in srgb, var(--code-keyword) 14%, var(--well));
+  --code-selection: color-mix(in srgb, var(--code-keyword) 21%, var(--well));
 }

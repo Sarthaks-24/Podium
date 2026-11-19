@@ -105,7 +105,7 @@ const theme = EditorView.theme(
       { backgroundColor: 'var(--code-selection)' },
     '.cm-gutters': { backgroundColor: 'var(--well)', color: 'var(--code-gutter)', border: 'none' },
     '.cm-lineNumbers .cm-gutterElement': { padding: '0 var(--space-2) 0 var(--space-3)', minWidth: '3ch' },
-    '.cm-activeLine': { backgroundColor: 'var(--code-active-line)' },
+    '.cm-activeLine': { backgroundColor: 'var(--code-active-line-wash)' },
     '.cm-activeLineGutter': { backgroundColor: 'var(--code-active-line)', color: 'var(--well-ink)' },
     '&.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--code-selection)', outline: 'var(--rule) solid var(--code-gutter)' },
     '.cm-specialChar': { color: 'var(--code-invalid)' },
@@ -134,7 +134,7 @@ const theme = EditorView.theme(
     '.cm-diagnostic-info': { borderLeftColor: 'var(--code-gutter)' },
     '.cm-foldGutter .cm-gutterElement': { padding: '0 var(--space-1)', cursor: 'pointer' },
     // Locked code (v2.0.2): muted lines, and the fold's label as a button.
-    '.cm-lockedLine': { backgroundColor: 'color-mix(in srgb, var(--code-gutter) 8%, var(--well))' },
+    '.cm-lockedLine': { backgroundColor: 'var(--code-locked-wash)' },
     '.cm-foldPlaceholder': {
       padding: '0 var(--space-2)',
       border: 'var(--rule) solid var(--code-gutter)',

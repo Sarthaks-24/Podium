@@ -277,6 +277,10 @@ function schemeFailures(id: string, e: Record<string, string>): string[] {
     need(`--code-${k} on active line`, e[`--code-${k}`], active, syntax);
   }
   need('--well-ink on selection', e['--well-ink'], selection, syntax);
+  // The fill must be visible against the well. 1.5:1, since 3:1 would break the text rules above.
+  // Paper and high contrast cannot reach 1.5 and keep their text rules (4.5:1 and 7:1 on the selection):
+  // their floors are the most the text rules allow, 1.25 and 1.44 measured.
+  need('selection fill on --well', selection, e['--well'], id === 'paper' ? 1.2 : high ? 1.4 : 1.5);
   need('--code-gutter on --well', e['--code-gutter'], e['--well'], 4.5);
   // The active line's own number is drawn in --well-ink (lib/editor.ts), not the gutter colour.
   need('--well-ink on active line', e['--well-ink'], active, 7);
@@ -294,6 +298,15 @@ describe('editor colour schemes', () => {
   it('keeps the selection and active-line mixes in :root', () => {
     expect(plainRoot['--code-selection']).toMatch(/^color-mix\(in srgb, var\(--code-keyword\) \d+%, var\(--well\)\)$/);
     expect(plainRoot['--code-active-line']).toMatch(/^color-mix\(in srgb, var\(--well-ink\) \d+%, var\(--well\)\)$/);
+    expect(plainRoot['--code-active-line-wash']).toMatch(/^color-mix\(in srgb, var\(--well-ink\) \d+%, transparent\)$/);
+    expect(plainRoot['--code-locked-wash']).toMatch(/^color-mix\(in srgb, var\(--code-gutter\) \d+%, transparent\)$/);
+  });
+
+  it('keeps each wash the same as its opaque line colour once composited over the well', () => {
+    const own = rules.find((r) => r.media === null && r.selector.split(',').map((x) => x.trim()).includes(':root[data-editor="paper"]'))?.vars ?? {};
+    const pctOf = (v: string | undefined) => Number(/ (\d+)%/.exec(v ?? '')?.[1]);
+    expect(pctOf(plainRoot['--code-active-line-wash'])).toBe(pctOf(plainRoot['--code-active-line']));
+    expect(pctOf(own['--code-active-line-wash'])).toBe(pctOf(own['--code-active-line']));
   });
 
   for (const { id } of EDITOR_SCHEMES) {
