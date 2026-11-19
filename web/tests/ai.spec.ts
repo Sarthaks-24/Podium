@@ -103,6 +103,8 @@ test('saving a key checks it, lists the models, clears the field and never keeps
   // No default model (C11): before a key is saved there is no list, only an optional id field.
   await expect(page.getByLabel('Model', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Model id')).toHaveValue('');
+  // Models appear only after the key is saved (VM note, v2.1.1 stage G).
+  await expect(page.getByLabel('Model id')).toHaveAccessibleDescription("Save your key to load this provider's models, or type a model id.");
   const field = page.getByLabel('API key');
   await expect(field).toHaveAttribute('type', 'password');
   await expect(field).toHaveAttribute('autocomplete', 'off');

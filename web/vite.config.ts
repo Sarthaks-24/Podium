@@ -47,6 +47,9 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     assetsDir: 'assets',
+    // Fonts are always files: the page's font-src 'self' refuses a data: URL,
+    // and Vite would inline KaTeX's smaller fonts (scripts/check-inline-fonts.mjs).
+    assetsInlineLimit: (file: string) => (file.endsWith('.woff2') ? false : undefined),
     rolldownOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',

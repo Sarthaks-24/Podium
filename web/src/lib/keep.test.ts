@@ -64,12 +64,12 @@ describe('the confirm before a switch to Nobody', () => {
   it('asks with the plan words, and names the owner when their own session goes', () => {
     expect(signOutConfirm(EVERYONE, NOBODY, COUNTS, true)).toEqual({
       title: 'Sign out 42 people?',
-      body: '42 people who chose to stay signed in will be signed out now, you included. They can sign in again.',
+      body: '42 people kept signed in will be signed out now, you included. They can sign in again.',
       label: 'Sign out 42 people',
     });
     // The owner's role stays on Everyone: they stay signed in.
     expect(signOutConfirm(EVERYONE, { ...EVERYONE, students: 'nobody' }, COUNTS, true)?.body).toBe(
-      '40 people who chose to stay signed in will be signed out now. They can sign in again. You stay signed in.',
+      '40 people kept signed in will be signed out now. They can sign in again. You stay signed in.',
     );
     expect(signOutConfirm(EVERYONE, NOBODY, COUNTS, false)?.body).toContain('You stay signed in.');
   });

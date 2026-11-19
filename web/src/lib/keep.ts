@@ -103,7 +103,7 @@ export function signOutConfirm(
   const people = countOf(n, 'person', 'people');
   return {
     title: `Sign out ${people}?`,
-    body: `${people} who chose to stay signed in will be signed out now${youOut ? ', you included' : ''}. They can sign in again.${youOut ? '' : ' You stay signed in.'}`,
+    body: `${people} kept signed in will be signed out now${youOut ? ', you included' : ''}. They can sign in again.${youOut ? '' : ' You stay signed in.'}`,
     label: `Sign out ${people}`,
   };
 }

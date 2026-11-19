@@ -297,7 +297,7 @@ for (const theme of THEMES) {
       await section.getByRole('button', { name: 'Save' }).click();
       const dialog = page.getByRole('dialog', { name: 'Sign out 42 people?' });
       await expect(dialog).toBeVisible();
-      await expect(dialog).toContainText('42 people who chose to stay signed in will be signed out now, you included. They can sign in again.');
+      await expect(dialog).toContainText('42 people kept signed in will be signed out now, you included. They can sign in again.');
       await sweep(page, 'dashboard-keep-confirm', theme);
 
       await dialog.getByRole('button', { name: 'Cancel' }).click();

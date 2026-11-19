@@ -213,7 +213,7 @@
           aria-describedby={fid('model-id-help') + (fields.model ? ` ${fid('model-id-error')}` : '')}
         />
         <p id={fid('model-id-help')} class="field-help">
-          {#if noList}Exactly as {provider?.name} writes it. Required.{:else if models.length > 0}Exactly as {provider?.name} writes it.{:else if listing}Listing {provider?.name}'s models.{:else}Optional. Leave it empty and save the key: {provider?.name}'s models are then listed here to choose from.{/if}
+          {#if noList}Exactly as {provider?.name} writes it. Required.{:else if models.length > 0}Exactly as {provider?.name} writes it.{:else if listing}Listing {provider?.name}'s models.{:else}Save your key to load this provider's models, or type a model id.{/if}
         </p>
         {#if models.length === 0 && listError}<p class="field-error">{listError}</p>{/if}
         {#if fields.model}<p id={fid('model-id-error')} class="field-error">{fields.model}</p>{/if}
