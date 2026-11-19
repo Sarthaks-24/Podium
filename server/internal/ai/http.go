@@ -662,18 +662,17 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 		text := key.scrub(answer)
 		r.answer, r.answerCut = clipText(text, maxKeptAnswer), len(text) > maxKeptAnswer
 	}
-	var draft problems.Draft
-	var solutions map[string]string
+	var pack *answerPack
 	var err error
 	if function {
-		var pack *FunctionPack
-		if pack, err = GenerateFunction(ctx, prov, req); err == nil {
-			draft, solutions = ToDraftFunction(pack), pack.Solutions()
+		var fp *FunctionPack
+		if fp, err = GenerateFunction(ctx, prov, req); err == nil {
+			pack = &answerPack{draft: ToDraftFunction(fp), solutions: fp.Solutions(), function: true}
 		}
 	} else {
-		var pack *WizardPack
-		if pack, err = Generate(ctx, prov, req); err == nil {
-			draft = ToDraft(pack)
+		var wp *WizardPack
+		if wp, err = Generate(ctx, prov, req); err == nil {
+			pack = &answerPack{draft: ToDraft(wp)}
 		}
 	}
 	cancel()
@@ -682,7 +681,20 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 	}
 	ctx, cancel = context.WithTimeout(context.Background(), draftTimeout)
 	defer cancel()
-	p, err := d.Problems.CreateDraft(ctx, draft, userID)
+	id, err := d.createFromPack(ctx, pack, userID)
+	if err != nil {
+		return d.failWizard(run, err, key, keep)
+	}
+	d.Log.Info("ai draft made by wizard", "user_id", userID, "wizard_id", run.id, "problem_id", id)
+	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.problemID = wizardDraft, id; keep(r) })
+}
+
+// createFromPack makes the draft for a checked answer and queues input
+// generation, which chains output generation and validation. A run with
+// review and a run without it both end here, so they make the same draft.
+// The origin and the "ai draft" tag come from CreateDraft, never from a request.
+func (d *Handlers) createFromPack(ctx context.Context, pack *answerPack, userID int64) (int64, error) {
+	p, err := d.Problems.CreateDraft(ctx, pack.draft, userID)
 	var fields problems.FieldErrors
 	if errors.As(err, &fields) {
 		reasons := make([]string, 0, len(fields))
@@ -693,12 +705,12 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 		err = &Error{Code: CodeInvalidAnswer, Message: "The model's answer could not be used.", Reasons: reasons}
 	}
 	if err != nil {
-		return d.failWizard(run, err, key, keep)
+		return 0, err
 	}
-	d.Log.Info("ai draft created", "user_id", userID, "wizard_id", run.id, "problem_id", p.ID)
+	d.Log.Info("ai draft created", "user_id", userID, "problem_id", p.ID)
 	var g *problems.InputGeneration
-	if function {
-		g, err = d.Problems.RequestInputGenerationProof(ctx, p.ID, userID, solutions)
+	if pack.function {
+		g, err = d.Problems.RequestInputGenerationProof(ctx, p.ID, userID, pack.solutions)
 	} else {
 		g, err = d.Problems.RequestInputGeneration(ctx, p.ID, userID)
 	}
@@ -708,7 +720,7 @@ func (d *Handlers) runGenerate(run *wizardRun, prov Provider, req Request, funct
 	} else {
 		d.Log.Info("input generation queued", "by", userID, "problem_id", p.ID, "input_generation_id", g.ID)
 	}
-	return d.Wizard.finish(run, func(r *wizardRun) { r.state, r.problemID = wizardDraft, p.ID; keep(r) })
+	return p.ID, nil
 }
 
 // failWizard records a failed run. An *Error is logged by its code
