@@ -9,7 +9,9 @@
   out someone who did; both ask first. "Add people" takes one address or a
   pasted list: Check runs a dry run and shows the three counts, then "Add
   N people" saves. Refused sign-ins list the Google addresses that tried
-  and were not on the list, each with Let in. For an admin or the owner,
+  and were not on the list, each with Let in. Both lists show 50 rows a
+  page with Previous and Next (V211-21), and a Role select beside the
+  search narrows the list by role (V211-65). For an admin or the owner,
   Submissions on a row opens that person's history, newest first, with the
   code of each (GET /api/admin/people/{id}/submissions; opening code is
   audited by the server). The rules are the server's
@@ -27,6 +29,7 @@
   import { polite } from '../../lib/announce.svelte';
   import { errorText, getJSON, sendJSON } from '../../lib/api';
   import { countOf, formatDateTime, roleLabel } from '../../lib/format';
+  import { pageOf } from '../../lib/paging';
   import {
     mayChange,
     personLabel,
@@ -58,7 +61,20 @@
 
   type Pending = { kind: 'remove'; person: ListedPerson } | { kind: 'role'; person: ListedPerson; role: Role } | null;
 
+  const PAGE_SIZE = 50;
+  const ROLE_CHOICES: { value: 'all' | Role; label: string }[] = [
+    { value: 'all', label: 'All roles' },
+    { value: 'student', label: 'Students' },
+    { value: 'organiser', label: 'Organisers' },
+    { value: 'admin', label: 'Admins' },
+    { value: 'owner', label: 'Owners' },
+  ];
+
   let filter = $state('');
+  let roleFilter = $state<'all' | Role>('all');
+  // Separate page state for the two lists; the page shown is clamped by pageOf.
+  let peoplePage = $state(1);
+  let refusedPage = $state(1);
   let paste = $state('');
   let preview = $state<ImportResult | null>(null);
   let checking = $state(false);
@@ -146,8 +162,28 @@
 
   const shown = $derived.by(() => {
     const q = filter.trim().toLowerCase();
-    return q === '' ? list : list.filter((p) => p.email.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
+    return list.filter((p) => (roleFilter === 'all' || p.role === roleFilter) && (q === '' || p.email.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)));
   });
+  const view = $derived(pageOf(shown, peoplePage, PAGE_SIZE));
+  const refusedView = $derived(pageOf(refused, refusedPage, PAGE_SIZE));
+
+  // Moves to another page. When the button just used is now disabled, focus
+  // goes to the other one, or to the heading when both are.
+  async function turn(key: string, headingId: string, step: -1 | 1) {
+    const now = key === 'people' ? view.page : refusedView.page;
+    const pages = key === 'people' ? view.pages : refusedView.pages;
+    const to = Math.min(Math.max(1, now + step), pages);
+    if (key === 'people') peoplePage = to;
+    else refusedPage = to;
+    await tick();
+    const prev = document.getElementById(`${key}-prev`) as HTMLButtonElement | null;
+    const next = document.getElementById(`${key}-next`) as HTMLButtonElement | null;
+    const used = step < 0 ? prev : next;
+    if (used && !used.disabled) return;
+    const other = step < 0 ? next : prev;
+    if (other && !other.disabled) other.focus();
+    else document.getElementById(headingId)?.focus();
+  }
   const roles = $derived(rolesFor(viewer));
 
   const confirmCopy = $derived.by(() => {
@@ -281,9 +317,17 @@
     <MonoDigits text={`${countOf(counts.on_list, 'person', 'people')} on the list, ${counts.signed_in} signed in, ${counts.never_came} never came.`} />
   </p>
 
+  <div class="filters">
   <div class="field filter">
     <label for="people-filter">Find a person</label>
-    <input id="people-filter" class="input" type="search" autocomplete="off" spellcheck="false" bind:value={filter} />
+    <input id="people-filter" class="input" type="search" autocomplete="off" spellcheck="false" bind:value={filter} oninput={() => (peoplePage = 1)} />
+  </div>
+  <div class="field role-filter">
+    <label for="people-role">Role</label>
+    <select id="people-role" class="select" bind:value={roleFilter} onchange={() => (peoplePage = 1)}>
+      {#each ROLE_CHOICES as c (c.value)}<option value={c.value}>{c.label}</option>{/each}
+    </select>
+  </div>
   </div>
 
   <div class="table-wrap people">
@@ -298,7 +342,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each shown as person (person.id)}
+        {#each view.rows as person (person.id)}
           {@const changeable = mayChange(viewer, person)}
           <tr>
             <th scope="row" class="name">
@@ -338,12 +382,13 @@
           </tr>
         {:else}
           <tr>
-            <td colspan="5" class="muted">{filter.trim() === '' ? 'Nobody is on the list yet. Add people below.' : 'Nobody matches. Clear the search to see everyone.'}</td>
+            <td colspan="5" class="muted">{filter.trim() === '' && roleFilter === 'all' ? 'Nobody is on the list yet. Add people below.' : 'Nobody matches. Clear the search or choose All roles.'}</td>
           </tr>
         {/each}
       </tbody>
     </table>
   </div>
+  {@render pager('people', 'list-heading', view)}
   {#if selectedPerson}
     {@const person = selectedPerson}
     <section class="section" aria-labelledby="history-heading">
@@ -432,11 +477,11 @@
 </section>
 
 <section class="section" aria-labelledby="refused-heading">
-  <h2 id="refused-heading">Refused sign-ins</h2>
+  <h2 id="refused-heading" tabindex="-1">Refused sign-ins</h2>
   <p class="intro muted">Google accounts that tried to sign in and are not on the list, newest first. The most recent 500 are kept.</p>
   {#if refused.length > 0}
     <ul class="refused">
-      {#each refused as r (r.email)}
+      {#each refusedView.rows as r (r.email)}
         <li>
           <span class="item">
             {r.email}
@@ -446,10 +491,21 @@
         </li>
       {/each}
     </ul>
+    {@render pager('refused', 'refused-heading', refusedView)}
   {:else}
     <p class="empty muted">Nobody has been refused.</p>
   {/if}
 </section>
+
+{#snippet pager(key: string, headingId: string, v: { page: number; pages: number; first: number; last: number }, total = key === 'people' ? shown.length : refused.length)}
+  {#if v.pages > 1}
+    <div class="pager">
+      <p class="muted" aria-live="polite"><MonoDigits text={`Showing ${v.first} to ${v.last} of ${total}`} /></p>
+      <button type="button" id="{key}-prev" class="btn btn-secondary btn-compact" disabled={v.page <= 1} onclick={() => turn(key, headingId, -1)}>Previous</button>
+      <button type="button" id="{key}-next" class="btn btn-secondary btn-compact" disabled={v.page >= v.pages} onclick={() => turn(key, headingId, 1)}>Next</button>
+    </div>
+  {/if}
+{/snippet}
 
 <ConfirmDialog
   open={pending !== null}
@@ -467,13 +523,37 @@
     margin-top: var(--space-3);
   }
 
-  .filter {
-    max-width: 24rem;
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3);
     margin-top: var(--space-4);
+  }
+
+  .filter {
+    flex: 1 1 14rem;
+    max-width: 24rem;
+  }
+
+  .role-filter {
+    flex: 0 1 12rem;
   }
 
   .people {
     margin-top: var(--space-3);
+  }
+
+  .pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
+  .pager p {
+    margin-inline-end: auto;
   }
 
   .name {
