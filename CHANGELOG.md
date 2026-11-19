@@ -4,6 +4,22 @@ Dated entries per release. Unreleased work is listed at the top.
 
 Releases are numbered from `v2.0.0`. The builds before it were never released; these entries call them v1.0 (first called v1), v1.1 (v2), v1.2 (v3), v1.3 (v4) and v1.4 (v4.01). Decision ids (`V3-n`, `V4-n`) and migration file names keep the old names.
 
+## v2.1.1 Billota (unreleased)
+
+v2.1.1 fixes what the v2.1.0 runs on the laptop test server and production showed. It has no migration and keeps judge protocol 4: see "Upgrading to v2.1.1" in `docs/OPERATIONS.md`.
+
+- Fixed: function problems from real AI models failed their tests because the model wrote line breaks in the locked code as `\n` text (PF-17), wrote `public class Solution` in Java, or joined generator arguments as `n=2000,k=2000`. Podium now repairs all three before checking the answer, in the wizard and in Fix with AI, and the prompt asks for the right form.
+- A wizard run now has 6 minutes for its answer and its one retry, instead of 3. Edit with AI and Fix with AI keep 3 minutes. The server log records each model call's time.
+- New: when a wizard run fails, or its draft's tests could not be generated, "What the AI sent back" shows the model's answer as plain text. Only the person who ran the wizard can see it, for an hour or until their next run. The key is removed from it, and it is cut at 200 KB.
+- Display names keep printable characters only, so a name cannot hide or reverse text on the public board. Spaces are collapsed and names keep 80 characters. A student with an empty name is shown as "Student" and their id. Names change at each person's next sign-in.
+- Fixed: an open page's live updates no longer use up a kept session's renewal, which could sign out early someone who chose to stay signed in (S1).
+- Fixed: a slow precompiled header check under load no longer turns the header off until the judge restarts (S4). Only GCC's header fault does.
+- The key form says that models load after the key is saved. The sign-out confirm says "kept signed in", which is true under every setting.
+- Fixed: one KaTeX font was blocked by the page's font rule because it was built into the page. Fonts are now always separate files, and the build fails if one is not.
+- Fixed: a long compiler line no longer widens the problem page on a phone.
+- The judge selftest runs the hello worlds first, so a contained Node program is not timed on a cold start (PF-19).
+- Known limits: a name made only of characters that print as blank (for example the Hangul filler) is kept; look-alike names are not detected. A precompiled header check that times out is tried again at the next compile that shows the header fault text.
+
 ## v2.1.0 Billota (2026-11-15)
 
 v2.1.0 makes the judge faster and sized to its machine, adds Edit with AI fixes, function problems from the wizard, two more AI providers, Rewrite with AI, bringing back an earlier version of a problem, and keeping people signed in. It upgrades v2.0.2 with migration 0016 and judge protocol 4: see "Upgrading to v2.1.0" in `docs/OPERATIONS.md`.

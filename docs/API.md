@@ -498,6 +498,7 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 | `DELETE /api/admin/ai/key` | `?provider=openai` forgets that provider's key; without it, every key of the session | 204 |
 | `POST /api/admin/ai/wizard` | `WizardRequest`, at most 256 KB | 202 `{"wizard_id":"3f9c...","server_now":...}` |
 | `GET /api/admin/ai/wizard/{id}` | | 200 `Wizard` |
+| `GET /api/admin/ai/wizard/{id}/answer` | | 200 `{text, cut, reasons}`; 409 `not_finished`; 404 as for the run (v2.1.1) |
 
 `Providers`: `{providers: [{id, name, has_key, model, active_until, other, has_list}], active_provider, server_now}`. The order is fixed: `anthropic`, `openai`, `gemini`, `openrouter`, `groq`; `other` is true for the last two (they sit under "Other providers" in the key form) and `has_list` says the host lists its models (false means the model id must be typed); a build made with the `fakeai` tag adds `fake` in testing mode, which needs no key and answers with canned problems. `model` is the model id saved with the key, `""` when none was chosen. `active_provider` is the one whose key or model was saved last, `null` without a key.
 
@@ -513,7 +514,9 @@ The wizard drafts a problem from a brief or from pasted text, with Anthropic, Op
 
 `WizardRequest`: `{"mode":"brief","brief":{"topic","difficulty","constraints","subtasks"}}` or `{"mode":"paste","text":"..."}`. `difficulty` is `easy`, `medium` or `hard`; `topic` is required; each brief field is at most 2,000 characters and `text` at most 20,000. An optional `provider` picks which of the session's keys to use.
 
-`Wizard` (the organiser's own runs, kept in memory for an hour after the end): `{id, kind: "generate", state, problem_id?, provider, model, started_at, server_now, error?: {code, message, reasons}}`. `state` is `thinking`, then `draft_created` or `error`. On success the draft is a new problem (origin `ai`, tag `ai draft`) and input generation is queued for it at once. The same object reaches the organiser as a `wizard` event when the run ends. The call runs in the background, at most 3 minutes with its one retry.
+`Wizard` (the organiser's own runs, kept in memory for an hour after the end): `{id, kind: "generate", state, problem_id?, provider, model, started_at, server_now, error?: {code, message, reasons}}`. `state` is `thinking`, then `draft_created` or `error`. On success the draft is a new problem (origin `ai`, tag `ai draft`) and input generation is queued for it at once. The same object reaches the organiser as a `wizard` event when the run ends. The call runs in the background, at most 6 minutes for both attempts together (v2.1.1; before, 3 minutes), so the retry gets the time left.
+
+`GET /api/admin/ai/wizard/{id}/answer` (v2.1.1) returns what the provider sent back for a finished run, for "What the AI sent back" on the wizard page: `{"text": "...", "cut": false, "reasons": []}`. `text` is the provider's latest answer as it arrived, before Podium's repairs, with the session's key removed and then cut to 200 KB (`cut` says it was); a retry that times out keeps the first attempt's text. `reasons` are the run's error reasons, `[]` when it made a draft. Only the person who started the run can read it: anyone else, a missing run and a run that ended over an hour ago get the same 404 as `GET /api/admin/ai/wizard/{id}`; a run still thinking gets 409 `not_finished`. The text lives in server memory only, never in the database or the `wizard` event, and each person keeps at most one: starting a new run drops it.
 
 | Status and code | When |
 |---|---|

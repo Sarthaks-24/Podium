@@ -507,7 +507,9 @@ The model's code is never run on the server: it goes to the judge, in isolate, l
 
 **A contest needs a person's solution.** The tests of an AI problem come from the model's generator and their expected outputs from the model's reference, so validation cannot catch a wrong reference: they agree by construction. Every contest counts (V3-6), so a contest refuses an AI problem until a person has written a solution for it: an editor save that changes the reference or the brute force (write your own brute force; it is the independent check), followed by a validation that passes. An admin may instead use it as written by giving a reason of at least 10 characters when adding it; the reason is kept in the contest's audit log, and Setup asks for it.
 
-One AI request per admin runs at a time, for at most 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
+One AI request per admin runs at a time. A wizard run has at most 6 minutes for its answer and one retry; Edit with AI and Fix with AI have 3 minutes. A refusal by the model, a cut-off answer, a rate limit or a provider outage is shown in words; nothing is created.
+
+Before checking an answer, Podium repairs three faults real models make (v2.1.1): locked code sent with its line breaks written as `\n` text, `public class Solution` in Java, and generator arguments joined as `n=2000,k=2000`. When a run fails, or its draft's tests could not be generated, "What the AI sent back" under the message shows the model's answer as it arrived, as plain text, for up to an hour or until you start another run. The key is never in it.
 
 ## Check a language
 

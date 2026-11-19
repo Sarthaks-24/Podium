@@ -115,7 +115,7 @@ sudo -u judge env PODIUM_JUDGE_CACHE_DIR=/tmp podium-judge selftest
 sudo systemctl start podium-judge
 ```
 
-It prints `PASS` or `FAIL` for each of the 18 hostile programs and a hello world in each of the four languages, then, with `PODIUM_JUDGE_PCH=on` (the default), one line for the precompiled header, then `PASS: all 23 programs` (22 with the header off) and exit 0, or the count that failed and exit 1. A missing, stale or wrongly owned header is a failure here, although the running judge only logs a line and compiles normally: run `sudo podium-judge pch build` and test again. Do not judge on the host until it passes. Stopping the worker first keeps the test's box out of the worker's memory budget; it uses box 80, clear of the lanes.
+It prints `PASS` or `FAIL` for a hello world in each of the four languages, then for each of the 18 hostile programs (the hello worlds run first since v2.1.1, so every runtime is in the file cache, PF-19), then, with `PODIUM_JUDGE_PCH=on` (the default), one line for the precompiled header, then `PASS: all 23 programs` (22 with the header off) and exit 0, or the count that failed and exit 1. A missing, stale or wrongly owned header is a failure here, although the running judge only logs a line and compiles normally: run `sudo podium-judge pch build` and test again. Do not judge on the host until it passes. Stopping the worker first keeps the test's box out of the worker's memory budget; it uses box 80, clear of the lanes.
 
 For the timing tables as well, with the worker stopped (calibrate has its own memory budget and must not overlap the worker's boxes):
 
@@ -284,7 +284,7 @@ Most of a small C++ program's compile time is GCC reading the standard library f
 | In the sandbox | The directory is added to the C++ compile's isolate rules as a read-only mount (`--dir=/usr/local/lib/podium-pch:maybe:noexec`; `maybe` so a missing directory is skipped, not an error, and `noexec` so nothing in it can be run). Only the compile sees it; a test run never does. The hostile suite writes, replaces, deletes and truncates the header from inside a box and gets "Read-only file system" for each. |
 | When GCC uses it | Only when `#include <bits/stdc++.h>` is the first include and no macro defined before it conflicts with the header (for example `#define _GLIBCXX_DEBUG`), and no pragma comes first. In every other case GCC reads the real header, and the program compiles and behaves the same. A program that does not include it compiles to the same binary with or without the setting. |
 | Checks | At start the judge checks ownership and permissions and runs one probe compile in lane 0's box with the exact student command plus `-Winvalid-pch -H`; it proceeds only if GCC reports loading the file (`! ...stdc++.h.gch`). `podium-judge selftest` with `PODIUM_JUDGE_PCH=on` runs the same probe and prints `PASS precompiled header` or the reason GCC gave (a flag mismatch shows as "not used because ..."). CI builds the header and runs that selftest. |
-| If the file is damaged | A truncated or corrupt file makes GCC stop with "while reading precompiled header". The judge compiles that program again without the header and logs one line (once); the student sees no error. When the compile without the header succeeds, the judge compiles its own one-line program with the header; only if that fails does it stop using the header until it is restarted, so a header that breaks during a contest does not double every compile. A student's program cannot switch the header off: it can print GCC's text itself, but the judge's own program then compiles and the header stays on (a pass is trusted for one minute, so repeating this costs no further checks). Rebuild with `sudo podium-judge pch build`. |
+| If the file is damaged | A truncated or corrupt file makes GCC stop with "while reading precompiled header". The judge compiles that program again without the header and logs one line (once); the student sees no error. When the compile without the header succeeds, the judge compiles its own one-line program with the header; only if that fails with the same "while reading precompiled header" text does it stop using the header until it is restarted (a probe that times out under load leaves the header on and is not trusted as a pass, v2.1.1), so a header that breaks during a contest does not double every compile. A student's program cannot switch the header off: it can print GCC's text itself, but the judge's own program then compiles and the header stays on (a pass is trusted for one minute, so repeating this costs no further checks). Rebuild with `sudo podium-judge pch build`. |
 | Rollback | A rollback leaves the directory in place. The previous judge never looks at it. |
 | Disk and memory | The file is 97 MB (101,614,001 bytes with g++ 13.3 on Ubuntu 24.04); the build takes about 4 s and peaks near 320 MB, which is why it runs with the judge stopped. A compile with the header used less memory, not more (laptop, WSL2, `/usr/bin/time -v`, three runs each): a small program 195 MB without, 139 MB with; a template-heavy one 335 MB without, 287 MB with. The compile limit is 512 MB. Compile wall: 1.6 s to 0.7 s for the small program and 4.7 s to 3.5 s for the heavy one on that laptop. On the test VM (2 vCPUs, 8 GB, the production machine type, 2026-11-14) the compile wall of the heavy C++ programs fell from 2,797 ms to 829 ms. |
 
@@ -457,7 +457,7 @@ Checked by the server before anything is queued. Every refusal is `429` with the
 | Request body | 160 KB | Run, Submit, drafts |
 | Integrity events | one batch per user every 5 s, 100 per request; after 5,000 per user per problem, more are dropped | the editor's paste, blur, focus and full-screen exit events |
 | Clarifications | 5 unanswered questions per student per contest (`400`) | Ask |
-| AI requests | one running per admin, at most 3 minutes (`429 busy` with `Retry-After: 10`) | the AI wizard |
+| AI requests | one running per admin; a wizard run at most 6 minutes, Edit with AI and Fix with AI at most 3 (`429 busy` with `Retry-After: 10`) | the AI wizard |
 | Event streams | 4 per user (a fifth replaces the oldest, which is told and stops reconnecting), 5,000 in total (then `503`, and the page polls) | `GET /api/events` |
 | Open requests | 8 at once per browser session, event streams aside (`429` with `Retry-After: 1`) | every API route with a session cookie |
 | Time to send a request | headers within 10 s, the whole request within 15 s; 120 s for the routes that take an upload | every route; the long one for pack import and test replacement |
@@ -541,7 +541,7 @@ A session can hold one key per provider; the last one saved is the one the wizar
 
 - The key lasts 2 hours, then the form asks for it again. Signing out, signing in again in the same browser, "Forget key" in the account menu, or restarting the server forgets it at once.
 - Each admin's key is their own: another admin's session cannot use it.
-- One AI request per admin at a time, at most 3 minutes each.
+- One AI request per admin at a time: a wizard run at most 6 minutes, Edit with AI and Fix with AI at most 3. The server log has one `ai wizard attempt` line per model call with `wizard_id`, `attempt` and `seconds`, never the answer.
 - The server needs outbound HTTPS to the chosen provider's host (table above). If the VM's firewall blocks it, every request ends with "The provider is unavailable. Try again in a few minutes."
 - The three provider clients use the standard library only. Nothing uses memory while idle.
 
@@ -926,6 +926,10 @@ The judge now asks the server to hold an empty claim for up to 20 seconds, so a 
 - **Timeouts.** The judge listener's read timeout is 60 s, its write timeout 5 min and its idle timeout 120 s; the judge's own HTTP client waits 5 min. All are well above the 20 s hold. The judge listener is not behind Caddy, and an SSH tunnel to a remote judge (see "Judge API listener") carries a 20 s hold without change.
 - **Stopping.** `systemctl stop podium-server` ends held claims at once (they answer "no job") and does not use up the 10 s the web server gets to finish requests. Stopping the judge cuts a held claim one second after the stop, so a drain is not slowed; a job that was being handed out in that second is requeued when its 60 s lease runs out, as after a crash.
 - **If it misbehaves,** nothing needs configuring: a held claim also looks at the queue every 2 seconds, so the worst case is what polling cost before. At most 64 claims are held at once; any more are answered "no job" at once and the judge waits its normal 2 to 3 seconds.
+
+## Upgrading to v2.1.1
+
+v2.1.1 has no migration and keeps judge protocol 4. Upgrade with `sudo ./install.sh upgrade` as in "Upgrade", then run the checks of step 5 under "Upgrading to v2.1.0": `/healthz` shows version v2.1.1 and schema `0016_v210_sessions`, and `podium-judge selftest` ends `PASS: all 23 programs`, with the hello worlds now printed first. Display names are cleaned at each person's next sign-in, so nothing changes in the database at the upgrade. A rollback loses nothing, since the schema is unchanged.
 
 ## Upgrading to v2.1.0
 
